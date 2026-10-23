@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { getTransactionById, updateTransaction } from '@/lib/supabase';
@@ -30,7 +30,7 @@ import {
   AlertOctagon
 } from 'lucide-react';
 
-export default function EscrowTrackerPage() {
+function EscrowTrackerContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const id = params?.id as string;
@@ -580,5 +580,20 @@ export default function EscrowTrackerPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function EscrowTrackerPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-[70vh] flex flex-col items-center justify-center p-4">
+          <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mb-3" />
+          <p className="text-sm font-medium text-slate-500">Loading escrow tracker...</p>
+        </div>
+      }
+    >
+      <EscrowTrackerContent />
+    </Suspense>
   );
 }
