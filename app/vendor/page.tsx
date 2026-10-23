@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 
 export default function VendorDashboardPage() {
-  const [vendorHandle, setVendorHandle] = useState('@LagosHairPlug');
+  const [vendorHandle, setVendorHandle] = useState('');
   const [itemName, setItemName] = useState('');
   const [itemPriceInput, setItemPriceInput] = useState('');
   const [buyerPhone, setBuyerPhone] = useState('');
@@ -97,12 +97,13 @@ export default function VendorDashboardPage() {
 
     setIsSubmitting(true);
     try {
+      const activeVendorHandle = vendorHandle.trim() || '@LagosHairPlug';
       const { data, error } = await createTransaction({
         item_name: itemName.trim(),
         item_price: pricing.itemPrice,
         protection_fee: pricing.protectionFee,
         total_amount: pricing.totalAmount,
-        vendor_handle: vendorHandle,
+        vendor_handle: activeVendorHandle,
         buyer_phone: buyerPhone.trim() || null,
         buyer_notes: buyerNotes.trim() || null,
         status: 'AWAITING_PAYMENT',
@@ -149,18 +150,21 @@ export default function VendorDashboardPage() {
       `Your money is safely locked in escrow until you inspect the delivery!`;
   };
 
+  const displayHandle = vendorHandle.trim() || '@LagosHairPlug';
+  const avatarInitials = displayHandle.replace('@', '').slice(0, 2).toUpperCase() || 'VN';
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 sm:py-8 space-y-6 sm:space-y-8 w-full">
       {/* Header & Vendor Profile Badge */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/90 shadow-xs">
         <div className="flex items-center gap-3.5">
           <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center font-bold text-xl shadow-md shadow-emerald-500/20">
-            {vendorHandle.slice(1, 3).toUpperCase()}
+            {avatarInitials}
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                {vendorHandle}
+                {displayHandle}
               </h1>
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                 <Sparkles className="w-3 h-3 text-emerald-500" />
@@ -330,9 +334,10 @@ export default function VendorDashboardPage() {
                 </label>
                 <input
                   type="text"
+                  placeholder="@LagosHairPlug"
                   value={vendorHandle}
                   onChange={(e) => setVendorHandle(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs sm:text-sm text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all"
                 />
               </div>
             </div>
