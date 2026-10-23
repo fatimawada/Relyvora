@@ -29,7 +29,7 @@ export default function HomePage() {
         </div>
 
         <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-slate-900 tracking-tight leading-[1.15]">
-          Sell on Instagram & WhatsApp <br className="hidden sm:inline" />
+          Sell on Facebook, Instagram, TikTok & WhatsApp <br className="hidden sm:inline" />
           <span className="text-emerald-600">With 100% Escrow Protection.</span>
         </h1>
 
