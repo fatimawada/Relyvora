@@ -1,490 +1,476 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import { 
   ShieldCheck, 
-  ArrowRight, 
+  ArrowUpRight, 
+  ArrowDown, 
   Lock, 
   CheckCircle2, 
-  Globe, 
-  Sparkles, 
-  Smartphone, 
+  AlertTriangle, 
+  Building2, 
+  Truck, 
+  Share2, 
+  KeyRound, 
+  Mail, 
+  HelpCircle,
   ExternalLink,
-  MessageCircle,
-  KeyRound,
-  Building,
-  Check,
-  Send,
-  ChevronRight,
-  TrendingUp,
-  AlertCircle
+  ChevronRight
 } from 'lucide-react';
+import { TrustNetworkDiagram } from '@/components/corporate/TrustNetworkDiagram';
 
 export default function CorporateHomePage() {
-  const [waitlistEmail, setWaitlistEmail] = useState('');
-  const [waitlistSubmitted, setWaitlistSubmitted] = useState(false);
-
-  // In production, point to https://ng.relyvora.com; in local dev fallback to /vendor
   const nigeriaAppUrl = process.env.NODE_ENV === 'production' 
     ? 'https://ng.relyvora.com' 
     : '/vendor';
 
-  const handleWaitlistSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!waitlistEmail.trim()) return;
-    setWaitlistSubmitted(true);
-    setWaitlistEmail('');
-  };
-
   return (
-    <div className="w-full bg-slate-50 text-slate-900 font-sans selection:bg-emerald-500 selection:text-white">
-      {/* Hero Section */}
-      <section className="relative overflow-hidden pt-12 pb-20 sm:pt-20 sm:pb-32 px-4 border-b border-slate-200/80 bg-white">
-        <div className="max-w-6xl mx-auto text-center space-y-8 relative z-10">
-          {/* Institutional Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-xs">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="tracking-wide uppercase text-[11px] font-bold">Pan-African Fintech Infrastructure</span>
+    <div className="w-full text-[#090E1A] bg-[#FAF8F5]">
+      {/* 1. HERO SECTION */}
+      <section className="pt-16 pb-20 sm:pt-24 sm:pb-28 px-4 sm:px-6 border-b border-[#E7E4DC]">
+        <div className="max-w-5xl mx-auto space-y-10">
+          {/* Overline & Category */}
+          <div className="space-y-3">
+            <div className="inline-flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-widest text-[#047857]">
+              <span>Infrastructure for African Digital Commerce</span>
+              <span className="text-[#94A3B8]">•</span>
+              <span>EST. 2024</span>
+            </div>
+
+            {/* Editorial Headline */}
+            <h1 className="text-4xl sm:text-6xl lg:text-7xl font-serif font-normal tracking-tight text-[#090E1A] leading-[1.08] max-w-4xl">
+              Building the institutional trust layer for African social commerce.
+            </h1>
           </div>
 
-          {/* Main Headline */}
-          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black text-slate-900 tracking-tight leading-[1.1] max-w-4xl mx-auto">
-            The Trust Layer for <br className="hidden sm:inline" />
-            <span className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 bg-clip-text text-transparent">
-              African Social Commerce.
-            </span>
-          </h1>
-
-          {/* Core Value Proposition */}
-          <p className="text-lg sm:text-2xl text-slate-600 max-w-3xl mx-auto leading-relaxed font-normal">
-            We secure transactions across <span className="text-slate-900 font-semibold">WhatsApp</span>, <span className="text-slate-900 font-semibold">Facebook</span>, <span className="text-slate-900 font-semibold">TikTok</span>, and <span className="text-slate-900 font-semibold">Instagram</span> with automated, fraud-proof escrow protection.
+          {/* Subtitle & Mission */}
+          <p className="text-lg sm:text-xl text-[#334155] max-w-3xl leading-relaxed font-sans font-normal">
+            Across African markets, commerce happens inside direct messages and social feeds—across <strong className="text-[#090E1A] font-semibold">WhatsApp</strong>, <strong className="text-[#090E1A] font-semibold">Facebook</strong>, <strong className="text-[#090E1A] font-semibold">TikTok</strong>, and <strong className="text-[#090E1A] font-semibold">Instagram</strong>. Relyvora provides the neutral transaction and escrow infrastructure that protects both buyers and independent merchants from order creation to physical doorstep verification.
           </p>
 
-          {/* Action CTAs */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+          {/* Editorial CTAs */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 pt-2">
             <a
               href={nigeriaAppUrl}
-              className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-base flex items-center justify-center gap-2.5 shadow-xl shadow-emerald-600/25 transition-all transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-lg text-xs sm:text-sm font-bold bg-[#090E1A] text-white hover:bg-[#1E293B] transition-all shadow-xs"
             >
-              <span>Launch Nigeria App</span>
-              <span className="text-lg">🇳🇬</span>
-              <ArrowRight className="w-4 h-4 ml-0.5" />
+              <span>Explore Nigeria MVP</span>
+              <span className="text-xs">🇳🇬</span>
+              <ArrowUpRight className="w-4 h-4 opacity-80" />
             </a>
 
             <a
               href="#how-it-works"
-              className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold text-base flex items-center justify-center gap-2 transition-colors"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-lg text-xs sm:text-sm font-semibold bg-[#EFECE6] text-[#090E1A] hover:bg-[#E7E3D8] transition-colors border border-[#DDD8CE]"
             >
-              <span>How Escrow Works</span>
+              <span>Review The Protocol</span>
+              <ArrowDown className="w-3.5 h-3.5 opacity-70" />
             </a>
           </div>
 
-          {/* Supported Platforms Social Proof Ticker */}
-          <div className="pt-10 max-w-2xl mx-auto">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">
-              Securing Peer-to-Peer & Merchant Checkout On
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6">
-              {[
-                { name: 'WhatsApp', icon: '💬', color: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-                { name: 'Instagram', icon: '📸', color: 'bg-pink-50 text-pink-800 border-pink-200' },
-                { name: 'TikTok', icon: '🎵', color: 'bg-slate-100 text-slate-800 border-slate-200' },
-                { name: 'Facebook', icon: '🌐', color: 'bg-blue-50 text-blue-800 border-blue-200' },
-              ].map((platform) => (
-                <div
-                  key={platform.name}
-                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold border shadow-xs ${platform.color}`}
-                >
-                  <span>{platform.icon}</span>
-                  <span>{platform.name}</span>
-                </div>
-              ))}
-            </div>
+          {/* Distinctive Visual Motif: Trust Topology Diagram */}
+          <div className="pt-6">
+            <TrustNetworkDiagram />
           </div>
         </div>
-
-        {/* Ambient background glow */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[350px] bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
       </section>
 
-      {/* How It Works Section */}
-      <section id="how-it-works" className="py-20 px-4 max-w-6xl mx-auto space-y-16">
-        <div className="text-center space-y-4 max-w-3xl mx-auto">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200 uppercase tracking-wider">
-            Bi-Directional Protection
-          </div>
-          <h2 className="text-3xl sm:text-5xl font-black text-slate-900 tracking-tight">
-            Built to Protect Both Sides of Every Deal
-          </h2>
-          <p className="text-base sm:text-lg text-slate-600">
-            Social commerce in emerging markets fails when buyers fear paying upfront and sellers fear unfulfilled cash on delivery. Relyvora solves both instantly.
-          </p>
-        </div>
-
-        {/* Two-Perspective Value Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* For Buyers */}
-          <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 relative overflow-hidden">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-              <ShieldCheck className="w-6 h-6" />
+      {/* 2. THE PROBLEM: THE SOCIAL COMMERCE TRUST GAP */}
+      <section id="problem" className="py-20 sm:py-28 px-4 sm:px-6 border-b border-[#E7E4DC] bg-white">
+        <div className="max-w-5xl mx-auto space-y-14">
+          <div className="space-y-3 max-w-2xl">
+            <div className="font-mono text-xs font-semibold uppercase tracking-wider text-[#64748B]">
+              Market Realities
             </div>
-            <div>
-              <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Buyer Confidence</span>
-              <h3 className="text-2xl font-black text-slate-900 mt-1">
-                Zero Risk of "What I Ordered vs What I Got"
-              </h3>
-            </div>
-            <ul className="space-y-3.5 text-sm text-slate-600">
-              <li className="flex items-start gap-3">
-                <Check className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                <span><strong>Funds Safely Held in Custody:</strong> Money remains in escrow until your package arrives.</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <Check className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                <span><strong>Doorstep Unboxing Inspection:</strong> Inspect the merchandise before releasing the payment.</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <Check className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                <span><strong>1-Click Dispute Freeze:</strong> If the item is fake or broken, freeze escrow instantly to prevent payout.</span>
-              </li>
-            </ul>
+            <h2 className="text-3xl sm:text-4xl font-serif text-[#090E1A] tracking-tight">
+              The fundamental friction of peer-to-peer commerce
+            </h2>
+            <p className="text-base text-[#475569] leading-relaxed">
+              Social commerce in emerging markets is heavily constrained by an asymmetric dilemma: neither party is willing to bear the financial risk of going first.
+            </p>
           </div>
 
-          {/* For Vendors */}
-          <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6 relative overflow-hidden">
-            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-              <Lock className="w-6 h-6" />
-            </div>
-            <div>
-              <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">Merchant Assurance</span>
-              <h3 className="text-2xl font-black text-slate-900 mt-1">
-                Zero Bogus Orders or Delivery Rider Thefts
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Pillar 1: Payment on Delivery Dilemma */}
+            <div className="space-y-4 p-6 rounded-xl bg-[#FAF8F5] border border-[#E7E4DC]">
+              <div className="w-9 h-9 rounded-lg bg-[#EFECE6] flex items-center justify-center text-[#090E1A] font-mono text-xs font-bold">
+                01
+              </div>
+              <h3 className="text-lg font-bold text-[#090E1A]">
+                The Payment-on-Delivery Dilemma
               </h3>
+              <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
+                Cash and transfer-on-delivery (PoD) represent up to 70% of social commerce orders in Sub-Saharan Africa. However, merchants experience up to 30%+ delivery refusal rates, dispatch rider theft risks, and significant logistics burn on uncommitted shoppers.
+              </p>
             </div>
-            <ul className="space-y-3.5 text-sm text-slate-600">
-              <li className="flex items-start gap-3">
-                <Check className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-                <span><strong>100% Pre-Funded Commitment:</strong> Never dispatch goods without confirmed buyer funds locked in escrow.</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <Check className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-                <span><strong>No Fake Transfer Alerts:</strong> Digital payment confirmation verified directly by our gateway.</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <Check className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-                <span><strong>Instant 6-Digit Code Payout:</strong> Enter the buyer's handover code to immediately unlock balance.</span>
-              </li>
-            </ul>
+
+            {/* Pillar 2: Buyer Information Asymmetry */}
+            <div className="space-y-4 p-6 rounded-xl bg-[#FAF8F5] border border-[#E7E4DC]">
+              <div className="w-9 h-9 rounded-lg bg-[#EFECE6] flex items-center justify-center text-[#090E1A] font-mono text-xs font-bold">
+                02
+              </div>
+              <h3 className="text-lg font-bold text-[#090E1A]">
+                Buyer Uncertainty & "What I Ordered"
+              </h3>
+              <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
+                Direct bank transfers to unknown personal accounts offer zero buyer protection. If goods arrive damaged, counterfeit, or fail to ship altogether, buyers have no recourse or dispute arbitration mechanism, capping consumer basket sizes.
+              </p>
+            </div>
+
+            {/* Pillar 3: Merchant Payment Vulnerabilities */}
+            <div className="space-y-4 p-6 rounded-xl bg-[#FAF8F5] border border-[#E7E4DC]">
+              <div className="w-9 h-9 rounded-lg bg-[#EFECE6] flex items-center justify-center text-[#090E1A] font-mono text-xs font-bold">
+                03
+              </div>
+              <h3 className="text-lg font-bold text-[#090E1A]">
+                Merchant Exposure & Fake Proofs
+              </h3>
+              <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
+                Independent social sellers routinely fall victim to sophisticated fake bank alert SMS messages, unauthorized chargeback disputes, and non-serious buyers who order products to distant locations and go unreachable upon courier arrival.
+              </p>
+            </div>
           </div>
         </div>
+      </section>
 
-        {/* 3-Step Process Diagram */}
-        <div className="bg-slate-900 text-white rounded-3xl p-8 sm:p-12 space-y-8">
-          <div className="text-center max-w-xl mx-auto space-y-2">
-            <h3 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-              The 3-Step Escrow Protocol
-            </h3>
-            <p className="text-xs sm:text-sm text-slate-400">
-              How Relyvora executes transactions from social chat to doorstep delivery.
+      {/* 3. HOW RELYVORA WORKS: THE TRANSACTION PROTOCOL */}
+      <section id="how-it-works" className="py-20 sm:py-28 px-4 sm:px-6 border-b border-[#E7E4DC] bg-[#FAF8F5]">
+        <div className="max-w-5xl mx-auto space-y-16">
+          <div className="space-y-3 max-w-2xl">
+            <div className="font-mono text-xs font-semibold uppercase tracking-wider text-[#047857]">
+              The Transaction Lifecycle
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-serif text-[#090E1A] tracking-tight">
+              A neutral, verified sequence from direct message to doorstep
+            </h2>
+            <p className="text-base text-[#475569] leading-relaxed">
+              Relyvora decouples the payment release from the initial purchase order, ensuring funds are held securely until physical verification occurs.
+            </p>
+          </div>
+
+          {/* Stepper Grid */}
+          <div className="space-y-6">
+            {[
+              {
+                step: '01',
+                title: 'Link Generation & Agreed Terms',
+                description: 'The social vendor enters the item details and agreed purchase price in the Relyvora dashboard. Relyvora calculates the transparent 3% buyer protection fee (minimum ₦500 in Nigeria) and generates a secure link shareable directly in WhatsApp, Instagram DM, or TikTok chats.',
+                detail: 'Standardized order specifications eliminate misunderstandings before payment is initiated.',
+              },
+              {
+                step: '02',
+                title: 'Custodial Pre-Funding',
+                description: 'The buyer opens the link, inspects the exact item description, and securely locks the total order amount into Relyvora escrow. The vendor is notified instantly that funds are guaranteed in custody.',
+                detail: 'Vendor sees confirmed funds before preparing inventory or booking couriers.',
+              },
+              {
+                step: '03',
+                title: 'Shipment with 6-Digit Release Code',
+                description: 'Upon payment lock, Relyvora issues a unique, confidential 6-digit release code exclusively to the buyer. The vendor dispatches the merchandise with delivery couriers.',
+                detail: 'The buyer is strictly instructed not to share this code until the parcel is physically unboxed.',
+              },
+              {
+                step: '04',
+                title: 'Doorstep Inspection & Final Settlement',
+                description: 'When the delivery rider arrives, the buyer unboxes and inspects the item. If completely satisfied, the buyer gives the 6-digit code to the vendor/rider. Entering this matching code instantly releases the locked funds to the vendor payout balance.',
+                detail: 'Wrong item or counterfeit? The buyer freezes escrow with 1 click, suspending payout pending inspection.',
+              },
+            ].map((item, idx) => (
+              <div 
+                key={item.step}
+                className="grid grid-cols-1 md:grid-cols-12 gap-6 p-6 sm:p-8 rounded-xl bg-white border border-[#E7E4DC] hover:border-[#CBD5E1] transition-all"
+              >
+                <div className="md:col-span-2 font-mono text-2xl font-bold text-[#047857]">
+                  {item.step}
+                </div>
+                <div className="md:col-span-6 space-y-2">
+                  <h3 className="text-lg font-bold text-[#090E1A]">
+                    {item.title}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
+                    {item.description}
+                  </p>
+                </div>
+                <div className="md:col-span-4 p-4 rounded-lg bg-[#FAF8F5] border border-[#E7E4DC] self-center">
+                  <span className="text-[11px] font-mono uppercase tracking-wide text-[#64748B] block mb-1">
+                    Design Protocol
+                  </span>
+                  <p className="text-xs text-[#334155] font-medium leading-snug">
+                    {item.detail}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 4. THE ECOSYSTEM: CONNECTING SOCIAL COMMERCE RAILS */}
+      <section id="ecosystem" className="py-20 sm:py-28 px-4 sm:px-6 border-b border-[#E7E4DC] bg-white">
+        <div className="max-w-5xl mx-auto space-y-12">
+          <div className="space-y-3 max-w-2xl">
+            <div className="font-mono text-xs font-semibold uppercase tracking-wider text-[#64748B]">
+              Interoperability
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-serif text-[#090E1A] tracking-tight">
+              Connecting fragmented social commerce rails
+            </h2>
+            <p className="text-base text-[#475569] leading-relaxed">
+              Relyvora does not replace existing social platforms or delivery couriers. We provide the neutral trust layer that integrates seamlessly across the three touchpoints of social commerce.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="p-6 rounded-xl border border-[#E7E4DC] space-y-3 bg-[#FAF8F5]">
+              <div className="w-8 h-8 rounded-lg bg-[#EFECE6] flex items-center justify-center text-[#090E1A]">
+                <Share2 className="w-4 h-4" />
+              </div>
+              <h3 className="text-base font-bold text-[#090E1A]">
+                Social Media Surfaces
+              </h3>
+              <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
+                Merchants market and communicate where audiences naturally congregate—WhatsApp chats, Instagram stories, TikTok live streams, and Facebook groups. Relyvora links embed naturally into any messaging interface without requiring app downloads.
+              </p>
+            </div>
+
+            <div className="p-6 rounded-xl border border-[#E7E4DC] space-y-3 bg-[#FAF8F5]">
+              <div className="w-8 h-8 rounded-lg bg-[#EFECE6] flex items-center justify-center text-[#090E1A]">
+                <Truck className="w-4 h-4" />
+              </div>
+              <h3 className="text-base font-bold text-[#090E1A]">
+                Decentralized Logistics
+              </h3>
+              <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
+                Independent dispatch riders and regional parcel services manage the physical transit. By replacing risky cash collection with verified digital codes, riders avoid robbery and couriers reduce failed drop-offs.
+              </p>
+            </div>
+
+            <div className="p-6 rounded-xl border border-[#E7E4DC] space-y-3 bg-[#FAF8F5]">
+              <div className="w-8 h-8 rounded-lg bg-[#EFECE6] flex items-center justify-center text-[#090E1A]">
+                <Building2 className="w-4 h-4" />
+              </div>
+              <h3 className="text-base font-bold text-[#090E1A]">
+                Digital Payment Rails
+              </h3>
+              <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
+                Relyvora connects to local bank account transfer rails, virtual accounts, and regional mobile money systems to safely sequester funds throughout the fulfillment lifecycle.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 5. MARKETS: OPERATIONAL & PLANNED GEOGRAPHIES */}
+      <section id="markets" className="py-20 sm:py-28 px-4 sm:px-6 border-b border-[#E7E4DC] bg-[#FAF8F5]">
+        <div className="max-w-5xl mx-auto space-y-12">
+          <div className="space-y-3 max-w-2xl">
+            <div className="font-mono text-xs font-semibold uppercase tracking-wider text-[#047857]">
+              Geographic Scope
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-serif text-[#090E1A] tracking-tight">
+              Operational in Nigeria, designed for continental expansion
+            </h2>
+            <p className="text-base text-[#475569] leading-relaxed">
+              We focus our initial deployment in Nigeria to prove unit economics and dispute resolution protocols, with planned expansion to major social commerce hubs in West, East, and Southern Africa.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch">
+            {/* Operational Market Card: Nigeria */}
+            <div className="md:col-span-6 p-7 rounded-2xl bg-white border-2 border-[#090E1A] shadow-sm flex flex-col justify-between space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-2xl">🇳🇬</span>
+                    <div>
+                      <h3 className="text-xl font-bold text-[#090E1A]">Nigeria</h3>
+                      <span className="font-mono text-[11px] text-[#64748B]">ng.relyvora.com</span>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-[#E8F5E9] text-[#047857] border border-[#C8E6C9] flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#047857] animate-pulse"></span>
+                    <span>OPERATIONAL MARKET</span>
+                  </span>
+                </div>
+
+                <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
+                  Our initial active market, supporting Instagram and WhatsApp vendors in Lagos, Abuja, and major logistics corridors. Features simulated payments and instant delivery code verification.
+                </p>
+
+                <div className="grid grid-cols-2 gap-3 pt-2 font-mono text-xs">
+                  <div className="p-3 bg-[#FAF8F5] rounded-lg border border-[#E7E4DC]">
+                    <span className="text-[#64748B] text-[10px] block">CURRENCY</span>
+                    <span className="font-bold text-[#090E1A]">Nigerian Naira (₦)</span>
+                  </div>
+                  <div className="p-3 bg-[#FAF8F5] rounded-lg border border-[#E7E4DC]">
+                    <span className="text-[#64748B] text-[10px] block">PROTECTION FEE</span>
+                    <span className="font-bold text-[#047857]">3% (Min ₦500)</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <a
+                  href={nigeriaAppUrl}
+                  className="w-full py-3.5 px-4 rounded-lg bg-[#090E1A] hover:bg-[#1E293B] text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-xs"
+                >
+                  <span>Launch Nigeria Application</span>
+                  <ArrowUpRight className="w-4 h-4 opacity-80" />
+                </a>
+              </div>
+            </div>
+
+            {/* Planned Future Markets */}
+            <div className="md:col-span-6 grid grid-cols-1 gap-4">
+              {/* Ghana */}
+              <div className="p-5 rounded-xl bg-white border border-[#E7E4DC] flex items-start justify-between gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🇬🇭</span>
+                    <h4 className="text-sm font-bold text-[#090E1A]">Ghana</h4>
+                  </div>
+                  <p className="text-xs text-[#475569]">
+                    Planned integration with Ghanaian Cedis (GH₵) and mobile money rails (MTN MoMo, Telecel Cash).
+                  </p>
+                </div>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-[#F1F5F9] text-[#64748B] border border-[#CBD5E1] shrink-0">
+                  PLANNED
+                </span>
+              </div>
+
+              {/* Kenya */}
+              <div className="p-5 rounded-xl bg-white border border-[#E7E4DC] flex items-start justify-between gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🇰🇪</span>
+                    <h4 className="text-sm font-bold text-[#090E1A]">Kenya</h4>
+                  </div>
+                  <p className="text-xs text-[#475569]">
+                    Planned support for Kenya Shillings (KSh) with M-Pesa STK push escrow workflows.
+                  </p>
+                </div>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-[#F1F5F9] text-[#64748B] border border-[#CBD5E1] shrink-0">
+                  PLANNED
+                </span>
+              </div>
+
+              {/* South Africa */}
+              <div className="p-5 rounded-xl bg-white border border-[#E7E4DC] flex items-start justify-between gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🇿🇦</span>
+                    <h4 className="text-sm font-bold text-[#090E1A]">South Africa</h4>
+                  </div>
+                  <p className="text-xs text-[#475569]">
+                    Planned support for South African Rand (ZAR) utilizing Instant EFT and debit rails.
+                  </p>
+                </div>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-[#F1F5F9] text-[#64748B] border border-[#CBD5E1] shrink-0">
+                  PLANNED
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 6. TRUST & SAFETY: ACCURATE SAFEGUARDS & DISCLOSURES */}
+      <section id="trust-and-safety" className="py-20 sm:py-28 px-4 sm:px-6 border-b border-[#E7E4DC] bg-white">
+        <div className="max-w-5xl mx-auto space-y-12">
+          <div className="space-y-3 max-w-2xl">
+            <div className="font-mono text-xs font-semibold uppercase tracking-wider text-[#64748B]">
+              Governance & Integrity
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-serif text-[#090E1A] tracking-tight">
+              Verifiable safeguards and operating transparency
+            </h2>
+            <p className="text-base text-[#475569] leading-relaxed">
+              We design our protocol with transparent operational boundaries. We outline exactly what the platform does and how our safeguards are implemented.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-slate-800/80 p-6 rounded-2xl border border-slate-700 space-y-3">
-              <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-800/80 px-2 py-1 rounded">
-                STEP 01
-              </span>
-              <h4 className="text-lg font-bold text-white">Create & Lock Escrow</h4>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Vendor shares an escrow checkout link via WhatsApp or Instagram DM. The buyer locks agreed funds in custody.
+            <div className="p-6 rounded-xl bg-[#FAF8F5] border border-[#E7E4DC] space-y-3">
+              <KeyRound className="w-5 h-5 text-[#047857]" />
+              <h3 className="text-sm font-bold text-[#090E1A]">
+                Cryptographic Code Release
+              </h3>
+              <p className="text-xs text-[#475569] leading-relaxed">
+                Funds in Relyvora transactions cannot be released by arbitrary admin action or vendor claim alone. Release requires the matching 6-digit verification code issued to the buyer's private device upon checkout.
               </p>
             </div>
 
-            <div className="bg-slate-800/80 p-6 rounded-2xl border border-slate-700 space-y-3">
-              <span className="text-xs font-mono font-bold text-blue-400 bg-blue-950/80 border border-blue-800/80 px-2 py-1 rounded">
-                STEP 02
-              </span>
-              <h4 className="text-lg font-bold text-white">Dispatch & Inspect</h4>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Vendor dispatches the parcel with guaranteed commitment. The buyer unboxes and verifies item quality upon delivery.
+            <div className="p-6 rounded-xl bg-[#FAF8F5] border border-[#E7E4DC] space-y-3">
+              <AlertTriangle className="w-5 h-5 text-[#047857]" />
+              <h3 className="text-sm font-bold text-[#090E1A]">
+                Immediate Dispute Freeze
+              </h3>
+              <p className="text-xs text-[#475569] leading-relaxed">
+                If merchandise arrives damaged, wrong in size, or inconsistent with agreed specifications, the buyer can freeze the transaction with a single click, instantly disabling release code entry and halting payout.
               </p>
             </div>
 
-            <div className="bg-slate-800/80 p-6 rounded-2xl border border-slate-700 space-y-3">
-              <span className="text-xs font-mono font-bold text-teal-400 bg-teal-950/80 border border-teal-800/80 px-2 py-1 rounded">
-                STEP 03
-              </span>
-              <h4 className="text-lg font-bold text-white">6-Digit Code Settlement</h4>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Buyer provides the secret release code to the rider. Vendor enters the code to instantly release funds to payout.
+            <div className="p-6 rounded-xl bg-[#FAF8F5] border border-[#E7E4DC] space-y-3">
+              <HelpCircle className="w-5 h-5 text-[#047857]" />
+              <h3 className="text-sm font-bold text-[#090E1A]">
+                Public Sandbox Environment
+              </h3>
+              <p className="text-xs text-[#475569] leading-relaxed">
+                Our active deployment currently operates in an interactive demonstration mode using simulated payments. This permits extensive vendor usability testing and courier integration audits prior to commercial real-money custody rollout.
               </p>
             </div>
+          </div>
+
+          {/* Institutional Compliance Notice Box */}
+          <div className="p-6 rounded-xl bg-[#F3EFEA] border border-[#E7E4DC] space-y-2 text-xs text-[#475569]">
+            <span className="font-mono font-bold uppercase text-[11px] text-[#090E1A] block">
+              Notice on Regulatory Architecture
+            </span>
+            <p className="leading-relaxed">
+              Relyvora provides transaction verification technology. In production financial markets, real-money custody and settlement are structured in strict compliance with central banking regulations, anti-money laundering (AML) frameworks, and licensed financial institutional partners. No live user funds are collected or held in unverified environments.
+            </p>
           </div>
         </div>
       </section>
 
-      {/* Active Markets Section (Spotlight on Nigeria) */}
-      <section className="py-20 px-4 bg-white border-y border-slate-200">
-        <div className="max-w-6xl mx-auto space-y-12">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-            <div className="space-y-3 max-w-xl">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 uppercase tracking-wide">
-                Active Operational Market
-              </div>
-              <h2 className="text-3xl sm:text-5xl font-black text-slate-900 tracking-tight">
-                Live Now in Nigeria
-              </h2>
-              <p className="text-base text-slate-600">
-                Powering Instagram and WhatsApp commerce across Lagos, Abuja, and nationwide delivery routes.
-              </p>
-            </div>
-
-            <div>
-              <a
-                href={nigeriaAppUrl}
-                className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-lg shadow-emerald-600/25 transition-all"
-              >
-                <span>Launch Nigeria App</span>
-                <span className="text-base">🇳🇬</span>
-                <ArrowRight className="w-4 h-4" />
-              </a>
-            </div>
+      {/* 7. CLOSING CTA & PARTNERSHIPS */}
+      <section className="py-20 sm:py-28 px-4 sm:px-6 bg-[#090E1A] text-white">
+        <div className="max-w-4xl mx-auto text-center space-y-8">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono font-semibold bg-[#1E293B] text-[#A7F3D0] border border-[#334155]">
+            <span>COMMERCE INFRASTRUCTURE</span>
           </div>
 
-          {/* Nigeria Market Feature Card */}
-          <div className="bg-gradient-to-br from-slate-900 to-slate-950 text-white rounded-3xl p-8 sm:p-10 border border-slate-800 shadow-xl relative overflow-hidden">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
-              <div className="lg:col-span-7 space-y-6">
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl">🇳🇬</span>
-                  <div>
-                    <h3 className="text-2xl font-black text-white">Nigeria (ng.relyvora.com)</h3>
-                    <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1.5 mt-0.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      Production MVP Live & Operational
-                    </span>
-                  </div>
-                </div>
-
-                <p className="text-sm text-slate-300 leading-relaxed">
-                  The Nigerian social commerce market processes billions in annual volume across social media. Relyvora delivers instant trust with real-time Nigerian Naira (<span className="text-white font-bold">₦</span>) settlements, 3% buyer protection fees, and door-to-door OTP security.
-                </p>
-
-                <div className="grid grid-cols-3 gap-3 pt-2 border-t border-slate-800 text-center">
-                  <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/80">
-                    <div className="text-lg font-black text-white font-mono">₦500</div>
-                    <div className="text-[10px] text-slate-400 uppercase">Min Protection Fee</div>
-                  </div>
-                  <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/80">
-                    <div className="text-lg font-black text-emerald-400 font-mono">3%</div>
-                    <div className="text-[10px] text-slate-400 uppercase">Take Rate</div>
-                  </div>
-                  <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/80">
-                    <div className="text-lg font-black text-white font-mono">6 Digits</div>
-                    <div className="text-[10px] text-slate-400 uppercase">Release Code</div>
-                  </div>
-                </div>
-
-                <div>
-                  <a
-                    href={nigeriaAppUrl}
-                    className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition-all"
-                  >
-                    <span>Open ng.relyvora.com</span>
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                </div>
-              </div>
-
-              {/* Visual simulated preview mockup */}
-              <div className="lg:col-span-5 bg-slate-800/90 rounded-2xl border border-slate-700 p-5 space-y-3.5 shadow-2xl">
-                <div className="flex items-center justify-between text-xs text-slate-400 border-b border-slate-700/80 pb-3">
-                  <span className="font-mono">ng.relyvora.com/pay</span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400">
-                    LIVE ESCROW
-                  </span>
-                </div>
-                <div className="space-y-1">
-                  <div className="text-xs text-slate-400 font-medium">Sample Order</div>
-                  <div className="text-sm font-bold text-white">Luxury Raw Human Hair 30" Bundle</div>
-                </div>
-                <div className="bg-slate-900/90 p-3 rounded-xl space-y-1.5 text-xs">
-                  <div className="flex justify-between text-slate-400">
-                    <span>Agreed Item Price</span>
-                    <span className="font-mono text-white">₦85,000</span>
-                  </div>
-                  <div className="flex justify-between text-slate-400">
-                    <span>3% Protection Fee</span>
-                    <span className="font-mono text-emerald-400">+₦2,550</span>
-                  </div>
-                  <div className="pt-1.5 border-t border-slate-800 flex justify-between font-bold text-white text-sm">
-                    <span>Total Protected</span>
-                    <span className="font-mono text-emerald-400">₦87,550</span>
-                  </div>
-                </div>
-                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-300 flex items-center gap-2">
-                  <KeyRound className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Release Code generated upon payment lock</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="absolute -right-24 -bottom-24 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-          </div>
-        </div>
-      </section>
-
-      {/* Future Expansion Section */}
-      <section className="py-20 px-4 max-w-6xl mx-auto space-y-12">
-        <div className="text-center space-y-4 max-w-2xl mx-auto">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-slate-200 text-slate-800 uppercase tracking-wider">
-            Roadmap & Scale
-          </div>
-          <h2 className="text-3xl sm:text-5xl font-black text-slate-900 tracking-tight">
-            Pan-African Expansion
+          <h2 className="text-3xl sm:text-5xl font-serif font-normal tracking-tight text-white max-w-2xl mx-auto">
+            Experience the future of trusted social commerce.
           </h2>
-          <p className="text-base text-slate-600">
-            Social commerce is ubiquitous across Africa. Following Nigeria, Relyvora is expanding into major regional hubs with localized payment rails.
+
+          <p className="text-sm sm:text-base text-[#94A3B8] max-w-xl mx-auto leading-relaxed">
+            Test the escrow link generator, simulated buyer checkout, and doorstep release code verification in our operational Nigerian sandbox.
           </p>
-        </div>
 
-        {/* Expansion Market Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Ghana */}
-          <div className="bg-white p-7 rounded-3xl border border-slate-200 shadow-xs space-y-5 relative overflow-hidden">
-            <div className="flex items-center justify-between">
-              <span className="text-3xl">🇬🇭</span>
-              <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                Coming Soon
-              </span>
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-slate-900">Ghana (gh.relyvora.com)</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Accra & Kumasi Social Merchants</p>
-            </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Localized for Ghanaian Cedis (GH₵) with native mobile money escrow (MTN MoMo and Telecel Cash).
-            </p>
-            <div className="pt-2 border-t border-slate-100 text-xs font-semibold text-slate-500 flex items-center gap-1.5">
-              <Smartphone className="w-3.5 h-3.5 text-slate-400" />
-              <span>Mobile Money Rail Integration</span>
-            </div>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
+            <a
+              href={nigeriaAppUrl}
+              className="w-full sm:w-auto px-7 py-4 rounded-lg bg-[#047857] hover:bg-[#059669] text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-lg transition-all"
+            >
+              <span>Launch Nigeria Application</span>
+              <span className="text-sm">🇳🇬</span>
+              <ArrowUpRight className="w-4 h-4 opacity-80" />
+            </a>
+
+            <a
+              href="mailto:partnerships@relyvora.com"
+              className="w-full sm:w-auto px-7 py-4 rounded-lg bg-[#1E293B] hover:bg-[#334155] border border-[#334155] text-white text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
+            >
+              <Mail className="w-4 h-4 text-[#A7F3D0]" />
+              <span>Contact Institutional Team</span>
+            </a>
           </div>
 
-          {/* Kenya */}
-          <div className="bg-white p-7 rounded-3xl border border-slate-200 shadow-xs space-y-5 relative overflow-hidden">
-            <div className="flex items-center justify-between">
-              <span className="text-3xl">🇰🇪</span>
-              <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                Coming Soon
-              </span>
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-slate-900">Kenya (ke.relyvora.com)</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Nairobi East African Hub</p>
-            </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Native M-Pesa escrow rails for Kenya Shillings (KSh) ensuring trusted social vendor settlement.
-            </p>
-            <div className="pt-2 border-t border-slate-100 text-xs font-semibold text-slate-500 flex items-center gap-1.5">
-              <Smartphone className="w-3.5 h-3.5 text-slate-400" />
-              <span>M-Pesa STK Push Settlement</span>
-            </div>
-          </div>
-
-          {/* South Africa */}
-          <div className="bg-white p-7 rounded-3xl border border-slate-200 shadow-xs space-y-5 relative overflow-hidden">
-            <div className="flex items-center justify-between">
-              <span className="text-3xl">🇿🇦</span>
-              <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                Coming Soon
-              </span>
-            </div>
-            <div>
-              <h3 className="text-xl font-bold text-slate-900">South Africa (za.relyvora.com)</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Johannesburg & Cape Town</p>
-            </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              South African Rand (ZAR) support with Instant EFT (Ozow, Stitch) and card protection.
-            </p>
-            <div className="pt-2 border-t border-slate-100 text-xs font-semibold text-slate-500 flex items-center gap-1.5">
-              <Smartphone className="w-3.5 h-3.5 text-slate-400" />
-              <span>Instant EFT & Debit Rails</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Waitlist Capture Box */}
-        <div className="bg-slate-900 text-white rounded-3xl p-8 sm:p-10 max-w-3xl mx-auto text-center space-y-6 shadow-xl relative overflow-hidden">
-          <div className="relative z-10 max-w-lg mx-auto space-y-3">
-            <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-              Be Notified When Relyvora Launches in Your Market
-            </h3>
-            <p className="text-xs sm:text-sm text-slate-300">
-              Join 1,200+ merchants and buyers waiting for our next country rollout.
-            </p>
-
-            {waitlistSubmitted ? (
-              <div className="p-4 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-xs font-bold flex items-center justify-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span>You're on the list! We'll notify you as soon as new markets open.</span>
-              </div>
-            ) : (
-              <form onSubmit={handleWaitlistSubmit} className="flex flex-col sm:flex-row gap-2.5 pt-2">
-                <input
-                  type="email"
-                  required
-                  placeholder="Enter your email address"
-                  value={waitlistEmail}
-                  onChange={(e) => setWaitlistEmail(e.target.value)}
-                  className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <button
-                  type="submit"
-                  className="px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
-                >
-                  <span>Join Waitlist</span>
-                  <Send className="w-3.5 h-3.5" />
-                </button>
-              </form>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* Institutional Security Bar */}
-      <section className="py-12 px-4 bg-slate-100 border-t border-slate-200">
-        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 text-center sm:text-left">
-          <div className="flex items-start gap-3.5 justify-center sm:justify-start">
-            <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-emerald-600 shrink-0 shadow-xs">
-              <Lock className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-slate-900">Non-Custodial Integrity</h4>
-              <p className="text-xs text-slate-500 mt-0.5">Funds are sequestered in dedicated regulated partner accounts.</p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3.5 justify-center sm:justify-start">
-            <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-emerald-600 shrink-0 shadow-xs">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-slate-900">Arbitrated Dispute Resolution</h4>
-              <p className="text-xs text-slate-500 mt-0.5">Human and automated arbitration prevents fraud and ensures fair refunds.</p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3.5 justify-center sm:justify-start">
-            <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-emerald-600 shrink-0 shadow-xs">
-              <Globe className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-slate-900">Pan-African Architecture</h4>
-              <p className="text-xs text-slate-500 mt-0.5">Designed to scale multi-currency and cross-border social transactions.</p>
-            </div>
-          </div>
+          <p className="text-[11px] font-mono text-[#64748B] pt-4">
+            Direct inquiries: <a href="mailto:partnerships@relyvora.com" className="text-[#A7F3D0] hover:underline">partnerships@relyvora.com</a>
+          </p>
         </div>
       </section>
     </div>
