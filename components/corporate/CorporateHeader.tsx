@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { ShieldCheck, ArrowUpRight, Menu, X } from 'lucide-react';
+import Image from 'next/image';
+import { ArrowUpRight, Menu, X } from 'lucide-react';
 
 export function CorporateHeader() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -22,24 +23,26 @@ export function CorporateHeader() {
 
   return (
     <header className="w-full bg-[#FAF8F5]/95 backdrop-blur-md border-b border-[#E7E4DC] sticky top-0 z-40 text-[#090E1A]">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-18 flex items-center justify-between">
-        {/* Brand Wordmark & Emblem */}
-        <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="w-8 h-8 rounded-lg bg-[#047857] text-white flex items-center justify-center shadow-xs transition-transform group-hover:scale-105">
-            <ShieldCheck className="w-5 h-5 stroke-[2.2]" />
-          </div>
-          <span className="text-xl font-bold tracking-tight text-[#090E1A] font-sans">
-            Relyvora
-          </span>
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
+        {/* Brand Logo */}
+        <Link href="/" className="flex items-center shrink-0 transition-opacity hover:opacity-90">
+          <Image
+            alt="Relyvora Logo"
+            height={45}
+            priority
+            src="/relyvora-logo.png"
+            width={160}
+            className="h-[45px] w-auto object-contain"
+          />
         </Link>
 
-        {/* Desktop Editorial Navigation */}
-        <nav className="hidden md:flex items-center gap-7 text-xs font-semibold uppercase tracking-wider text-[#475569]">
+        {/* Desktop Navigation in Title Case with generous breathing space */}
+        <nav className="hidden md:flex items-center gap-x-8 lg:gap-x-10 text-sm font-medium text-[#64748B]">
           {navLinks.map((link) => (
             <a
               key={link.label}
               href={link.href}
-              className="hover:text-[#090E1A] transition-colors py-1 relative hover:after:w-full after:w-0 after:h-[1.5px] after:bg-[#047857] after:absolute after:bottom-0 after:left-0 after:transition-all"
+              className="hover:text-[#090E1A] transition-colors duration-200 py-1 relative hover:after:w-full after:w-0 after:h-[2px] after:bg-[#047857] after:absolute after:bottom-0 after:left-0 after:transition-all after:duration-200"
             >
               {link.label}
             </a>
@@ -47,10 +50,10 @@ export function CorporateHeader() {
         </nav>
 
         {/* Right Action: Country App Link */}
-        <div className="hidden sm:flex items-center gap-3">
+        <div className="hidden sm:flex items-center gap-3 shrink-0">
           <a
             href={nigeriaAppUrl}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold bg-[#090E1A] text-white hover:bg-[#1E293B] transition-all shadow-xs"
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-xs font-bold bg-[#090E1A] text-white hover:bg-[#1E293B] transition-all shadow-xs"
           >
             <span>Launch Nigeria App</span>
             <span className="text-[11px] text-[#A7F3D0]">🇳🇬</span>
@@ -71,13 +74,13 @@ export function CorporateHeader() {
       {/* Mobile Drawer */}
       {mobileMenuOpen && (
         <div className="md:hidden border-b border-[#E7E4DC] bg-[#FAF8F5] px-5 py-6 space-y-4 animate-in fade-in duration-150">
-          <nav className="flex flex-col space-y-3 text-sm font-semibold text-[#090E1A]">
+          <nav className="flex flex-col space-y-3 text-sm font-medium text-[#090E1A]">
             {navLinks.map((link) => (
               <a
                 key={link.label}
                 href={link.href}
                 onClick={() => setMobileMenuOpen(false)}
-                className="py-1.5 border-b border-[#E7E4DC]/60"
+                className="py-2 border-b border-[#E7E4DC]/60 text-[#64748B] hover:text-[#090E1A] transition-colors"
               >
                 {link.label}
               </a>
