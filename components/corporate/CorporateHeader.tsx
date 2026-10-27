@@ -28,14 +28,9 @@ export function CorporateHeader() {
           <div className="w-8 h-8 rounded-lg bg-[#047857] text-white flex items-center justify-center shadow-xs transition-transform group-hover:scale-105">
             <ShieldCheck className="w-5 h-5 stroke-[2.2]" />
           </div>
-          <div className="flex flex-col">
-            <span className="text-xl font-bold tracking-tight text-[#090E1A] font-sans">
-              Relyvora
-            </span>
-            <span className="text-[10px] uppercase font-mono tracking-widest text-[#64748B] -mt-1">
-              Corporate
-            </span>
-          </div>
+          <span className="text-xl font-bold tracking-tight text-[#090E1A] font-sans">
+            Relyvora
+          </span>
         </Link>
 
         {/* Desktop Editorial Navigation */}

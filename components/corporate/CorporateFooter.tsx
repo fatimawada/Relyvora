@@ -1,6 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
-import { ShieldCheck, Mail, ArrowUpRight } from 'lucide-react';
+import { ShieldCheck, Mail, ArrowUpRight, LifeBuoy } from 'lucide-react';
 
 export function CorporateFooter() {
   const currentYear = new Date().getFullYear();
@@ -26,12 +26,6 @@ export function CorporateFooter() {
             <p className="text-sm text-[#475569] leading-relaxed max-w-sm">
               The neutral trust infrastructure for African social commerce. Bridging the gap between peer-to-peer sellers, buyers, and delivery couriers across the continent.
             </p>
-            <div className="pt-1">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono font-medium bg-[#E7E3D8] text-[#334155] border border-[#DBD6C9]">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#047857]"></span>
-                <span>Global Corporate Entity • relyvora.com</span>
-              </span>
-            </div>
           </div>
 
           {/* Architecture & Navigation */}
@@ -94,6 +88,22 @@ export function CorporateFooter() {
                 </div>
                 <ArrowUpRight className="w-4 h-4 text-[#64748B] group-hover:text-[#090E1A] group-hover:translate-x-0.5 transition-transform" />
               </a>
+
+              <div className="p-3 rounded-xl bg-[#FAF8F5] border border-[#E7E4DC] space-y-1 text-xs text-[#475569]">
+                <div className="font-semibold text-[#090E1A] flex items-center gap-1.5">
+                  <LifeBuoy className="w-3.5 h-3.5 text-[#047857]" />
+                  <span>Customer Support</span>
+                </div>
+                <p className="text-[11px] text-[#64748B]">
+                  For help with active escrow transactions or delivery codes:
+                </p>
+                <a
+                  href="mailto:support@relyvora.com"
+                  className="inline-block text-[#047857] hover:underline font-mono text-[11px] font-semibold pt-0.5"
+                >
+                  support@relyvora.com
+                </a>
+              </div>
 
               <div className="p-3 rounded-xl bg-[#FAF8F5] border border-[#E7E4DC] space-y-1 text-xs text-[#475569]">
                 <div className="font-semibold text-[#090E1A] flex items-center gap-1.5">

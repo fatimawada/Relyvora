@@ -97,14 +97,14 @@ export function CorporateFAQ() {
           <div>
             <h4 className="text-sm font-bold text-[#090E1A]">Have another question?</h4>
             <p className="text-xs text-[#64748B] pt-0.5">
-              Our merchant team is available to help sellers, dispatch riders, and partners.
+              Our support team is available to assist buyers, sellers, and dispatch riders.
             </p>
           </div>
           <a
-            href="mailto:partnerships@relyvora.com"
+            href="mailto:support@relyvora.com"
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-[#FAF8F5] text-[#090E1A] border border-[#E7E4DC] hover:bg-[#F3EFEA] transition-colors shrink-0"
           >
-            <span>Contact Partnerships</span>
+            <span>Contact Support</span>
           </a>
         </div>
       </div>

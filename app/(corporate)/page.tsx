@@ -13,7 +13,6 @@ import {
   Truck, 
   Share2, 
   KeyRound, 
-  Mail, 
   HelpCircle,
   ExternalLink,
   ChevronRight
@@ -453,28 +452,16 @@ export default function CorporateHomePage() {
             Test the escrow link generator, simulated buyer checkout, and doorstep release code verification in our live Nigerian interactive beta.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
+          <div className="flex items-center justify-center pt-2">
             <a
               href={nigeriaAppUrl}
-              className="w-full sm:w-auto px-7 py-4 rounded-lg bg-[#047857] hover:bg-[#059669] text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-lg transition-all"
+              className="w-full sm:w-auto px-8 py-4 rounded-lg bg-[#047857] hover:bg-[#059669] text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-lg transition-all"
             >
               <span>Launch Nigeria Application</span>
               <span className="text-sm">🇳🇬</span>
               <ArrowUpRight className="w-4 h-4 opacity-80" />
             </a>
-
-            <a
-              href="mailto:partnerships@relyvora.com"
-              className="w-full sm:w-auto px-7 py-4 rounded-lg bg-[#1E293B] hover:bg-[#334155] border border-[#334155] text-white text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
-            >
-              <Mail className="w-4 h-4 text-[#A7F3D0]" />
-              <span>Talk to Partnerships</span>
-            </a>
           </div>
-
-          <p className="text-[11px] font-mono text-[#64748B] pt-4">
-            Direct inquiries: <a href="mailto:partnerships@relyvora.com" className="text-[#A7F3D0] hover:underline">partnerships@relyvora.com</a>
-          </p>
         </div>
       </section>
     </div>
