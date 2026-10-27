@@ -19,6 +19,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { TrustNetworkDiagram } from '@/components/corporate/TrustNetworkDiagram';
+import { CorporateFAQ } from '@/components/corporate/CorporateFAQ';
 
 export default function CorporateHomePage() {
   const nigeriaAppUrl = process.env.NODE_ENV === 'production' 
@@ -434,7 +435,10 @@ export default function CorporateHomePage() {
         </div>
       </section>
 
-      {/* 7. CLOSING CTA & PARTNERSHIPS */}
+      {/* 7. FREQUENTLY ASKED QUESTIONS */}
+      <CorporateFAQ />
+
+      {/* 8. CLOSING CTA & PARTNERSHIPS */}
       <section className="py-20 sm:py-28 px-4 sm:px-6 bg-[#090E1A] text-white">
         <div className="max-w-4xl mx-auto text-center space-y-8">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono font-semibold bg-[#1E293B] text-[#A7F3D0] border border-[#334155]">

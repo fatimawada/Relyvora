@@ -56,6 +56,11 @@ export function CorporateFooter() {
                 </a>
               </li>
               <li>
+                <a href="#faq" className="hover:text-[#090E1A] transition-colors">
+                  FAQ
+                </a>
+              </li>
+              <li>
                 <a href="#ecosystem" className="hover:text-[#090E1A] transition-colors">
                   Ecosystem Architecture
                 </a>

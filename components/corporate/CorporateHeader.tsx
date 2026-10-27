@@ -14,6 +14,7 @@ export function CorporateHeader() {
   const navLinks = [
     { label: 'The Problem', href: '#problem' },
     { label: 'How It Works', href: '#how-it-works' },
+    { label: 'FAQ', href: '#faq' },
     { label: 'Ecosystem', href: '#ecosystem' },
     { label: 'Markets', href: '#markets' },
     { label: 'Trust & Safety', href: '#trust-and-safety' },
