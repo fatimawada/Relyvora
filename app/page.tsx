@@ -33,29 +33,29 @@ export default function CorporateHomePage() {
           {/* Overline & Category */}
           <div className="space-y-3">
             <div className="inline-flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-widest text-[#047857]">
-              <span>Infrastructure for African Digital Commerce</span>
+              <span>The Trust Layer for African Social Commerce</span>
               <span className="text-[#94A3B8]">•</span>
-              <span>EST. 2024</span>
+              <span>Live in Nigeria</span>
             </div>
 
             {/* Editorial Headline */}
             <h1 className="text-4xl sm:text-6xl lg:text-7xl font-serif font-normal tracking-tight text-[#090E1A] leading-[1.08] max-w-4xl">
-              Building the institutional trust layer for African social commerce.
+              Turn social chats into safe, guaranteed transactions.
             </h1>
           </div>
 
           {/* Subtitle & Mission */}
           <p className="text-lg sm:text-xl text-[#334155] max-w-3xl leading-relaxed font-sans font-normal">
-            Across African markets, commerce happens inside direct messages and social feeds—across <strong className="text-[#090E1A] font-semibold">WhatsApp</strong>, <strong className="text-[#090E1A] font-semibold">Facebook</strong>, <strong className="text-[#090E1A] font-semibold">TikTok</strong>, and <strong className="text-[#090E1A] font-semibold">Instagram</strong>. Relyvora provides the neutral transaction and escrow infrastructure that protects both buyers and independent merchants from order creation to physical doorstep verification.
+            Millions of Africans buy and sell daily on <strong className="text-[#090E1A] font-semibold">WhatsApp</strong>, <strong className="text-[#090E1A] font-semibold">Instagram</strong>, <strong className="text-[#090E1A] font-semibold">TikTok</strong>, and <strong className="text-[#090E1A] font-semibold">Facebook</strong>. Relyvora locks payments safely in escrow until the customer inspects and approves the delivery—eliminating fake alerts, bogus orders, and payment-on-delivery headaches.
           </p>
 
           {/* Editorial CTAs */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 pt-2">
             <a
               href={nigeriaAppUrl}
-              className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-lg text-xs sm:text-sm font-bold bg-[#090E1A] text-white hover:bg-[#1E293B] transition-all shadow-xs"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-lg text-xs sm:text-sm font-bold bg-[#090E1A] text-white hover:bg-[#1E293B] transition-all shadow-xs cursor-pointer"
             >
-              <span>Explore Nigeria MVP</span>
+              <span>Launch Nigeria App</span>
               <span className="text-xs">🇳🇬</span>
               <ArrowUpRight className="w-4 h-4 opacity-80" />
             </a>
@@ -64,30 +64,30 @@ export default function CorporateHomePage() {
               href="#how-it-works"
               className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-lg text-xs sm:text-sm font-semibold bg-[#EFECE6] text-[#090E1A] hover:bg-[#E7E3D8] transition-colors border border-[#DDD8CE]"
             >
-              <span>Review The Protocol</span>
+              <span>See How It Works</span>
               <ArrowDown className="w-3.5 h-3.5 opacity-70" />
             </a>
           </div>
 
-          {/* Distinctive Visual Motif: Trust Topology Diagram */}
+          {/* Distinctive Visual Motif: Architecture Diagram */}
           <div className="pt-6">
             <TrustNetworkDiagram />
           </div>
         </div>
       </section>
 
-      {/* 2. THE PROBLEM: THE SOCIAL COMMERCE TRUST GAP */}
+      {/* 2. THE PROBLEM: WHY SOCIAL COMMERCE BREAKS */}
       <section id="problem" className="py-20 sm:py-28 px-4 sm:px-6 border-b border-[#E7E4DC] bg-white">
         <div className="max-w-5xl mx-auto space-y-14">
           <div className="space-y-3 max-w-2xl">
             <div className="font-mono text-xs font-semibold uppercase tracking-wider text-[#64748B]">
-              Market Realities
+              The Trust Gap
             </div>
             <h2 className="text-3xl sm:text-4xl font-serif text-[#090E1A] tracking-tight">
-              The fundamental friction of peer-to-peer commerce
+              A $20B market held back by fear and friction
             </h2>
             <p className="text-base text-[#475569] leading-relaxed">
-              Social commerce in emerging markets is heavily constrained by an asymmetric dilemma: neither party is willing to bear the financial risk of going first.
+              Buyers refuse to pay upfront because they have been burned before. Sellers refuse to ship without payment because orders get rejected. Both sides lose.
             </p>
           </div>
 
@@ -98,10 +98,10 @@ export default function CorporateHomePage() {
                 01
               </div>
               <h3 className="text-lg font-bold text-[#090E1A]">
-                The Payment-on-Delivery Dilemma
+                Payment-on-Delivery is Broken
               </h3>
               <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
-                Cash and transfer-on-delivery (PoD) represent up to 70% of social commerce orders in Sub-Saharan Africa. However, merchants experience up to 30%+ delivery refusal rates, dispatch rider theft risks, and significant logistics burn on uncommitted shoppers.
+                Up to 70% of social orders rely on cash or transfer on delivery. But with 30%+ rejection rates, couriers handling cash, and wasted delivery fees, payment-on-delivery eats up merchant profits and stalls growth.
               </p>
             </div>
 
@@ -111,10 +111,10 @@ export default function CorporateHomePage() {
                 02
               </div>
               <h3 className="text-lg font-bold text-[#090E1A]">
-                Buyer Uncertainty & "What I Ordered"
+                "What I Ordered vs. What I Got"
               </h3>
               <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
-                Direct bank transfers to unknown personal accounts offer zero buyer protection. If goods arrive damaged, counterfeit, or fail to ship altogether, buyers have no recourse or dispute arbitration mechanism, capping consumer basket sizes.
+                Sending money to a stranger's personal bank account on Instagram feels like a gamble. When an item arrives fake, damaged, or does not arrive at all, buyers have zero protection and stop shopping online.
               </p>
             </div>
 
@@ -124,28 +124,28 @@ export default function CorporateHomePage() {
                 03
               </div>
               <h3 className="text-lg font-bold text-[#090E1A]">
-                Merchant Exposure & Fake Proofs
+                Fake Alerts & Ghost Buyers
               </h3>
               <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
-                Independent social sellers routinely fall victim to sophisticated fake bank alert SMS messages, unauthorized chargeback disputes, and non-serious buyers who order products to distant locations and go unreachable upon courier arrival.
+                Merchants lose millions to edited screenshot receipts and fake SMS bank alerts. Even worse, impulsive buyers place orders and switch off their phones the moment the delivery rider arrives at their doorstep.
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* 3. HOW RELYVORA WORKS: THE TRANSACTION PROTOCOL */}
+      {/* 3. HOW RELYVORA WORKS: THE FLOW */}
       <section id="how-it-works" className="py-20 sm:py-28 px-4 sm:px-6 border-b border-[#E7E4DC] bg-[#FAF8F5]">
         <div className="max-w-5xl mx-auto space-y-16">
           <div className="space-y-3 max-w-2xl">
             <div className="font-mono text-xs font-semibold uppercase tracking-wider text-[#047857]">
-              The Transaction Lifecycle
+              Simple & Instant
             </div>
             <h2 className="text-3xl sm:text-4xl font-serif text-[#090E1A] tracking-tight">
-              A neutral, verified sequence from direct message to doorstep
+              Four quick steps from social chat to doorstep payout
             </h2>
             <p className="text-base text-[#475569] leading-relaxed">
-              Relyvora decouples the payment release from the initial purchase order, ensuring funds are held securely until physical verification occurs.
+              Relyvora makes buying and selling on social media as safe and seamless as checking out on any global e-commerce site.
             </p>
           </div>
 
@@ -154,29 +154,29 @@ export default function CorporateHomePage() {
             {[
               {
                 step: '01',
-                title: 'Link Generation & Agreed Terms',
-                description: 'The social vendor enters the item details and agreed purchase price in the Relyvora dashboard. Relyvora calculates the transparent 3% buyer protection fee (minimum ₦500 in Nigeria) and generates a secure link shareable directly in WhatsApp, Instagram DM, or TikTok chats.',
-                detail: 'Standardized order specifications eliminate misunderstandings before payment is initiated.',
+                title: 'Generate an Escrow Link in 30 Seconds',
+                description: 'The vendor enters the item price and description. Relyvora calculates the 3% buyer protection fee (minimum ₦500 in Nigeria) and creates a shareable link ready to paste directly into WhatsApp, Instagram DMs, or TikTok chats.',
+                detail: 'Clean, transparent price breakdown with pre-written WhatsApp message.',
               },
               {
                 step: '02',
-                title: 'Custodial Pre-Funding',
-                description: 'The buyer opens the link, inspects the exact item description, and securely locks the total order amount into Relyvora escrow. The vendor is notified instantly that funds are guaranteed in custody.',
-                detail: 'Vendor sees confirmed funds before preparing inventory or booking couriers.',
+                title: 'Buyer Locks Funds in Safe Escrow',
+                description: 'The buyer opens the link, reviews the item details, and locks the total amount via card, bank transfer, or USSD. The vendor is notified instantly that payment is locked and guaranteed.',
+                detail: '100% pre-funded buyer commitment before the seller touches inventory.',
               },
               {
                 step: '03',
-                title: 'Shipment with 6-Digit Release Code',
-                description: 'Upon payment lock, Relyvora issues a unique, confidential 6-digit release code exclusively to the buyer. The vendor dispatches the merchandise with delivery couriers.',
-                detail: 'The buyer is strictly instructed not to share this code until the parcel is physically unboxed.',
+                title: 'Vendor Ships with Complete Confidence',
+                description: 'Knowing the funds are secured in escrow, the vendor books the dispatch rider. Relyvora automatically generates a confidential 6-digit release code sent directly to the buyer.',
+                detail: 'The buyer is reminded not to share the code until the package is physically inspected.',
               },
               {
                 step: '04',
-                title: 'Doorstep Inspection & Final Settlement',
-                description: 'When the delivery rider arrives, the buyer unboxes and inspects the item. If completely satisfied, the buyer gives the 6-digit code to the vendor/rider. Entering this matching code instantly releases the locked funds to the vendor payout balance.',
-                detail: 'Wrong item or counterfeit? The buyer freezes escrow with 1 click, suspending payout pending inspection.',
+                title: 'Inspect & Unlock Instant Payout',
+                description: 'When the rider arrives, the buyer unboxes and inspects the item. Once satisfied, the buyer hands the 6-digit code to the rider. The vendor enters the code to instantly unlock their payout. Wrong item? Freeze escrow with 1 click.',
+                detail: 'Instant verification code releases money straight to the vendor balance.',
               },
-            ].map((item, idx) => (
+            ].map((item) => (
               <div 
                 key={item.step}
                 className="grid grid-cols-1 md:grid-cols-12 gap-6 p-6 sm:p-8 rounded-xl bg-white border border-[#E7E4DC] hover:border-[#CBD5E1] transition-all"
@@ -194,7 +194,7 @@ export default function CorporateHomePage() {
                 </div>
                 <div className="md:col-span-4 p-4 rounded-lg bg-[#FAF8F5] border border-[#E7E4DC] self-center">
                   <span className="text-[11px] font-mono uppercase tracking-wide text-[#64748B] block mb-1">
-                    Design Protocol
+                    The Guarantee
                   </span>
                   <p className="text-xs text-[#334155] font-medium leading-snug">
                     {item.detail}
@@ -211,13 +211,13 @@ export default function CorporateHomePage() {
         <div className="max-w-5xl mx-auto space-y-12">
           <div className="space-y-3 max-w-2xl">
             <div className="font-mono text-xs font-semibold uppercase tracking-wider text-[#64748B]">
-              Interoperability
+              The Ecosystem
             </div>
             <h2 className="text-3xl sm:text-4xl font-serif text-[#090E1A] tracking-tight">
-              Connecting fragmented social commerce rails
+              Connecting social chats, couriers, and instant payments
             </h2>
             <p className="text-base text-[#475569] leading-relaxed">
-              Relyvora does not replace existing social platforms or delivery couriers. We provide the neutral trust layer that integrates seamlessly across the three touchpoints of social commerce.
+              Relyvora does not force merchants or buyers onto a new app. We plug directly into the tools African businesses and consumers use every single day.
             </p>
           </div>
 
@@ -227,10 +227,10 @@ export default function CorporateHomePage() {
                 <Share2 className="w-4 h-4" />
               </div>
               <h3 className="text-base font-bold text-[#090E1A]">
-                Social Media Surfaces
+                Any Social Surface
               </h3>
               <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
-                Merchants market and communicate where audiences naturally congregate—WhatsApp chats, Instagram stories, TikTok live streams, and Facebook groups. Relyvora links embed naturally into any messaging interface without requiring app downloads.
+                Sell where conversations happen. Relyvora links open instantly inside WhatsApp chats, Instagram DMs, TikTok bios, and Facebook Marketplace with zero app downloads required.
               </p>
             </div>
 
@@ -239,10 +239,10 @@ export default function CorporateHomePage() {
                 <Truck className="w-4 h-4" />
               </div>
               <h3 className="text-base font-bold text-[#090E1A]">
-                Decentralized Logistics
+                Any Courier or Dispatch Rider
               </h3>
               <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
-                Independent dispatch riders and regional parcel services manage the physical transit. By replacing risky cash collection with verified digital codes, riders avoid robbery and couriers reduce failed drop-offs.
+                Compatible with any motorcycle dispatch rider or interstate bus courier. Replacing risky cash collections with digital 6-digit release codes protects riders from theft and stops rejected deliveries.
               </p>
             </div>
 
@@ -251,28 +251,28 @@ export default function CorporateHomePage() {
                 <Building2 className="w-4 h-4" />
               </div>
               <h3 className="text-base font-bold text-[#090E1A]">
-                Digital Payment Rails
+                Instant Digital Payments
               </h3>
               <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
-                Relyvora connects to local bank account transfer rails, virtual accounts, and regional mobile money systems to safely sequester funds throughout the fulfillment lifecycle.
+                Accept payments via local bank transfer, virtual accounts, debit cards, and regional mobile money. Instant verification ensures sellers are never fooled by fabricated alert screenshots.
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* 5. MARKETS: OPERATIONAL & PLANNED GEOGRAPHIES */}
+      {/* 5. MARKETS: LIVE IN NIGERIA. SCALING ACROSS AFRICA. */}
       <section id="markets" className="py-20 sm:py-28 px-4 sm:px-6 border-b border-[#E7E4DC] bg-[#FAF8F5]">
         <div className="max-w-5xl mx-auto space-y-12">
           <div className="space-y-3 max-w-2xl">
             <div className="font-mono text-xs font-semibold uppercase tracking-wider text-[#047857]">
-              Geographic Scope
+              Regional Rollout
             </div>
             <h2 className="text-3xl sm:text-4xl font-serif text-[#090E1A] tracking-tight">
-              Operational in Nigeria, designed for continental expansion
+              Live in Nigeria. Scaling across Africa.
             </h2>
             <p className="text-base text-[#475569] leading-relaxed">
-              We focus our initial deployment in Nigeria to prove unit economics and dispute resolution protocols, with planned expansion to major social commerce hubs in West, East, and Southern Africa.
+              We launched in Nigeria to solve payment-on-delivery headaches for thousands of Instagram and WhatsApp vendors. Next up: bringing instant trust to social commerce hubs across West, East, and Southern Africa.
             </p>
           </div>
 
@@ -290,12 +290,12 @@ export default function CorporateHomePage() {
                   </div>
                   <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-[#E8F5E9] text-[#047857] border border-[#C8E6C9] flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-[#047857] animate-pulse"></span>
-                    <span>OPERATIONAL MARKET</span>
+                    <span>LIVE MARKET</span>
                   </span>
                 </div>
 
                 <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
-                  Our initial active market, supporting Instagram and WhatsApp vendors in Lagos, Abuja, and major logistics corridors. Features simulated payments and instant delivery code verification.
+                  Our flagship active deployment. Powering fast-growing Instagram and WhatsApp businesses in Lagos, Abuja, and nationwide delivery corridors. Instant link creation, automated fee calculation, and 6-digit doorstep release codes.
                 </p>
 
                 <div className="grid grid-cols-2 gap-3 pt-2 font-mono text-xs">
@@ -321,7 +321,7 @@ export default function CorporateHomePage() {
               </div>
             </div>
 
-            {/* Planned Future Markets */}
+            {/* Next Markets */}
             <div className="md:col-span-6 grid grid-cols-1 gap-4">
               {/* Ghana */}
               <div className="p-5 rounded-xl bg-white border border-[#E7E4DC] flex items-start justify-between gap-4">
@@ -331,11 +331,11 @@ export default function CorporateHomePage() {
                     <h4 className="text-sm font-bold text-[#090E1A]">Ghana</h4>
                   </div>
                   <p className="text-xs text-[#475569]">
-                    Planned integration with Ghanaian Cedis (GH₵) and mobile money rails (MTN MoMo, Telecel Cash).
+                    Expanding to Accra and Kumasi merchants with native Mobile Money escrow (MTN MoMo, Telecel Cash).
                   </p>
                 </div>
-                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-[#F1F5F9] text-[#64748B] border border-[#CBD5E1] shrink-0">
-                  PLANNED
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-[#E8F5E9] text-[#047857] border border-[#C8E6C9] shrink-0">
+                  WAITLIST OPEN
                 </span>
               </div>
 
@@ -347,11 +347,11 @@ export default function CorporateHomePage() {
                     <h4 className="text-sm font-bold text-[#090E1A]">Kenya</h4>
                   </div>
                   <p className="text-xs text-[#475569]">
-                    Planned support for Kenya Shillings (KSh) with M-Pesa STK push escrow workflows.
+                    Bringing instant M-Pesa STK push escrow to Instagram and TikTok sellers in Nairobi and Mombasa.
                   </p>
                 </div>
-                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-[#F1F5F9] text-[#64748B] border border-[#CBD5E1] shrink-0">
-                  PLANNED
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-[#E8F5E9] text-[#047857] border border-[#C8E6C9] shrink-0">
+                  WAITLIST OPEN
                 </span>
               </div>
 
@@ -363,11 +363,11 @@ export default function CorporateHomePage() {
                     <h4 className="text-sm font-bold text-[#090E1A]">South Africa</h4>
                   </div>
                   <p className="text-xs text-[#475569]">
-                    Planned support for South African Rand (ZAR) utilizing Instant EFT and debit rails.
+                    Connecting social merchants in Joburg and Cape Town with Instant EFT and card transaction protection.
                   </p>
                 </div>
-                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-[#F1F5F9] text-[#64748B] border border-[#CBD5E1] shrink-0">
-                  PLANNED
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-[#E8F5E9] text-[#047857] border border-[#C8E6C9] shrink-0">
+                  WAITLIST OPEN
                 </span>
               </div>
             </div>
@@ -375,18 +375,18 @@ export default function CorporateHomePage() {
         </div>
       </section>
 
-      {/* 6. TRUST & SAFETY: ACCURATE SAFEGUARDS & DISCLOSURES */}
+      {/* 6. TRUST & SAFETY: BUILT-IN SAFEGUARDS */}
       <section id="trust-and-safety" className="py-20 sm:py-28 px-4 sm:px-6 border-b border-[#E7E4DC] bg-white">
         <div className="max-w-5xl mx-auto space-y-12">
           <div className="space-y-3 max-w-2xl">
             <div className="font-mono text-xs font-semibold uppercase tracking-wider text-[#64748B]">
-              Governance & Integrity
+              Trust & Security
             </div>
             <h2 className="text-3xl sm:text-4xl font-serif text-[#090E1A] tracking-tight">
-              Verifiable safeguards and operating transparency
+              Built-in safeguards that protect both sides
             </h2>
             <p className="text-base text-[#475569] leading-relaxed">
-              We design our protocol with transparent operational boundaries. We outline exactly what the platform does and how our safeguards are implemented.
+              We engineered Relyvora from the ground up to prevent fraud before it happens. Zero chargeback scams. Zero fake receipts. Zero uninspected deliveries.
             </p>
           </div>
 
@@ -394,30 +394,30 @@ export default function CorporateHomePage() {
             <div className="p-6 rounded-xl bg-[#FAF8F5] border border-[#E7E4DC] space-y-3">
               <KeyRound className="w-5 h-5 text-[#047857]" />
               <h3 className="text-sm font-bold text-[#090E1A]">
-                Cryptographic Code Release
+                6-Digit Release Keys
               </h3>
               <p className="text-xs text-[#475569] leading-relaxed">
-                Funds in Relyvora transactions cannot be released by arbitrary admin action or vendor claim alone. Release requires the matching 6-digit verification code issued to the buyer's private device upon checkout.
+                Funds in Relyvora only unlock when the buyer verifies the 6-digit release code issued to their phone upon checkout. Vendors cannot claim cash without buyer inspection, and buyers cannot take goods without sharing the code.
               </p>
             </div>
 
             <div className="p-6 rounded-xl bg-[#FAF8F5] border border-[#E7E4DC] space-y-3">
               <AlertTriangle className="w-5 h-5 text-[#047857]" />
               <h3 className="text-sm font-bold text-[#090E1A]">
-                Immediate Dispute Freeze
+                1-Click Dispute Freeze
               </h3>
               <p className="text-xs text-[#475569] leading-relaxed">
-                If merchandise arrives damaged, wrong in size, or inconsistent with agreed specifications, the buyer can freeze the transaction with a single click, instantly disabling release code entry and halting payout.
+                If the item arrives damaged, wrong in size, or missing pieces, the buyer freezes the transaction with one tap. Code release is immediately locked, suspending payout until resolved.
               </p>
             </div>
 
             <div className="p-6 rounded-xl bg-[#FAF8F5] border border-[#E7E4DC] space-y-3">
               <HelpCircle className="w-5 h-5 text-[#047857]" />
               <h3 className="text-sm font-bold text-[#090E1A]">
-                Public Sandbox Environment
+                Interactive Beta Sandbox
               </h3>
               <p className="text-xs text-[#475569] leading-relaxed">
-                Our active deployment currently operates in an interactive demonstration mode using simulated payments. This permits extensive vendor usability testing and courier integration audits prior to commercial real-money custody rollout.
+                Our active deployment currently operates in an interactive developer sandbox using simulated payments. This lets vendors, dispatch riders, and shoppers test the complete flow end-to-end with zero financial risk.
               </p>
             </div>
           </div>
@@ -425,10 +425,10 @@ export default function CorporateHomePage() {
           {/* Institutional Compliance Notice Box */}
           <div className="p-6 rounded-xl bg-[#F3EFEA] border border-[#E7E4DC] space-y-2 text-xs text-[#475569]">
             <span className="font-mono font-bold uppercase text-[11px] text-[#090E1A] block">
-              Notice on Regulatory Architecture
+              Beta Architecture & Licensing Note
             </span>
             <p className="leading-relaxed">
-              Relyvora provides transaction verification technology. In production financial markets, real-money custody and settlement are structured in strict compliance with central banking regulations, anti-money laundering (AML) frameworks, and licensed financial institutional partners. No live user funds are collected or held in unverified environments.
+              Relyvora provides transaction protection technology. We are currently testing in an interactive developer sandbox. Live commercial banking settlements and regulated custodial accounts will activate alongside our licensed institutional financial partners as we expand across Africa. No real money is collected or transferred during this preview.
             </p>
           </div>
         </div>
@@ -438,15 +438,15 @@ export default function CorporateHomePage() {
       <section className="py-20 sm:py-28 px-4 sm:px-6 bg-[#090E1A] text-white">
         <div className="max-w-4xl mx-auto text-center space-y-8">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono font-semibold bg-[#1E293B] text-[#A7F3D0] border border-[#334155]">
-            <span>COMMERCE INFRASTRUCTURE</span>
+            <span>START IN SECONDS</span>
           </div>
 
           <h2 className="text-3xl sm:text-5xl font-serif font-normal tracking-tight text-white max-w-2xl mx-auto">
-            Experience the future of trusted social commerce.
+            Ready to build instant trust into your social sales?
           </h2>
 
           <p className="text-sm sm:text-base text-[#94A3B8] max-w-xl mx-auto leading-relaxed">
-            Test the escrow link generator, simulated buyer checkout, and doorstep release code verification in our operational Nigerian sandbox.
+            Test the escrow link generator, simulated buyer checkout, and doorstep release code verification in our live Nigerian interactive beta.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
@@ -464,7 +464,7 @@ export default function CorporateHomePage() {
               className="w-full sm:w-auto px-7 py-4 rounded-lg bg-[#1E293B] hover:bg-[#334155] border border-[#334155] text-white text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
             >
               <Mail className="w-4 h-4 text-[#A7F3D0]" />
-              <span>Contact Institutional Team</span>
+              <span>Talk to Partnerships</span>
             </a>
           </div>
 
