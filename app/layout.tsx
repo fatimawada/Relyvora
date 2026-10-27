@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { RouteShell } from '@/components/RouteShell';
 
 export const metadata: Metadata = {
   title: 'Relyvora — The Trust Layer for African Social Commerce',
@@ -15,9 +14,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="scroll-smooth">
       <body className="antialiased min-h-screen flex flex-col font-sans">
-        <RouteShell>
-          {children}
-        </RouteShell>
+        {children}
       </body>
     </html>
   );

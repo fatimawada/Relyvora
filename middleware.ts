@@ -29,9 +29,10 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // In production, if someone visits app transaction routes directly on the root corporate domain,
-  // redirect them to the dedicated ng.relyvora.com subdomain
+  // If someone visits /ng or transaction routes on the root corporate domain,
+  // redirect them to the dedicated ng.relyvora.com subdomain in production
   const isAppRoute = 
+    pathname === '/ng' ||
     pathname.startsWith('/vendor') || 
     pathname.startsWith('/pay') || 
     pathname.startsWith('/order');
@@ -39,6 +40,9 @@ export function middleware(request: NextRequest) {
   if (isAppRoute && process.env.NODE_ENV === 'production' && !host.includes('localhost')) {
     const ngRedirectUrl = new URL(request.url);
     ngRedirectUrl.host = 'ng.relyvora.com';
+    if (pathname === '/ng') {
+      ngRedirectUrl.pathname = '/';
+    }
     return NextResponse.redirect(ngRedirectUrl);
   }
 
