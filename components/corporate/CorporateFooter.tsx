@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
-import { ShieldCheck, Mail, ArrowUpRight, LifeBuoy } from 'lucide-react';
+import Image from 'next/image';
+import { Mail, ArrowUpRight, LifeBuoy } from 'lucide-react';
 
 export function CorporateFooter() {
   const currentYear = new Date().getFullYear();
@@ -15,14 +16,15 @@ export function CorporateFooter() {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12">
           {/* Brand & Mission */}
           <div className="md:col-span-5 space-y-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-md bg-[#047857] text-white flex items-center justify-center">
-                <ShieldCheck className="w-4 h-4 stroke-[2.2]" />
-              </div>
-              <span className="text-xl font-bold tracking-tight text-[#090E1A]">
-                Relyvora
-              </span>
-            </div>
+            <Link href="/" className="inline-block">
+              <Image
+                alt="Relyvora Logo"
+                height={36}
+                width={145}
+                src="/relyvora-logo.png"
+                className="h-9 w-auto object-contain"
+              />
+            </Link>
             <p className="text-sm text-[#475569] leading-relaxed max-w-sm">
               The neutral trust infrastructure for African social commerce. Bridging the gap between peer-to-peer sellers, buyers, and delivery couriers across the continent.
             </p>
