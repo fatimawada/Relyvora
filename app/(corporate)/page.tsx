@@ -78,13 +78,12 @@ export default function CorporateHomePage() {
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 pt-1">
                 <a
                   href={nigeriaAppUrl}
- target="_blank"
- rel="noopener noreferrer"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="px-8 py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-sm sm:text-base flex items-center justify-center gap-2.5 shadow-lg shadow-emerald-700/25 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-emerald-700/35 active:translate-y-0"
                 >
                   <Store className="w-5 h-5 text-emerald-200" />
                   <span>Go to Relyvora NG</span>
-                  <span className="text-sm">🇳🇬</span>
                   <ArrowRight className="w-4 h-4 ml-0.5" />
                 </a>
 
@@ -511,12 +510,12 @@ export default function CorporateHomePage() {
                   <span className="text-3xl">🇳🇬</span>
                   <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-600 text-white flex items-center gap-1 shadow-xs">
                     <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                    ACTIVE NOW
+                    NOW LIVE
                   </span>
                 </div>
                 <h3 className="text-lg font-bold text-[#090E1A]">Nigeria</h3>
                 <p className="text-xs text-[#475569] leading-relaxed">
-                  Operational nationwide across all 36 states for Instagram, WhatsApp, and TikTok merchants.
+                  Operational nationwide across all 36 states for Instagram, WhatsApp, TikTok, and Facebook merchants.
                 </p>
                 <div className="text-[11px] font-mono font-semibold text-emerald-800">
                   Currency: Naira (NGN ₦)
@@ -525,8 +524,8 @@ export default function CorporateHomePage() {
 
               <a
                 href={nigeriaAppUrl}
- target="_blank"
- rel="noopener noreferrer"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors"
               >
                 <span>Go to Relyvora NG</span>
@@ -680,12 +679,11 @@ export default function CorporateHomePage() {
           <div className="flex items-center justify-center pt-2">
             <a
               href={nigeriaAppUrl}
- target="_blank"
- rel="noopener noreferrer"
+              target="_blank"
+              rel="noopener noreferrer"
               className="w-full sm:w-auto px-9 py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white text-sm sm:text-base font-bold flex items-center justify-center gap-2.5 shadow-2xl shadow-emerald-500/30 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-emerald-500/40 active:translate-y-0"
             >
               <span>Go to Relyvora NG</span>
-              <span className="text-base">🇳🇬</span>
               <ArrowRight className="w-4 h-4 ml-1" />
             </a>
           </div>

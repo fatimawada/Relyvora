@@ -53,12 +53,11 @@ export function CorporateHeader() {
         <div className="hidden sm:flex items-center gap-3 shrink-0">
           <a
             href={nigeriaAppUrl}
- target="_blank"
- rel="noopener noreferrer"
+            target="_blank"
+            rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-xs font-bold bg-[#090E1A] text-white hover:bg-[#1E293B] transition-all shadow-xs"
           >
             <span>Go to Relyvora NG</span>
-            <span className="text-[11px] text-[#A7F3D0]">🇳🇬</span>
             <ArrowUpRight className="w-3.5 h-3.5 opacity-80" />
           </a>
         </div>
@@ -91,11 +90,11 @@ export function CorporateHeader() {
           <div className="pt-2">
             <a
               href={nigeriaAppUrl}
- target="_blank"
- rel="noopener noreferrer"
+              target="_blank"
+              rel="noopener noreferrer"
               className="w-full py-3 rounded-lg text-xs font-bold bg-[#090E1A] text-white flex items-center justify-center gap-2 shadow-xs"
             >
-              <span>Go to Relyvora NG 🇳🇬</span>
+              <span>Go to Relyvora NG</span>
               <ArrowUpRight className="w-4 h-4" />
             </a>
           </div>
