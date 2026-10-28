@@ -77,6 +77,8 @@ export function CorporateFooter() {
             <div className="space-y-3">
               <a
                 href={nigeriaAppUrl}
+ target="_blank"
+ rel="noopener noreferrer"
                 className="group flex items-center justify-between p-3 rounded-xl bg-white border border-[#E7E4DC] hover:border-[#CBD5E1] transition-all shadow-2xs"
               >
                 <div>

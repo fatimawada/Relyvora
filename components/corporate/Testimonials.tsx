@@ -5,18 +5,21 @@ const REVIEWS = [
   {
     quote: 'Relyvora eliminated my fake transfer anxiety completely.',
     label: 'Fashion Vendor, Lagos',
+    handle: '@FashionByAO',
     initials: 'AO',
     tone: 'bg-emerald-100 text-emerald-700',
   },
   {
     quote: 'My customers pay without fear now. I ship, they confirm, I get paid. Simple.',
     label: 'Gadget Reseller, Abuja',
+    handle: '@AbujaGadgetHub',
     initials: 'CE',
     tone: 'bg-amber-100 text-amber-700',
   },
   {
     quote: 'I almost got scammed on Instagram before. Now I only buy through a Relyvora link.',
     label: 'Online Shopper, Port Harcourt',
+    handle: '@StyleShopper_TB',
     initials: 'TB',
     tone: 'bg-sky-100 text-sky-700',
   },
@@ -59,7 +62,10 @@ export function Testimonials() {
               <blockquote className="text-lg font-semibold leading-snug text-[#090E1A]">
                 “{r.quote}”
               </blockquote>
-              <figcaption className="text-sm text-[#64748B] font-medium">{r.label}</figcaption>
+              <figcaption className="space-y-0.5">
+                <div className="text-sm font-bold text-[#047857]">{r.handle}</div>
+                <div className="text-sm text-[#64748B] font-medium">{r.label}</div>
+              </figcaption>
             </figure>
           ))}
         </div>
