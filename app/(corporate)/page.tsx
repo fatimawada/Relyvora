@@ -26,6 +26,9 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { CorporateFAQ } from '@/components/corporate/CorporateFAQ';
+import { HeroCrossfade } from '@/components/corporate/HeroCrossfade';
+import { TrustMarquee } from '@/components/corporate/TrustMarquee';
+import { Testimonials } from '@/components/corporate/Testimonials';
 
 export default function CorporateHomePage() {
   const nigeriaAppUrl = process.env.NODE_ENV === 'production' 
@@ -114,42 +117,8 @@ export default function CorporateHomePage() {
               {/* Outer decorative ambient glows */}
               <div className="absolute -inset-4 bg-gradient-to-tr from-emerald-500/20 via-teal-500/10 to-transparent rounded-[2.5rem] blur-2xl -z-10" />
 
-              {/* Main Lifestyle Image Container */}
-              <div className="relative rounded-3xl overflow-hidden shadow-2xl border-2 border-white/80 bg-white group">
-                <div className="relative aspect-[4/5] sm:aspect-[4/4.5] w-full">
-                  <Image
-                    src="/african-merchant-hero.jpg"
-                    alt="African Social Commerce Merchant using Relyvora"
-                    fill
-                    priority
-                    sizes="(max-width: 768px) 100vw, 500px"
-                    className="object-cover object-top transition-transform duration-700 group-hover:scale-105"
-                  />
-                  {/* Subtle inner gradient shade */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#090E1A]/60 via-transparent to-transparent pointer-events-none" />
-                </div>
-
-                {/* Bottom Overlay Label */}
-                <div className="absolute bottom-4 left-4 right-4 p-3.5 rounded-2xl bg-white/90 backdrop-blur-md border border-white/80 shadow-lg flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-xs">
-                      LH
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-[#090E1A] flex items-center gap-1.5">
-                        <span>@LagosHairPlug</span>
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      </div>
-                      <div className="text-[10px] text-[#64748B] font-mono">
-                        Verified Social Merchant • Lagos, NG
-                      </div>
-                    </div>
-                  </div>
-                  <span className="px-2 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    ESCROW LIVE
-                  </span>
-                </div>
-              </div>
+              {/* Crossfading lifestyle background (floating cards below stay fixed) */}
+              <HeroCrossfade />
 
               {/* FLOATING CARD 1 (Top Left): "Escrow Locked & Secure" */}
               <div className="absolute -top-6 -left-4 sm:-left-8 z-20 animate-float">
@@ -202,6 +171,8 @@ export default function CorporateHomePage() {
           </div>
         </div>
       </section>
+
+      <TrustMarquee />
 
       {/* 2. THE PROBLEM SECTION: WHY SOCIAL COMMERCE BREAKS IN AFRICA */}
       <section id="problem" className="py-20 sm:py-28 px-4 sm:px-6 lg:px-8 border-b border-[#E7E4DC] bg-white">
@@ -632,6 +603,8 @@ export default function CorporateHomePage() {
       </section>
 
       {/* 6. TRUST & SAFETY: BUILT-IN SAFEGUARDS */}
+      <Testimonials />
+
       <section id="trust-and-safety" className="py-20 sm:py-28 px-4 sm:px-6 lg:px-8 border-b border-[#E7E4DC] bg-[#FAF8F5]">
         <div className="max-w-6xl mx-auto space-y-12">
           <div className="max-w-2xl space-y-3">

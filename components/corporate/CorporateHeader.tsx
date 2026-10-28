@@ -22,7 +22,7 @@ export function CorporateHeader() {
   ];
 
   return (
-    <header className="w-full bg-[#FAF8F5]/95 backdrop-blur-md border-b border-[#E7E4DC] sticky top-0 z-40 text-[#090E1A]">
+    <header className="w-full bg-white/80 backdrop-blur-md border-b border-[#E7E4DC]/70 sticky top-0 z-50 text-[#090E1A]">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
         {/* Brand Logo */}
         <Link href="/" className="flex items-center shrink-0 transition-opacity hover:opacity-90">

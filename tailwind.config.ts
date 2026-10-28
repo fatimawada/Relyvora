@@ -49,8 +49,13 @@ const config: Config = {
           "0%, 100%": { opacity: "0.5", transform: "scale(1)" },
           "50%": { opacity: "0.85", transform: "scale(1.08)" },
         },
+        marquee: {
+          "0%": { transform: "translateX(0)" },
+          "100%": { transform: "translateX(-50%)" },
+        },
       },
       animation: {
+        marquee: "marquee 35s linear infinite",
         float: "float 5s ease-in-out infinite",
         "float-delayed": "float-delayed 6s ease-in-out infinite 1s",
         "float-slow": "float-slow 7s ease-in-out infinite",
