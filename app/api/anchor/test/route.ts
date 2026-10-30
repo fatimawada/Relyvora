@@ -42,18 +42,39 @@ async function handleTest(request: NextRequest) {
       status: 'IN_PROGRESS',
     };
 
-    const customerResult = await createAnchorCustomer(testCustomerInput);
-    steps.step1_customerCreation = {
-      status: 'SUCCESS',
-      customerId: customerResult.customerId,
-      customerDetails: {
-        type: customerResult.raw.data.type,
-        fullName: customerResult.raw.data.attributes.fullName,
-        email: customerResult.raw.data.attributes.email,
-        phoneNumber: customerResult.raw.data.attributes.phoneNumber,
-        verificationStatus: customerResult.raw.data.attributes.verification?.status,
-      },
-    };
+    let customerResult;
+    try {
+      customerResult = await createAnchorCustomer(testCustomerInput);
+      steps.step1_customerCreation = {
+        status: 'SUCCESS',
+        customerId: customerResult.customerId,
+        customerDetails: {
+          type: customerResult.raw.data.type,
+          fullName: customerResult.raw.data.attributes.fullName,
+          email: customerResult.raw.data.attributes.email,
+          phoneNumber: customerResult.raw.data.attributes.phoneNumber,
+          verificationStatus: customerResult.raw.data.attributes.verification?.status,
+        },
+      };
+    } catch (customerError) {
+      if (customerError instanceof AnchorApiError) {
+        steps.step1_customerCreation = {
+          status: 'ANCHOR_API_ERROR',
+          httpStatus: customerError.status,
+          errors: customerError.errors,
+          rawResponse: customerError.rawResponse,
+        };
+        return NextResponse.json(
+          {
+            success: false,
+            message: 'Anchor customer creation failed. See step1_customerCreation for details.',
+            steps,
+          },
+          { status: 200 }
+        );
+      }
+      throw customerError;
+    }
 
     // Step 2: Attempt Deposit Account Creation
     steps.step2_accountCreation = {
