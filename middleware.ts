@@ -6,13 +6,31 @@ export function middleware(request: NextRequest) {
   const host = request.headers.get('host') || '';
   const pathname = url.pathname;
 
-  // 1. Detect if request is targeted at the Nigerian market subdomain (ng.relyvora.com)
+  // 1. Detect if request is targeted at the Foundation subdomain (foundation.relyvora.com)
+  // Supports: foundation.relyvora.com, foundation.localhost:3000, or local dev query param ?subdomain=foundation or ?market=foundation
+  const isFoundationDomain = 
+    host.startsWith('foundation.') || 
+    url.searchParams.get('subdomain') === 'foundation' ||
+    url.searchParams.get('market') === 'foundation';
+
+  // Handle Foundation Subdomain (foundation.relyvora.com)
+  if (isFoundationDomain) {
+    // If accessing root of foundation.relyvora.com, rewrite to the dedicated Foundation portal (/foundation)
+    if (pathname === '/') {
+      url.pathname = '/foundation';
+      return NextResponse.rewrite(url);
+    }
+    // Allow direct subpaths under foundation to pass through
+    return NextResponse.next();
+  }
+
+  // 2. Detect if request is targeted at the Nigerian market subdomain (ng.relyvora.com)
   // Supports: ng.relyvora.com, ng.localhost:3000, or local dev query param ?market=ng
   const isNgDomain = 
     host.startsWith('ng.') || 
     url.searchParams.get('market') === 'ng';
 
-  // 2. Handle Nigerian Subdomain (ng.relyvora.com)
+  // 3. Handle Nigerian Subdomain (ng.relyvora.com)
   if (isNgDomain) {
     // If accessing root of ng.relyvora.com, rewrite to the dedicated Nigerian portal (/ng)
     if (pathname === '/') {

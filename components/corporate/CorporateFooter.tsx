@@ -66,6 +66,17 @@ export function CorporateFooter() {
                   Markets & Roadmap
                 </a>
               </li>
+              <li className="pt-1">
+                <Link 
+                  href="/foundation" 
+                  className="hover:text-[#090E1A] transition-colors inline-flex items-center gap-1.5 text-emerald-800 font-semibold"
+                >
+                  <span>Relyvora Foundation</span>
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full font-mono uppercase font-bold tracking-wider">
+                    Impact
+                  </span>
+                </Link>
+              </li>
             </ul>
           </div>
 
@@ -92,6 +103,24 @@ export function CorporateFooter() {
                 </div>
                 <ArrowUpRight className="w-4 h-4 text-[#64748B] group-hover:text-[#090E1A] group-hover:translate-x-0.5 transition-transform" />
               </a>
+
+              <Link
+                href="/foundation"
+                className="group flex items-center justify-between p-3 rounded-xl bg-white border border-[#E7E4DC] hover:border-emerald-500/50 transition-all shadow-2xs"
+              >
+                <div>
+                  <div className="text-xs font-bold text-[#090E1A] flex items-center gap-1.5">
+                    <span>Relyvora Foundation</span>
+                    <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded font-mono font-semibold">
+                      Impact & Grants
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-[#64748B] font-mono">
+                    foundation.relyvora.com
+                  </div>
+                </div>
+                <ArrowUpRight className="w-4 h-4 text-[#64748B] group-hover:text-emerald-700 group-hover:translate-x-0.5 transition-transform" />
+              </Link>
 
               <div className="p-3 rounded-xl bg-[#FAF8F5] border border-[#E7E4DC] space-y-1 text-xs text-[#475569]">
                 <div className="font-semibold text-[#090E1A] flex items-center gap-1.5">
