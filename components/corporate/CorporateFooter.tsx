@@ -157,13 +157,33 @@ export function CorporateFooter() {
           </div>
         </div>
 
-        {/* Legal & Regulatory Notice */}
-        <div className="pt-8 border-t border-[#E7E4DC] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#64748B]">
+        {/* Trust Signals & Legal Policy Links */}
+        <div className="pt-8 border-t border-[#E7E4DC] flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-[#64748B]">
+          <div className="flex flex-wrap items-center justify-center md:justify-start gap-5 sm:gap-6 text-xs text-[#334155] font-medium">
+            <Link href="/terms" className="hover:text-[#090E1A] transition-colors hover:underline underline-offset-4">
+              Terms of Service
+            </Link>
+            <Link href="/privacy" className="hover:text-[#090E1A] transition-colors hover:underline underline-offset-4">
+              Privacy Policy
+            </Link>
+            <Link href="/disputes" className="hover:text-[#090E1A] transition-colors hover:underline underline-offset-4">
+              Dispute Policy
+            </Link>
+          </div>
+
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-[#E7E4DC] text-xs font-semibold text-[#090E1A] shadow-2xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Payments powered by Anchor</span>
+          </div>
+        </div>
+
+        {/* Regulatory Registration & Copyright Notice */}
+        <div className="pt-4 border-t border-[#E7E4DC]/70 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[#64748B]">
           <p>
             © {currentYear} Relyvora. All rights reserved.
           </p>
-          <p className="text-[11px] text-center sm:text-right max-w-md">
-            Notice: Relyvora is currently operating in an interactive testing and merchant-verification sandbox pending commercial financial compliance licensing.
+          <p className="text-[11px] text-center sm:text-right font-mono text-[#475569]">
+            Relyvora Technologies Limited (RC 9982218 | TIN 2623717709692). Abuja, Nigeria.
           </p>
         </div>
       </div>

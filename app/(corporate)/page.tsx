@@ -63,9 +63,9 @@ export default function CorporateHomePage() {
               {/* Main Headline */}
               <div className="space-y-4">
                 <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-[#090E1A] tracking-tight leading-[1.12]">
-                  Sell on Instagram, WhatsApp & TikTok <br className="hidden sm:inline" />
+                  Trade with confidence. <br className="hidden sm:inline" />
                   <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700">
-                    With 100% Escrow Protection.
+                    Safe escrow for buyers and sellers on social media.
                   </span>
                 </h1>
 
@@ -99,8 +99,8 @@ export default function CorporateHomePage() {
               {/* Trust Metrics Pill Bar */}
               <div className="pt-4 grid grid-cols-3 gap-3 max-w-lg border-t border-[#E7E4DC]/80">
                 <div className="space-y-0.5">
-                  <div className="text-xl sm:text-2xl font-black text-[#090E1A] font-mono tracking-tight">₦0</div>
-                  <div className="text-[11px] sm:text-xs text-[#64748B] font-medium leading-tight">PoD Scams & Lost Logistics</div>
+                  <div className="text-base sm:text-lg font-black text-[#090E1A] font-mono tracking-tight leading-tight">Zero Risk</div>
+                  <div className="text-[11px] sm:text-xs text-[#64748B] font-medium leading-tight">Eliminate Pay-on-Delivery Risks</div>
                 </div>
                 <div className="space-y-0.5">
                   <div className="text-xl sm:text-2xl font-black text-emerald-700 font-mono tracking-tight">3%</div>
@@ -183,10 +183,10 @@ export default function CorporateHomePage() {
               The Core Problem
             </div>
             <h2 className="text-3xl sm:text-4xl font-serif text-[#090E1A] tracking-tight">
-              A $20B African market held back by fear and friction.
+              Solving the trust gap in African social commerce.
             </h2>
             <p className="text-base text-[#475569] leading-relaxed">
-              Social commerce across Nigeria is booming on DMs and chats, but the trust gap costs vendors and shoppers millions of Naira every single day.
+              Social commerce across Nigeria is booming on DMs and chats, but the trust gap between buyers and sellers costs honest businesses and shoppers daily.
             </p>
           </div>
 
@@ -198,7 +198,7 @@ export default function CorporateHomePage() {
               </div>
               <h3 className="text-lg font-bold text-[#090E1A]">Payment-on-Delivery Bleed</h3>
               <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
-                Dispatch riders arrive, but the customer changed their mind, doesn't answer phone calls, or refuses delivery. Nigerian vendors lose up to 35% of operational margin on wasted delivery fees.
+                Dispatch riders arrive, but the customer changed their mind, doesn't answer phone calls, or refuses delivery. Vendors bear the brunt of wasted delivery fees, return hassles, and tied-up inventory.
               </p>
             </div>
 
@@ -305,7 +305,7 @@ export default function CorporateHomePage() {
               <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-2">
                 <div className="flex items-center justify-between text-xs font-mono font-bold text-emerald-900">
                   <span>ESCROW STATUS</span>
-                  <span className="text-emerald-700">100% SECURE</span>
+                  <span className="text-emerald-700">SECURE ESCROW PROTECTION</span>
                 </div>
                 <div className="text-xl font-black text-emerald-900 font-mono">
                   ₦87,550 Locked
@@ -593,9 +593,99 @@ export default function CorporateHomePage() {
         </div>
       </section>
 
-      {/* 6. TRUST & SAFETY: BUILT-IN SAFEGUARDS */}
+      {/* 6. TESTIMONIALS */}
       <Testimonials />
 
+      {/* 7. MEET THE FOUNDER */}
+      <section id="founder" className="py-20 sm:py-28 px-4 sm:px-6 lg:px-8 border-b border-[#E7E4DC] bg-white relative overflow-hidden">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
+            
+            {/* Left: Founder Image Placeholder Card */}
+            <div className="lg:col-span-5 relative">
+              <div className="relative mx-auto max-w-md lg:max-w-none">
+                {/* Decorative border and soft ambient shadow */}
+                <div className="absolute -inset-3 bg-gradient-to-tr from-emerald-500/20 via-teal-500/10 to-transparent rounded-3xl blur-xl -z-10" />
+                
+                <div className="relative rounded-2xl overflow-hidden border border-[#E7E4DC] bg-[#FAF8F5] shadow-2xl">
+                  <Image
+                    src="/founder.jpg"
+                    alt="Fatima Binta Wada — Founder & CEO, Relyvora Technologies"
+                    width={500}
+                    height={600}
+                    className="w-full h-[400px] sm:h-[480px] object-cover object-top"
+                  />
+                  
+                  {/* Floating Identity Badge Overlay */}
+                  <div className="absolute bottom-4 left-4 right-4 p-4 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-lg space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-mono font-bold uppercase tracking-wider text-[#047857]">
+                        Executive Leadership
+                      </div>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    </div>
+                    <div className="text-base font-bold text-[#090E1A]">
+                      Fatima Binta Wada
+                    </div>
+                    <div className="text-xs text-[#64748B] font-medium">
+                      Founder & CEO, Relyvora Technologies
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Vision & Bio */}
+            <div className="lg:col-span-7 space-y-6">
+              <div className="space-y-3">
+                <div className="inline-flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-[#047857]">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Meet the Founder</span>
+                </div>
+                <h2 className="text-3xl sm:text-4xl lg:text-5xl font-serif text-[#090E1A] tracking-tight leading-tight">
+                  Building the Trust Rails for African Social Commerce.
+                </h2>
+              </div>
+
+              <blockquote className="p-4 rounded-xl bg-[#FAF8F5] border-l-4 border-emerald-600 text-sm sm:text-base font-serif italic text-[#334155] leading-relaxed">
+                &ldquo;African commerce doesn&apos;t happen in rigid online malls—it thrives on WhatsApp, Instagram, and personal trust. But behind every unfulfilled delivery or fake alert is a merchant who lost their working capital, or a customer afraid to buy again. We built Relyvora to solve that once and for all.&rdquo;
+              </blockquote>
+
+              <div className="space-y-4 text-sm sm:text-base text-[#475569] leading-relaxed">
+                <p>
+                  <strong className="text-[#090E1A]">Fatima Binta Wada</strong> is the Founder & CEO of Relyvora Technologies Limited. Driven by firsthand insight into the high mortality rate of informal African micro-merchants caused by Payment-on-Delivery scams, she engineered Relyvora as a neutral, zero-trust transaction layer bridging buyers, social sellers, and dispatch fleets.
+                </p>
+                <p>
+                  Under her leadership, Relyvora combines practical digital empowerment with institutional-grade escrow banking infrastructure powered by Anchor, replacing fear and friction with guaranteed doorstep verification codes and automated settlement.
+                </p>
+              </div>
+
+              {/* Pillars of Leadership */}
+              <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-[#334155]">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Anchor-Powered Regulated Custody</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Eliminating Pay-on-Delivery Risk</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>6-Digit Doorstep Handshake Protocol</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Economic Inclusion for Social Merchants</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      {/* 8. TRUST & SAFETY: BUILT-IN SAFEGUARDS */}
       <section id="trust-and-safety" className="py-20 sm:py-28 px-4 sm:px-6 lg:px-8 border-b border-[#E7E4DC] bg-[#FAF8F5]">
         <div className="max-w-6xl mx-auto space-y-12">
           <div className="max-w-2xl space-y-3">
@@ -632,12 +722,12 @@ export default function CorporateHomePage() {
             </div>
 
             <div className="p-7 rounded-3xl bg-white border border-[#E7E4DC] shadow-xs space-y-3 hover:shadow-lg transition-shadow">
-              <HelpCircle className="w-5 h-5 text-emerald-700" />
+              <Building2 className="w-5 h-5 text-emerald-700" />
               <h3 className="text-base font-bold text-[#090E1A]">
-                Interactive Beta Sandbox
+                Regulated Escrow Custody
               </h3>
               <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
-                Our active deployment currently operates in an interactive developer sandbox using simulated payments. This lets vendors, dispatch riders, and shoppers test the complete flow end-to-end with zero financial risk.
+                All payment collections, virtual accounts, fund custody, and payout settlements are powered by our regulated partner, Anchor Technologies Limited, in partnership with CBN-licensed financial institutions.
               </p>
             </div>
           </div>
@@ -645,10 +735,10 @@ export default function CorporateHomePage() {
           {/* Institutional Compliance Notice Box */}
           <div className="p-6 rounded-2xl bg-emerald-50/60 border border-emerald-200/80 space-y-2 text-xs text-[#475569]">
             <span className="font-mono font-bold uppercase text-[11px] text-[#090E1A] block">
-              Beta Architecture & Regulatory Note
+              Regulatory Compliance & Banking Infrastructure
             </span>
             <p className="leading-relaxed">
-              Relyvora provides transaction protection technology. We are currently testing in an interactive developer sandbox. Live commercial banking settlements and regulated custodial accounts will activate alongside our licensed institutional financial partners as we expand across Africa. No real money is collected or transferred during this preview.
+              Relyvora Technologies Limited is a transaction protection technology platform. All payment collections, virtual deposit accounts, fund custody, and payout settlements are powered by our regulated Banking-as-a-Service (BaaS) partner, Anchor Technologies Limited, in partnership with CBN-licensed financial institutions. Funds are held in dedicated escrow custody until delivery verification conditions are satisfied.
             </p>
           </div>
         </div>
@@ -673,7 +763,7 @@ export default function CorporateHomePage() {
           </h2>
 
           <p className="text-sm sm:text-base text-slate-300 max-w-xl mx-auto leading-relaxed">
-            Test the escrow link generator, simulated buyer checkout, and doorstep release code verification in our live Nigerian interactive beta.
+            Generate escrow payment links, enable secure buyer checkout, and unlock guaranteed doorstep release code settlements across Nigeria today.
           </p>
 
           <div className="flex items-center justify-center pt-2">

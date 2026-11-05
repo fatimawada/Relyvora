@@ -10,19 +10,29 @@ interface FAQItem {
 
 const faqs: FAQItem[] = [
   {
-    question: 'How does the 6-digit release code work?',
-    answer:
-      'When a buyer pays for an order through a Relyvora escrow link, the money is safely locked in escrow and a private 6-digit release code is generated exclusively for the buyer. When the package is delivered, the buyer unboxes and inspects the item to confirm quality and specifications. Once satisfied, the buyer shares the 6-digit code with the dispatch rider or vendor. Entering the code immediately releases the payout directly to the vendor\'s bank account.',
-  },
-  {
-    question: 'What happens if an item is rejected or incorrect?',
-    answer:
-      'If the item arrives damaged, is the wrong size or model, or does not match what was agreed, the buyer does not share the 6-digit code. Instead, they tap "Freeze / Report Issue" directly on their transaction tracker. Payout is immediately frozen, preventing the vendor from claiming funds. Our dispute resolution workflow then coordinates a verified replacement or returns 100% of the funds back to the buyer.',
-  },
-  {
     question: 'How does Relyvora make money?',
     answer:
-      'Relyvora charges a simple, transparent 3% transaction protection fee (minimum ₦500) per successful order. There are no monthly subscription fees, onboarding costs, or surprise charges. If an order is canceled before delivery or disputed with cause, no protection fee is pocketed. We only earn when commerce happens safely.',
+      'Relyvora charges a flat platform fee of 3% per transaction (subject to a minimum fee of ₦500). When creating the payment link, the vendor can choose whether this fee is paid by the buyer or deducted from the vendor\'s payout.',
+  },
+  {
+    question: 'What happens if the buyer refuses to accept the delivery (Ghosts)?',
+    answer:
+      'If a vendor dispatches an item and the buyer is unreachable, Relyvora triggers a partial refund. The buyer gets their money back minus the cost of delivery, and the delivery fee is routed to the vendor to cover logistics losses.',
+  },
+  {
+    question: 'What happens if the delivery rider loses the 6-digit code?',
+    answer:
+      'The 6-digit code is sent securely to the buyer. If the rider loses it, the buyer can simply read it out from their email or WhatsApp receipt at the point of delivery. Both the vendor and the rider have dashboard access to input the code.',
+  },
+  {
+    question: 'How long does a dispute take to resolve?',
+    answer:
+      'We enforce strict timelines. Buyers must provide evidence within 2 hours of flagging a dispute. Vendors are given 6 to 12 hours to respond depending on the scenario. Most disputes are resolved manually by our team within 24 to 48 hours, and funds remain frozen in the Anchor escrow vault until a ruling is made.',
+  },
+  {
+    question: 'How does the 6-digit release code work?',
+    answer:
+      'When a buyer pays for an order through a Relyvora escrow link, the money is safely locked in an Anchor-powered escrow ledger and a private 6-digit release code is generated exclusively for the buyer. When the package is delivered, the buyer unboxes and inspects the item to confirm quality and specifications. Once satisfied, the buyer shares the 6-digit code with the dispatch rider or vendor. Entering the code immediately releases the payout directly to the vendor\'s bank account.',
   },
   {
     question: 'Do buyers or vendors need to download a mobile app?',
