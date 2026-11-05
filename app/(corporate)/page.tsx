@@ -613,35 +613,39 @@ export default function CorporateHomePage() {
         <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
             
-            {/* Left: Founder Image Placeholder Card */}
-            <div className="lg:col-span-5 relative">
-              <div className="relative mx-auto max-w-md lg:max-w-none">
-                {/* Decorative border and soft ambient shadow */}
-                <div className="absolute -inset-3 bg-gradient-to-tr from-emerald-500/20 via-teal-500/10 to-transparent rounded-3xl blur-xl -z-10" />
+            {/* Left: Founder Portrait Frame */}
+            <div className="lg:col-span-5">
+              <div className="relative mx-auto max-w-[360px] sm:max-w-[420px] lg:max-w-none space-y-4">
+                {/* Decorative ambient aura behind the frame */}
+                <div className="absolute -inset-2 bg-gradient-to-tr from-emerald-500/15 via-teal-500/10 to-transparent rounded-3xl blur-xl -z-10" />
                 
-                <div className="relative rounded-2xl overflow-hidden border border-[#E7E4DC] bg-[#FAF8F5] shadow-2xl">
+                {/* Clean, fully visible portrait with zero obstruction */}
+                <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden border border-[#E7E4DC] bg-[#FAF8F5] shadow-xl aspect-[720/1024]">
                   <Image
                     src="/founder.jpg"
                     alt="Fatima Binta Wada — Founder & CEO, Relyvora Technologies"
-                    width={500}
-                    height={600}
-                    className="w-full h-[400px] sm:h-[480px] object-cover object-top"
+                    fill
+                    sizes="(max-width: 768px) 100vw, 440px"
+                    className="object-cover object-top"
+                    priority
                   />
-                  
-                  {/* Floating Identity Badge Overlay */}
-                  <div className="absolute bottom-4 left-4 right-4 p-4 rounded-xl bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-lg space-y-1">
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs font-mono font-bold uppercase tracking-wider text-[#047857]">
-                        Executive Leadership
-                      </div>
-                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                </div>
+
+                {/* Founder Identity Card — Placed cleanly beneath the photo */}
+                <div className="p-4 sm:p-5 rounded-2xl bg-[#FAF8F5] border border-[#E7E4DC] shadow-xs flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#047857]">
+                      Executive Leadership
                     </div>
-                    <div className="text-base font-bold text-[#090E1A]">
+                    <div className="text-lg sm:text-xl font-bold text-[#090E1A]">
                       Fatima Binta Wada
                     </div>
-                    <div className="text-xs text-[#64748B] font-medium">
-                      Founder & CEO, Relyvora Technologies
+                    <div className="text-xs sm:text-sm text-[#64748B] font-medium">
+                      Founder &amp; CEO, Relyvora Technologies
                     </div>
+                  </div>
+                  <div className="w-11 h-11 rounded-2xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-center text-emerald-700 shrink-0">
+                    <ShieldCheck className="w-5 h-5" />
                   </div>
                 </div>
               </div>
