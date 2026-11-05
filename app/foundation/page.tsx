@@ -228,8 +228,8 @@ export default function FoundationPage() {
                 alt="Relyvora Logo"
                 height={38}
                 width={135}
-                src="/relyvora-logo.png"
-                className="h-8 w-auto object-contain brightness-110"
+                src="/relyvora-logo-reversed.png"
+                className="h-8 w-auto object-contain"
               />
             </Link>
             <div className="h-5 w-px bg-slate-700 hidden sm:block" />
@@ -1268,8 +1268,8 @@ export default function FoundationPage() {
                   alt="Relyvora Logo"
                   height={30}
                   width={110}
-                  src="/relyvora-logo.png"
-                  className="h-6 w-auto object-contain brightness-110"
+                  src="/relyvora-logo-reversed.png"
+                  className="h-6 w-auto object-contain"
                 />
                 <span className="text-[11px] text-slate-500 font-mono">
                   © {new Date().getFullYear()} Relyvora Foundation

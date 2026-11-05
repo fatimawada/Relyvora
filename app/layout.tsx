@@ -4,6 +4,13 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Relyvora — The Trust Layer for African Social Commerce',
   description: 'Neutral transaction protocol and escrow infrastructure bridging buyers, merchants, and delivery couriers across African markets.',
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico' },
+    ],
+    apple: '/apple-touch-icon.png',
+  },
 };
 
 export default function RootLayout({

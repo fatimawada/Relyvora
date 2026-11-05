@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="Relyvora favicon">
+<title>Relyvora favicon</title>
+<g id="tile" fill="#0A1B3D" fill-rule="evenodd">
+<path d="M27 0L93 0A27 27 0 0 1 120 27L120 93A27 27 0 0 1 93 120L27 120A27 27 0 0 1 0 93L0 27A27 27 0 0 1 27 0Z"/>
+</g>
+<g id="primary" fill="#FFFFFF" fill-rule="evenodd">
+<path d="M26.87 20.4L49.49 20.4L49.49 42.76L26.87 42.76Z"/>
+<path d="M26.87 48.82L49.49 48.82L49.49 71.18L26.87 71.18Z"/>
+<path d="M26.87 77.24L49.49 77.24L49.49 99.6L26.87 99.6Z"/>
+</g>
+<g id="accent" fill="#5BE3AB" fill-rule="evenodd">
+<path d="M54.34 59.19L72.12 59.19L93.13 99.6L75.36 99.6Z"/>
+</g>
+<g id="mid" fill="#22B07F" fill-rule="evenodd">
+<path d="M54.34 20.4L68.89 20.4C82.63 20.4 92.33 30.1 92.33 42.22C92.33 54.34 82.63 64.85 68.89 64.85L60.81 64.85C56.77 64.85 54.34 62.42 54.34 59.19L54.34 50.3L68.89 50.3C74.55 50.3 77.78 47.07 77.78 42.22C77.78 37.37 74.55 34.95 68.89 34.95L54.34 34.95Z"/>
+</g>
+</svg>
