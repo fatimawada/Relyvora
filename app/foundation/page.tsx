@@ -263,13 +263,15 @@ export default function FoundationPage() {
 
           {/* Action CTAs */}
           <div className="hidden sm:flex items-center gap-3">
-            <Link
-              href="/"
+            <a
+              href="https://relyvora.com"
+              target="_blank"
+              rel="noopener noreferrer"
               className="text-xs font-mono text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-slate-800/60"
             >
               <span>Corporate Site</span>
               <ArrowUpRight className="w-3.5 h-3.5 opacity-70" />
-            </Link>
+            </a>
 
             <a
               href="#partnerships"
@@ -347,12 +349,14 @@ export default function FoundationPage() {
                 <span>Partner With Us</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </a>
-              <Link
-                href="/"
+              <a
+                href="https://relyvora.com"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="w-full py-2 rounded-lg text-xs font-mono text-center text-slate-400 hover:text-white border border-slate-800"
               >
                 Return to Relyvora Corporate ↗
-              </Link>
+              </a>
             </div>
           </div>
         )}
@@ -1277,15 +1281,16 @@ export default function FoundationPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-6 text-[11px] font-mono text-slate-400">
-                <Link href="/" className="hover:text-emerald-400 transition-colors">
+                <a 
+                  href="https://relyvora.com" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="hover:text-emerald-400 transition-colors"
+                >
                   Corporate Portal
-                </Link>
+                </a>
                 <a
-                  href={
-                    process.env.NODE_ENV === 'production'
-                      ? 'https://ng.relyvora.com'
-                      : '/vendor'
-                  }
+                  href="https://ng.relyvora.com"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:text-emerald-400 transition-colors flex items-center gap-1"

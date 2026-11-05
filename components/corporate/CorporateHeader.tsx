@@ -49,10 +49,20 @@ export function CorporateHeader() {
           ))}
         </nav>
 
-        {/* Right Action: Country App Link */}
+        {/* Right Action: Country App Link & Foundation Link */}
         <div className="hidden sm:flex items-center gap-3 shrink-0">
           <a
-            href={nigeriaAppUrl}
+            href="https://foundation.relyvora.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold text-[#047857] hover:bg-emerald-50 transition-colors"
+          >
+            <span>Foundation</span>
+            <ArrowUpRight className="w-3.5 h-3.5 opacity-70" />
+          </a>
+
+          <a
+            href="https://ng.relyvora.com"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-xs font-bold bg-[#090E1A] text-white hover:bg-[#1E293B] transition-all shadow-xs"
@@ -87,15 +97,25 @@ export function CorporateHeader() {
               </a>
             ))}
           </nav>
-          <div className="pt-2">
+          <div className="pt-2 space-y-2">
             <a
-              href={nigeriaAppUrl}
+              href="https://ng.relyvora.com"
               target="_blank"
               rel="noopener noreferrer"
               className="w-full py-3 rounded-lg text-xs font-bold bg-[#090E1A] text-white flex items-center justify-center gap-2 shadow-xs"
             >
               <span>Go to Relyvora NG</span>
               <ArrowUpRight className="w-4 h-4" />
+            </a>
+
+            <a
+              href="https://foundation.relyvora.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-2.5 rounded-lg text-xs font-semibold text-[#047857] border border-emerald-200 bg-emerald-50/50 flex items-center justify-center gap-1.5"
+            >
+              <span>Relyvora Foundation</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
             </a>
           </div>
         </div>

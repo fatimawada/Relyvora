@@ -67,15 +67,17 @@ export function CorporateFooter() {
                 </a>
               </li>
               <li className="pt-1">
-                <Link 
-                  href="/foundation" 
+                <a 
+                  href="https://foundation.relyvora.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="hover:text-[#090E1A] transition-colors inline-flex items-center gap-1.5 text-emerald-800 font-semibold"
                 >
                   <span>Relyvora Foundation</span>
                   <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full font-mono uppercase font-bold tracking-wider">
                     Impact
                   </span>
-                </Link>
+                </a>
               </li>
             </ul>
           </div>
@@ -87,7 +89,7 @@ export function CorporateFooter() {
             </h4>
             <div className="space-y-3">
               <a
-                href={nigeriaAppUrl}
+                href="https://ng.relyvora.com"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="group flex items-center justify-between p-3 rounded-xl bg-white border border-[#E7E4DC] hover:border-[#CBD5E1] transition-all shadow-2xs"
@@ -104,8 +106,10 @@ export function CorporateFooter() {
                 <ArrowUpRight className="w-4 h-4 text-[#64748B] group-hover:text-[#090E1A] group-hover:translate-x-0.5 transition-transform" />
               </a>
 
-              <Link
-                href="/foundation"
+              <a
+                href="https://foundation.relyvora.com"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="group flex items-center justify-between p-3 rounded-xl bg-white border border-[#E7E4DC] hover:border-emerald-500/50 transition-all shadow-2xs"
               >
                 <div>
@@ -120,7 +124,7 @@ export function CorporateFooter() {
                   </div>
                 </div>
                 <ArrowUpRight className="w-4 h-4 text-[#64748B] group-hover:text-emerald-700 group-hover:translate-x-0.5 transition-transform" />
-              </Link>
+              </a>
 
               <div className="p-3 rounded-xl bg-[#FAF8F5] border border-[#E7E4DC] space-y-1 text-xs text-[#475569]">
                 <div className="font-semibold text-[#090E1A] flex items-center gap-1.5">
@@ -160,13 +164,28 @@ export function CorporateFooter() {
         {/* Trust Signals & Legal Policy Links */}
         <div className="pt-8 border-t border-[#E7E4DC] flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-[#64748B]">
           <div className="flex flex-wrap items-center justify-center md:justify-start gap-5 sm:gap-6 text-xs text-[#334155] font-medium">
-            <Link href="/terms" className="hover:text-[#090E1A] transition-colors hover:underline underline-offset-4">
+            <Link 
+              href="/terms" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="hover:text-[#090E1A] transition-colors hover:underline underline-offset-4"
+            >
               Terms of Service
             </Link>
-            <Link href="/privacy" className="hover:text-[#090E1A] transition-colors hover:underline underline-offset-4">
+            <Link 
+              href="/privacy" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="hover:text-[#090E1A] transition-colors hover:underline underline-offset-4"
+            >
               Privacy Policy
             </Link>
-            <Link href="/disputes" className="hover:text-[#090E1A] transition-colors hover:underline underline-offset-4">
+            <Link 
+              href="/disputes" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="hover:text-[#090E1A] transition-colors hover:underline underline-offset-4"
+            >
               Dispute Policy
             </Link>
           </div>

@@ -12,9 +12,9 @@ export function ProductFooter() {
             <span>Social Commerce Escrow Infrastructure</span>
           </div>
           <div className="flex items-center gap-4 text-[11px] text-slate-500">
-            <Link href="/terms" className="hover:text-slate-900 transition-colors">Terms</Link>
-            <Link href="/privacy" className="hover:text-slate-900 transition-colors">Privacy</Link>
-            <Link href="/disputes" className="hover:text-slate-900 transition-colors">Disputes</Link>
+            <Link href="/terms" target="_blank" rel="noopener noreferrer" className="hover:text-slate-900 transition-colors">Terms</Link>
+            <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-slate-900 transition-colors">Privacy</Link>
+            <Link href="/disputes" target="_blank" rel="noopener noreferrer" className="hover:text-slate-900 transition-colors">Disputes</Link>
           </div>
         </div>
         <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-slate-400">

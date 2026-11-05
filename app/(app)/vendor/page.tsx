@@ -190,6 +190,31 @@ export default function VendorDashboardPage() {
         </div>
       </div>
 
+      {/* KYC / Regulated Settlement Activation Banner */}
+      <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-900 text-white p-5 sm:p-6 rounded-3xl border border-emerald-500/30 shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-start gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center shrink-0 text-emerald-400">
+            <ShieldCheck className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-bold text-white">Activate Instant Regulated Payouts</h2>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-400/30">Action Required</span>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl">
+              Complete Tier 1 BVN/NIN verification and link your settlement bank account to receive automatic, instant payouts powered by Anchor Technologies.
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/vendor/onboarding"
+          className="shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm transition-all shadow-md shadow-emerald-600/30 hover:scale-[1.02] active:scale-[0.98]"
+        >
+          <span>Complete KYC Onboarding</span>
+          <ArrowUpRight className="w-4 h-4" />
+        </Link>
+      </div>
+
       {/* Supabase status notice if local fallback is active */}
       {isUsingFallback && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">

@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { Logo } from './Logo';
-import { Store, Globe, ArrowUpRight } from 'lucide-react';
+import { Store, Globe, ArrowUpRight, ShieldCheck } from 'lucide-react';
 
 export function Navbar() {
   const corporateUrl = process.env.NODE_ENV === 'production' 
@@ -28,6 +28,14 @@ export function Navbar() {
             <span>Corporate Site</span>
             <ArrowUpRight className="w-3.5 h-3.5" />
           </a>
+
+          <Link
+            href="/vendor/onboarding"
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-xl text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>KYC Verification</span>
+          </Link>
 
           <Link
             href="/vendor"

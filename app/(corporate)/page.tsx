@@ -28,7 +28,6 @@ import {
 import { CorporateFAQ } from '@/components/corporate/CorporateFAQ';
 import { HeroCrossfade } from '@/components/corporate/HeroCrossfade';
 import { TrustMarquee } from '@/components/corporate/TrustMarquee';
-import { Testimonials } from '@/components/corporate/Testimonials';
 
 export default function CorporateHomePage() {
   const nigeriaAppUrl = process.env.NODE_ENV === 'production' 
@@ -77,7 +76,7 @@ export default function CorporateHomePage() {
               {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 pt-1">
                 <a
-                  href={nigeriaAppUrl}
+                  href="https://ng.relyvora.com"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-8 py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-sm sm:text-base flex items-center justify-center gap-2.5 shadow-lg shadow-emerald-700/25 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-emerald-700/35 active:translate-y-0"
@@ -94,6 +93,22 @@ export default function CorporateHomePage() {
                   <span>See How Escrow Works</span>
                   <ArrowUpRight className="w-4 h-4 text-[#64748B]" />
                 </a>
+              </div>
+
+              {/* Prominent Trust Banner */}
+              <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-emerald-50 via-white to-emerald-50/50 border-2 border-emerald-500/40 shadow-md shadow-emerald-600/5 flex items-center gap-3.5 max-w-xl">
+                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <ShieldCheck className="w-5 h-5 text-white" />
+                </div>
+                <div className="space-y-0.5">
+                  <div className="text-xs sm:text-sm font-bold text-[#090E1A] leading-snug">
+                    Regulated Escrow Custody: Payments &amp; Payouts securely powered by Anchor Technologies.
+                  </div>
+                  <div className="text-[11px] text-[#475569] font-medium flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>In partnership with CBN-licensed banking institutions</span>
+                  </div>
+                </div>
               </div>
 
               {/* Trust Metrics Pill Bar */}
@@ -523,7 +538,7 @@ export default function CorporateHomePage() {
               </div>
 
               <a
-                href={nigeriaAppUrl}
+                href="https://ng.relyvora.com"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors"
@@ -593,10 +608,7 @@ export default function CorporateHomePage() {
         </div>
       </section>
 
-      {/* 6. TESTIMONIALS */}
-      <Testimonials />
-
-      {/* 7. MEET THE FOUNDER */}
+      {/* 6. MEET THE FOUNDER */}
       <section id="founder" className="py-20 sm:py-28 px-4 sm:px-6 lg:px-8 border-b border-[#E7E4DC] bg-white relative overflow-hidden">
         <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
@@ -768,7 +780,7 @@ export default function CorporateHomePage() {
 
           <div className="flex items-center justify-center pt-2">
             <a
-              href={nigeriaAppUrl}
+              href="https://ng.relyvora.com"
               target="_blank"
               rel="noopener noreferrer"
               className="w-full sm:w-auto px-9 py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white text-sm sm:text-base font-bold flex items-center justify-center gap-2.5 shadow-2xl shadow-emerald-500/30 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-emerald-500/40 active:translate-y-0"
