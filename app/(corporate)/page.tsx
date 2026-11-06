@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Logo } from '@/components/brand/Logo';
 import { FlagIcon } from '@/components/flags/FlagIcon';
+import { HeroSymbolWrapper } from '@/components/hero/HeroSymbolWrapper';
 import { LAUNCH_STATUS, calculateFee, formatNaira } from '@/lib/feeConfig';
 
 export default function HomePage() {
@@ -78,12 +79,9 @@ export default function HomePage() {
 
           {/* Right Column (0.9 ratio ~ col-span-5) - Brand Symbol Presentation */}
           <div className="lg:col-span-5 flex items-center justify-center">
-            <div className="relative w-full max-w-[340px] aspect-square rounded-3xl border border-border bg-surface p-8 flex items-center justify-center shadow-lg transition-transform card-lift">
-              {/* Pre-rendered Brand Symbol SVG */}
-              <div className="w-44 h-44 flex items-center justify-center">
-                <Logo variant="symbol" height={150} withLink={false} />
-              </div>
-              <div className="absolute bottom-4 left-6 right-6 text-center text-xs font-medium text-muted">
+            <div className="relative w-full max-w-[380px] aspect-square rounded-3xl border border-border bg-surface p-4 flex items-center justify-center shadow-lg transition-transform card-lift overflow-hidden">
+              <HeroSymbolWrapper />
+              <div className="absolute bottom-3 left-6 right-6 text-center text-xs font-medium text-muted pointer-events-none">
                 Transaction Protection Infrastructure
               </div>
             </div>
