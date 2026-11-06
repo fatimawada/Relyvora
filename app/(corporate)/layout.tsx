@@ -1,10 +1,17 @@
 import React from 'react';
-import { CorporateHeader } from '@/components/corporate/CorporateHeader';
-import { CorporateFooter } from '@/components/corporate/CorporateFooter';
+import type { Metadata } from 'next';
 
-export const metadata = {
-  title: 'Relyvora — The Trust Layer for African Social Commerce',
-  description: 'Neutral transaction protocol and escrow infrastructure bridging buyers, merchants, and delivery couriers across African markets.',
+export const metadata: Metadata = {
+  title: 'Relyvora — Elite 3D Escrow Protocol & Trust Layer',
+  description:
+    'Institutional-grade neutral transaction protocol and 3D escrow infrastructure bridging buyers, merchants, and delivery fleets across African social commerce.',
+  openGraph: {
+    title: 'Relyvora — Elite 3D Escrow Protocol',
+    description: 'Neutral transaction protocol and escrow infrastructure for African social commerce.',
+    url: 'https://relyvora.com',
+    siteName: 'Relyvora',
+    type: 'website',
+  },
 };
 
 export default function CorporateLayout({
@@ -13,17 +20,8 @@ export default function CorporateLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-[#FAF8F5] text-[#090E1A] min-h-screen flex flex-col font-sans selection:bg-[#047857] selection:text-white">
-      {/* Corporate Editorial Header */}
-      <CorporateHeader />
-
-      {/* Main Corporate Content */}
-      <main className="flex-1 w-full">
-        {children}
-      </main>
-
-      {/* Corporate Editorial Footer */}
-      <CorporateFooter />
+    <div className="bg-[#0A0A0C] text-white min-h-screen w-full font-sans antialiased selection:bg-emerald-500 selection:text-black">
+      {children}
     </div>
   );
 }
