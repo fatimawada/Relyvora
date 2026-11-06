@@ -2,12 +2,13 @@ import React from 'react';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Relyvora — Elite 3D Escrow Protocol & Trust Layer',
+  title: 'Relyvora | Safe payments for WhatsApp and Instagram sellers in Nigeria',
   description:
-    'Institutional-grade neutral transaction protocol and 3D escrow infrastructure bridging buyers, merchants, and delivery fleets across African social commerce.',
+    'Pay sellers on WhatsApp and Instagram without the fear. Your money is held until your order arrives and you confirm with a six-digit code.',
   openGraph: {
-    title: 'Relyvora — Elite 3D Escrow Protocol',
-    description: 'Neutral transaction protocol and escrow infrastructure for African social commerce.',
+    title: 'Relyvora | Safe payments for WhatsApp and Instagram sellers in Nigeria',
+    description:
+      'Pay sellers on WhatsApp and Instagram without the fear. Your money is held until your order arrives and you confirm with a six-digit code.',
     url: 'https://relyvora.com',
     siteName: 'Relyvora',
     type: 'website',
@@ -20,7 +21,7 @@ export default function CorporateLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-[#0A0A0C] text-white min-h-screen w-full font-sans antialiased selection:bg-emerald-500 selection:text-black">
+    <div className="min-h-screen w-full font-sans antialiased">
       {children}
     </div>
   );
