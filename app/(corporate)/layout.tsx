@@ -1,5 +1,7 @@
 import React from 'react';
 import type { Metadata } from 'next';
+import { Header } from '@/components/layout/Header';
+import { Footer } from '@/components/layout/Footer';
 
 export const metadata: Metadata = {
   title: 'Relyvora | Safe payments for WhatsApp and Instagram sellers in Nigeria',
@@ -21,8 +23,12 @@ export default function CorporateLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen w-full font-sans antialiased">
-      {children}
+    <div className="min-h-screen flex flex-col w-full bg-site text-main">
+      <Header />
+      <main id="main-content" className="flex-1 w-full flex flex-col">
+        {children}
+      </main>
+      <Footer />
     </div>
   );
 }
