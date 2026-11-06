@@ -50,10 +50,15 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-40 w-full bg-surface/85 backdrop-blur-md border-b border-border transition-colors duration-200">
-      <div className="max-w-container mx-auto px-6 h-20 flex items-center justify-between gap-4">
+      <div className="max-w-container mx-auto px-4 sm:px-6 h-18 sm:h-20 flex items-center justify-between gap-2 sm:gap-4">
         {/* Brand Logo */}
         <div className="flex items-center shrink-0">
-          <Logo variant="full" height={34} withLink={true} />
+          <div className="sm:hidden">
+            <Logo variant="full" height={28} withLink={true} />
+          </div>
+          <div className="hidden sm:block">
+            <Logo variant="full" height={34} withLink={true} />
+          </div>
         </div>
 
         {/* Desktop Navigation */}
@@ -92,7 +97,7 @@ export function Header() {
         </nav>
 
         {/* Header Right Actions */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {/* Theme Toggle (Light / Dark) */}
           <ThemeToggle />
 
@@ -111,7 +116,7 @@ export function Header() {
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             type="button"
-            className="lg:hidden w-11 h-11 rounded-btn border border-border bg-surface text-main flex items-center justify-center hover:border-accent transition-colors"
+            className="lg:hidden w-10 h-10 sm:w-11 sm:h-11 rounded-btn border border-border bg-surface text-main flex items-center justify-center hover:border-accent transition-colors"
             aria-label={mobileMenuOpen ? 'Close navigation drawer' : 'Open navigation drawer'}
             aria-expanded={mobileMenuOpen}
           >
@@ -122,8 +127,8 @@ export function Header() {
 
       {/* Accessible Mobile Navigation Drawer */}
       {mobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 top-20 z-50 bg-[#0A1B3D]/50 backdrop-blur-xs flex flex-col justify-start">
-          <div className="w-full bg-surface border-b border-border p-6 shadow-xl space-y-4 max-h-[calc(100vh-80px)] overflow-y-auto animate-fadeIn">
+        <div className="lg:hidden fixed inset-0 top-18 sm:top-20 z-50 bg-[#0A1B3D]/50 backdrop-blur-xs flex flex-col justify-start">
+          <div className="w-full bg-surface border-b border-border p-6 shadow-xl space-y-4 max-h-[calc(100vh-72px)] sm:max-h-[calc(100vh-80px)] overflow-y-auto animate-fadeIn">
             <nav className="flex flex-col space-y-1.5" aria-label="Mobile navigation">
               {navLinks.map((link) => {
                 const isActive = pathname === link.href;
