@@ -2,7 +2,6 @@
 
 import React from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { 
   ShieldCheck, 
   ArrowUpRight, 
@@ -608,96 +607,85 @@ export default function CorporateHomePage() {
         </div>
       </section>
 
-      {/* 6. MEET THE FOUNDER */}
+      {/* 6. MEET THE FOUNDER & EXECUTIVE VISION */}
       <section id="founder" className="py-20 sm:py-28 px-4 sm:px-6 lg:px-8 border-b border-[#E7E4DC] bg-white relative overflow-hidden">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
-            
-            {/* Left: Founder Portrait Frame */}
-            <div className="lg:col-span-5">
-              <div className="relative mx-auto max-w-[360px] sm:max-w-[420px] lg:max-w-none space-y-4">
-                {/* Decorative ambient aura behind the frame */}
-                <div className="absolute -inset-2 bg-gradient-to-tr from-emerald-500/15 via-teal-500/10 to-transparent rounded-3xl blur-xl -z-10" />
-                
-                {/* Clean, fully visible portrait with zero obstruction */}
-                <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden border border-[#E7E4DC] bg-[#FAF8F5] shadow-xl aspect-[720/1024]">
-                  <Image
-                    src="/founder.jpg"
-                    alt="Fatima Binta Wada — Founder & CEO, Relyvora Technologies"
-                    fill
-                    sizes="(max-width: 768px) 100vw, 440px"
-                    className="object-cover object-top"
-                    priority
-                  />
-                </div>
+        <div className="max-w-4xl mx-auto space-y-10">
+          
+          {/* Section Header */}
+          <div className="space-y-3 text-center sm:text-left">
+            <div className="inline-flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-[#047857]">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Meet the Founder &amp; Mission</span>
+            </div>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-serif text-[#090E1A] tracking-tight leading-tight">
+              Building the Trust Rails for African Social Commerce.
+            </h2>
+          </div>
 
-                {/* Founder Identity Card — Placed cleanly beneath the photo */}
-                <div className="p-4 sm:p-5 rounded-2xl bg-[#FAF8F5] border border-[#E7E4DC] shadow-xs flex items-center justify-between gap-3">
-                  <div className="space-y-0.5">
-                    <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#047857]">
-                      Executive Leadership
-                    </div>
-                    <div className="text-lg sm:text-xl font-bold text-[#090E1A]">
-                      Fatima Binta Wada
-                    </div>
-                    <div className="text-xs sm:text-sm text-[#64748B] font-medium">
-                      Founder &amp; CEO, Relyvora Technologies
-                    </div>
-                  </div>
-                  <div className="w-11 h-11 rounded-2xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-center text-emerald-700 shrink-0">
-                    <ShieldCheck className="w-5 h-5" />
-                  </div>
-                </div>
+          {/* Executive Founder Statement Card */}
+          <div className="p-7 sm:p-10 rounded-3xl bg-[#FAF8F5] border border-[#E7E4DC] shadow-sm space-y-8 relative overflow-hidden">
+            {/* Ambient Accent Glow */}
+            <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+
+            {/* Founder Quote Block */}
+            <blockquote className="p-5 sm:p-6 rounded-2xl bg-white border border-[#E7E4DC] border-l-4 border-l-emerald-600 text-base sm:text-lg font-serif italic text-[#1E293B] leading-relaxed shadow-xs">
+              &ldquo;African commerce doesn&apos;t happen in rigid online malls—it thrives on WhatsApp, Instagram, and personal trust. But behind every unfulfilled delivery or fake alert is a merchant who lost their working capital, or a customer afraid to buy again. We built Relyvora to solve that once and for all.&rdquo;
+            </blockquote>
+
+            {/* Narrative Story */}
+            <div className="space-y-4 text-sm sm:text-base text-[#475569] leading-relaxed">
+              <p>
+                <strong className="text-[#090E1A]">Fatima Binta Wada</strong> is the Founder &amp; CEO of Relyvora Technologies Limited. Driven by firsthand insight into the high mortality rate of informal African micro-merchants caused by Payment-on-Delivery scams, she engineered Relyvora as a neutral, zero-trust transaction layer bridging buyers, social sellers, and dispatch fleets.
+              </p>
+              <p>
+                Under her leadership, Relyvora combines practical digital empowerment with institutional-grade escrow banking infrastructure powered by Anchor, replacing fear and friction with guaranteed doorstep verification codes and automated settlement.
+              </p>
+            </div>
+
+            {/* Core Leadership Pillars */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-xs sm:text-sm text-[#334155]">
+              <div className="flex items-center gap-2.5 p-3 rounded-xl bg-white/90 border border-[#E7E4DC]">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="font-medium">Anchor-Powered Regulated Custody</span>
+              </div>
+              <div className="flex items-center gap-2.5 p-3 rounded-xl bg-white/90 border border-[#E7E4DC]">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="font-medium">Eliminating Pay-on-Delivery Risk</span>
+              </div>
+              <div className="flex items-center gap-2.5 p-3 rounded-xl bg-white/90 border border-[#E7E4DC]">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="font-medium">6-Digit Doorstep Handshake Protocol</span>
+              </div>
+              <div className="flex items-center gap-2.5 p-3 rounded-xl bg-white/90 border border-[#E7E4DC]">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="font-medium">Economic Inclusion for Social Merchants</span>
               </div>
             </div>
 
-            {/* Right: Vision & Bio */}
-            <div className="lg:col-span-7 space-y-6">
-              <div className="space-y-3">
-                <div className="inline-flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider text-[#047857]">
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Meet the Founder</span>
+            {/* Executive Sign-off Footer */}
+            <div className="pt-6 border-t border-[#E7E4DC] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#090E1A] to-emerald-950 text-white flex items-center justify-center font-serif font-bold text-base shadow-sm border border-emerald-500/20">
+                  FBW
                 </div>
-                <h2 className="text-3xl sm:text-4xl lg:text-5xl font-serif text-[#090E1A] tracking-tight leading-tight">
-                  Building the Trust Rails for African Social Commerce.
-                </h2>
+                <div>
+                  <div className="text-base font-bold text-[#090E1A]">
+                    Fatima Binta Wada
+                  </div>
+                  <div className="text-xs text-[#64748B]">
+                    Founder &amp; CEO, Relyvora Technologies Limited
+                  </div>
+                </div>
               </div>
 
-              <blockquote className="p-4 rounded-xl bg-[#FAF8F5] border-l-4 border-emerald-600 text-sm sm:text-base font-serif italic text-[#334155] leading-relaxed">
-                &ldquo;African commerce doesn&apos;t happen in rigid online malls—it thrives on WhatsApp, Instagram, and personal trust. But behind every unfulfilled delivery or fake alert is a merchant who lost their working capital, or a customer afraid to buy again. We built Relyvora to solve that once and for all.&rdquo;
-              </blockquote>
-
-              <div className="space-y-4 text-sm sm:text-base text-[#475569] leading-relaxed">
-                <p>
-                  <strong className="text-[#090E1A]">Fatima Binta Wada</strong> is the Founder & CEO of Relyvora Technologies Limited. Driven by firsthand insight into the high mortality rate of informal African micro-merchants caused by Payment-on-Delivery scams, she engineered Relyvora as a neutral, zero-trust transaction layer bridging buyers, social sellers, and dispatch fleets.
-                </p>
-                <p>
-                  Under her leadership, Relyvora combines practical digital empowerment with institutional-grade escrow banking infrastructure powered by Anchor, replacing fear and friction with guaranteed doorstep verification codes and automated settlement.
-                </p>
-              </div>
-
-              {/* Pillars of Leadership */}
-              <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-[#334155]">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Anchor-Powered Regulated Custody</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Eliminating Pay-on-Delivery Risk</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>6-Digit Doorstep Handshake Protocol</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Economic Inclusion for Social Merchants</span>
-                </div>
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-[#E7E4DC] text-xs font-mono font-medium text-[#475569] shadow-2xs self-start sm:self-auto">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                <span>Executive Office • Abuja, Nigeria</span>
               </div>
             </div>
 
           </div>
+
         </div>
       </section>
 
