@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, HelpCircle } from 'lucide-react';
 import { FAQAccordion } from '@/components/faq/FAQAccordion';
+import { JsonLd } from '@/components/seo/JsonLd';
 
 export const metadata: Metadata = {
   title: 'Frequently Asked Questions | Relyvora',
@@ -11,8 +12,46 @@ export const metadata: Metadata = {
 };
 
 export default function FAQPage() {
+  const faqSchemaData = {
+    mainEntity: [
+      {
+        '@type': 'Question',
+        name: 'How does Relyvora protect buyers?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'When you pay through a Relyvora link, your money is held in regulated Anchor banking custody. The seller is not paid until your package arrives, you physically inspect the items, and you share your secret six-digit release code with the courier or confirm in-app.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'How does Relyvora protect sellers?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'You never have to dispatch goods on pay-on-delivery only for buyers to change their mind or fail to answer their phone. You package and ship only after Relyvora verifies that the buyer’s payment has cleared into escrow.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'How much does Relyvora cost and who pays the fee?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Relyvora charges a flat 3% transaction protection fee paid by the buyer at checkout. The fee is calculated transparently and shown on the payment screen prior to authorization. There are no account maintenance fees or monthly subscriptions.',
+        },
+      },
+      {
+        '@type': 'Question',
+        name: 'Where are escrow funds held?',
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: 'Funds are held in segregated virtual accounts powered by our regulated Banking-as-a-Service partner, Anchor Technologies Limited, in partnership with CBN-licensed financial institutions.',
+        },
+      },
+    ],
+  };
+
   return (
     <div className="max-w-container mx-auto px-6 py-16 sm:py-20 space-y-16">
+      <JsonLd type="FAQPage" data={faqSchemaData} />
       {/* Header */}
       <div className="max-w-3xl space-y-4">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-border bg-surface text-xs font-semibold text-accent">

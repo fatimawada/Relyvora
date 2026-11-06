@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { JsonLd } from '@/components/seo/JsonLd';
 import { 
   AlertTriangle, 
   ArrowRight, 
@@ -21,6 +22,15 @@ export const metadata: Metadata = {
 export default function ProblemPage() {
   return (
     <article className="max-w-container mx-auto px-6 py-16 sm:py-20 space-y-16">
+      <JsonLd
+        type="BreadcrumbList"
+        data={{
+          itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://relyvora.com' },
+            { '@type': 'ListItem', position: 2, name: 'The Problem', item: 'https://relyvora.com/problem' },
+          ],
+        }}
+      />
       {/* Header Banner */}
       <div className="max-w-3xl space-y-4">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-border bg-surface text-xs font-semibold text-accent">
