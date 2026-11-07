@@ -9,7 +9,7 @@ export function DemoBanner() {
           DEMO MODE
         </span>
         <span className="text-slate-200">
-          <strong className="text-white font-semibold">RELYVORA DEMO</strong> — Simulated transaction protection. No real money is collected, held, or transferred.
+          <strong className="text-white font-semibold">RELYVORA DEMO</strong>: Simulated transaction protection. No real money is collected, held, or transferred.
         </span>
       </div>
     </div>

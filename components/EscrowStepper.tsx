@@ -55,7 +55,7 @@ export function EscrowStepper({ status }: EscrowStepperProps) {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-bold text-rose-900">Escrow Frozen — Dispute Under Investigation</h3>
+              <h3 className="text-base font-bold text-rose-900">Escrow Frozen: Dispute Under Investigation</h3>
               <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-200 text-rose-800">
                 Action Paused
               </span>

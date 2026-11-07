@@ -6,7 +6,7 @@ import { CorporateHeader } from '@/components/corporate/CorporateHeader';
 import { CorporateFooter } from '@/components/corporate/CorporateFooter';
 
 export const metadata: Metadata = {
-  title: 'Terms of Service — Relyvora Technologies',
+  title: 'Terms of Service | Relyvora Technologies',
   description: 'Terms of Service governing the use of Relyvora transaction protection and escrow services.',
 };
 

@@ -55,6 +55,14 @@ const PALETTE = {
     logo3: '#0FA36B',
     pipOff: '#2A4170',
     pipOn: '#5BE3AB',
+    phoneBody: '#0A1B3D',
+    phoneRim: '#CAD5E8',
+    phoneScreen: '#0A1833',
+    phoneScreenEmissive: '#06132B',
+    phoneNotch: '#040C1A',
+    phoneButton: '#0FA36B',
+    phonePipOff: '#1A3358',
+    phonePipOn: '#5BE3AB',
     shadowOpacity: 0.14,
   },
   dark: {
@@ -68,6 +76,14 @@ const PALETTE = {
     logo3: '#5BE3AB',
     pipOff: '#B4C2DA',
     pipOn: '#22B07F',
+    phoneBody: '#071229',
+    phoneRim: '#647D9E',
+    phoneScreen: '#040A17',
+    phoneScreenEmissive: '#092434',
+    phoneNotch: '#02050B',
+    phoneButton: '#22B07F',
+    phonePipOff: '#0C202E',
+    phonePipOn: '#5BE3AB',
     shadowOpacity: 0.32,
   },
 } as const;
@@ -197,7 +213,20 @@ export default function EscrowObjects3D({ step, posterMode = false, forcedTheme,
       logo2: physical(0.45),
       logo3: physical(0.45),
     };
-    const pipMaterials = Array.from({ length: 6 }, () => physical(0.35));
+
+    // Dedicated phone materials (glass-and-metal body, thin bezel, subtle rim highlight, emissive screen)
+    const phoneBodyMat = new MeshPhysicalMaterial({ roughness: 0.22, metalness: 0.85, clearcoat: 0.9, clearcoatRoughness: 0.18 });
+    const phoneRimMat = new MeshPhysicalMaterial({ roughness: 0.16, metalness: 0.94, clearcoat: 1.0, clearcoatRoughness: 0.12 });
+    const phoneScreenMat = new MeshPhysicalMaterial({ roughness: 0.12, metalness: 0.45, clearcoat: 1.0, clearcoatRoughness: 0.08 });
+    const phoneNotchMat = new MeshPhysicalMaterial({ roughness: 0.3, metalness: 0.3 });
+    const phoneButtonMat = new MeshPhysicalMaterial({ roughness: 0.28, metalness: 0.2, clearcoat: 0.4 });
+    materials.push(phoneBodyMat, phoneRimMat, phoneScreenMat, phoneNotchMat, phoneButtonMat);
+
+    const pipMaterials = Array.from({ length: 6 }, () => {
+      const m = new MeshPhysicalMaterial({ roughness: 0.15, metalness: 0.1, clearcoat: 0.8 });
+      materials.push(m);
+      return m;
+    });
 
     /* ---------------- Contact shadow ---------------- */
     const shadowTexture = makeShadowTexture();
@@ -261,19 +290,26 @@ export default function EscrowObjects3D({ step, posterMode = false, forcedTheme,
     dial.position.z = 0.86;
     held.add(dial);
 
-    // 3. Confirm: thin rounded phone slab with six pips
+    // 3. Confirm: thin rounded phone slab with dark navy body, subtle rim highlight, thin bezel, and six emerald glowing pips
     const phone = new Group();
-    phone.add(mesh(g(new RoundedBoxGeometry(1.25, 2.4, 0.16, 3, 0.07)), mat.body));
-    phone.add(mesh(g(new RoundedBoxGeometry(1.07, 2.16, 0.02, 1, 0.008)), mat.screen, (o) => (o.position.z = 0.08)));
-    phone.add(mesh(g(new RoundedBoxGeometry(0.55, 0.07, 0.02, 1, 0.01)), mat.accentDeep, (o) => o.position.set(0, 0.55, 0.095)));
-    phone.add(mesh(g(new RoundedBoxGeometry(0.75, 0.2, 0.03, 1, 0.012)), mat.accent, (o) => o.position.set(0, -0.62, 0.1)));
-    const pipGeo = g(new CylinderGeometry(0.06, 0.06, 0.03, 20));
+    // Subtle rim highlight (outer chamfer frame catching the light)
+    phone.add(mesh(g(new RoundedBoxGeometry(1.27, 2.42, 0.15, 3, 0.08)), phoneRimMat));
+    // Dark navy glass-and-metal body
+    phone.add(mesh(g(new RoundedBoxGeometry(1.25, 2.40, 0.154, 3, 0.075)), phoneBodyMat));
+    // Thin bezel OLED screen (1.18 x 2.32 => 0.035 bezel around screen)
+    phone.add(mesh(g(new RoundedBoxGeometry(1.18, 2.32, 0.02, 2, 0.045)), phoneScreenMat, (o) => (o.position.z = 0.078)));
+    // Top speaker notch
+    phone.add(mesh(g(new RoundedBoxGeometry(0.32, 0.045, 0.015, 1, 0.01)), phoneNotchMat, (o) => o.position.set(0, 1.02, 0.089)));
+    // Six pips glowing in emerald
+    const pipGeo = g(new CylinderGeometry(0.065, 0.065, 0.025, 24));
     pipMaterials.forEach((m, i) => {
       phone.add(mesh(pipGeo, m, (o) => {
         o.rotation.x = Math.PI / 2;
-        o.position.set(-0.4 + i * 0.16, 0, 0.1);
+        o.position.set(-0.4 + i * 0.16, 0.02, 0.09);
       }));
     });
+    // Bottom confirm pill button
+    phone.add(mesh(g(new RoundedBoxGeometry(0.72, 0.16, 0.02, 2, 0.02)), phoneButtonMat, (o) => o.position.set(0, -0.74, 0.089)));
     phone.position.y = 0.05;
     phone.scale.setScalar(0.92);
 
@@ -311,13 +347,21 @@ export default function EscrowObjects3D({ step, posterMode = false, forcedTheme,
       mat.logo1.color.set(p.logo1);
       mat.logo2.color.set(p.logo2);
       mat.logo3.color.set(p.logo3);
+      phoneBodyMat.color.set(p.phoneBody);
+      phoneRimMat.color.set(p.phoneRim);
+      phoneScreenMat.color.set(p.phoneScreen);
+      phoneScreenMat.emissive.set(p.phoneScreenEmissive);
+      phoneScreenMat.emissiveIntensity = 0.35;
+      phoneNotchMat.color.set(p.phoneNotch);
+      phoneButtonMat.color.set(p.phoneButton);
+      pipOff.set(p.phonePipOff);
+      pipOn.set(p.phonePipOn);
       pipMaterials.forEach((m) => {
-        m.color.set(p.pipOff);
-        m.emissive.set(p.pipOn);
+        m.color.set(p.phonePipOff);
+        m.emissive.set(p.phonePipOn);
+        m.emissiveIntensity = 0.1;
       });
       shadowMaterial.opacity = p.shadowOpacity;
-      pipOff.set(p.pipOff);
-      pipOn.set(p.pipOn);
     };
     const pipOff = new Color();
     const pipOn = new Color();
@@ -451,12 +495,14 @@ export default function EscrowObjects3D({ step, posterMode = false, forcedTheme,
 
       // Per-object idle details
       dial.rotation.z -= 0.25 * dt;
+      const isStillCapture = posterMode && stepRef.current === 2;
       const pipPhase = (elapsed * 2.2) % 9; // 6 pips light up in sequence, short hold, reset
-      const lit = Math.min(6, Math.floor(pipPhase));
+      const lit = isStillCapture ? 6 : Math.min(6, Math.floor(pipPhase));
       pipMaterials.forEach((m, i) => {
         const on = i < lit;
         m.color.copy(on ? pipOn : pipOff);
-        m.emissiveIntensity = on ? 0.6 : 0;
+        m.emissive.copy(pipOn);
+        m.emissiveIntensity = on ? 1.6 : 0.1;
       });
       coinGroup.position.y = 0.52 + Math.sin(elapsed * 1.6) * 0.08;
       coin.rotation.z += 1.1 * dt;

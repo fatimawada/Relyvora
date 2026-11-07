@@ -22,10 +22,10 @@ export default function MarketsPage() {
   const nigeriaBadge = LAUNCH_STATUS === 'launching' ? 'Starting here' : 'Live';
 
   return (
-    <div className="max-w-container mx-auto px-6 py-14 sm:py-20 space-y-14">
+    <div className="max-w-container mx-auto px-6 pt-16 pb-16 sm:pt-20 sm:pb-20 space-y-12 text-left">
       <div className="max-w-3xl space-y-4">
         <p className="section-label">Markets</p>
-        <h1 className="text-main">Built for African commerce.</h1>
+        <h1 className="page-h1 text-main">Built for African commerce.</h1>
         <p className="text-muted text-lg sm:text-xl leading-relaxed">
           Relyvora is starting in Nigeria, with Ghana, Kenya, and South Africa coming soon.
         </p>

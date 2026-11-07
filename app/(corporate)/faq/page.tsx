@@ -50,12 +50,12 @@ export default function FAQPage() {
   };
 
   return (
-    <div className="max-w-container mx-auto px-6 py-14 sm:py-20 space-y-14">
+    <div className="max-w-container mx-auto px-6 pt-16 pb-16 sm:pt-20 sm:pb-20 space-y-12 text-left">
       <JsonLd type="FAQPage" data={faqSchemaData} />
 
       <div className="max-w-3xl space-y-4">
         <p className="section-label">Questions</p>
-        <h1 className="text-main">Frequently asked questions.</h1>
+        <h1 className="page-h1 text-main">Frequently asked questions.</h1>
         <p className="text-muted text-lg sm:text-xl leading-relaxed">
           Clear answers on how Relyvora works for buyers and sellers on WhatsApp and Instagram.
         </p>

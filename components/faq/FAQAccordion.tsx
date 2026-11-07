@@ -33,31 +33,31 @@ export const FAQ_ITEMS: FAQItem[] = [
   {
     question: 'What happens if a buyer refuses or rejects a delivery?',
     answer:
-      '[TODO: Policy pending confirmation from Relyvora team — Doorstep rejection protocol & return shipping allocation]',
+      '[TODO: Policy pending confirmation from Relyvora team: Doorstep rejection protocol and return shipping allocation]',
     isTodo: true,
   },
   {
     question: 'What happens if a buyer loses their six\u2011digit release code?',
     answer:
-      '[TODO: Policy pending confirmation from Relyvora team — Code reissuance and authentication protocol]',
+      '[TODO: Policy pending confirmation from Relyvora team: Code reissuance and authentication protocol]',
     isTodo: true,
   },
   {
     question: 'What are the dispute timelines?',
     answer:
-      '[TODO: Policy pending confirmation from Relyvora team — Official dispute resolution timeline and investigation SLA]',
+      '[TODO: Policy pending confirmation from Relyvora team: Official dispute resolution timeline and investigation SLA]',
     isTodo: true,
   },
   {
     question: 'Which payment methods are supported in Nigeria?',
     answer:
-      '[TODO: Policy pending confirmation from Relyvora team — Confirmed payment methods (Bank Transfer, NIP Virtual Accounts, Cards, USSD)]',
+      '[TODO: Policy pending confirmation from Relyvora team: Confirmed payment methods (Bank Transfer, NIP Virtual Accounts, Cards, USSD)]',
     isTodo: true,
   },
   {
     question: 'How quickly does the seller receive their payout after the code is confirmed?',
     answer:
-      '[TODO: Policy pending confirmation from Relyvora team — Exact payout settlement turnaround time]',
+      '[TODO: Policy pending confirmation from Relyvora team: Exact payout settlement turnaround time]',
     isTodo: true,
   },
   {

@@ -59,7 +59,7 @@ export function PricingCalculator() {
 
       <div className="p-6 rounded-2xl bg-site border border-border space-y-3.5">
         <div className="flex items-center justify-between text-xs text-muted font-medium">
-          <span>Breakdown</span>
+          <span>Illustrative example</span>
           <span className="text-accent font-semibold">3%</span>
         </div>
 
@@ -79,7 +79,7 @@ export function PricingCalculator() {
         </div>
 
         <p className="pt-2 text-xs text-muted">
-          Example calculation. The 3% fee is shown on the payment screen before the buyer pays.
+          Illustrative example derived from the 3% buyer fee. The fee is shown before payment.
         </p>
       </div>
     </div>

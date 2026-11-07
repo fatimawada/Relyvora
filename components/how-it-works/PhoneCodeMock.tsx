@@ -1,16 +1,17 @@
 import React from 'react';
 import { KeyRound } from 'lucide-react';
+import { ILLUSTRATIVE_EXAMPLE } from '@/lib/feeConfig';
 
 /**
  * CSS-only phone mock showing the buyer's six-digit release code.
- * Illustrative only: example item and amount (₦85,000 + 3% fee = ₦87,550).
+ * Illustrative example derived from FEE_CONFIG (item ₦45,000, fee ₦1,350, buyer pays ₦46,350).
  */
 export function PhoneCodeMock({ className = '' }: { className?: string }) {
   return (
     <div
       className={`relative w-full max-w-[300px] rounded-[40px] border-[6px] border-[#0A1B3D] dark:border-[#1B315E] bg-surface p-4 shadow-xl ${className}`}
       role="img"
-      aria-label="Example phone screen showing an order with the money held and a six-digit release code"
+      aria-label="Illustrative example phone screen showing an order with the money held and a six-digit release code"
     >
       <div className="w-24 h-4 bg-[#0A1B3D] dark:bg-[#1B315E] rounded-b-xl mx-auto mb-4" aria-hidden="true" />
 
@@ -24,11 +25,24 @@ export function PhoneCodeMock({ className = '' }: { className?: string }) {
         </div>
 
         <div className="p-3.5 rounded-xl bg-site border border-border space-y-2">
-          <div className="text-[11px] text-muted">Example order</div>
+          <div className="flex items-center justify-between text-[11px] text-muted">
+            <span>Illustrative example</span>
+            <span className="text-accent font-semibold">3% fee</span>
+          </div>
           <div className="text-sm font-semibold text-main">Human hair wig (30&quot;)</div>
-          <div className="flex items-center justify-between text-xs pt-1 border-t border-border">
-            <span className="text-muted">Total paid</span>
-            <span className="font-semibold text-main">₦87,550</span>
+          <div className="space-y-1 text-xs pt-2 border-t border-border">
+            <div className="flex items-center justify-between text-muted">
+              <span>Item price</span>
+              <span className="font-semibold text-main">{ILLUSTRATIVE_EXAMPLE.formattedItemPrice}</span>
+            </div>
+            <div className="flex items-center justify-between text-muted">
+              <span>Relyvora fee (3%)</span>
+              <span className="font-semibold text-accent">{ILLUSTRATIVE_EXAMPLE.formattedFeeAmount}</span>
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-border text-main font-semibold">
+              <span>Buyer pays</span>
+              <span>{ILLUSTRATIVE_EXAMPLE.formattedTotalAmount}</span>
+            </div>
           </div>
         </div>
 

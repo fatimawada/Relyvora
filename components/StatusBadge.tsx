@@ -50,7 +50,7 @@ export function StatusBadge({ status, size = 'md' }: StatusBadgeProps) {
       icon: <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />,
     },
     DISPUTED: {
-      label: 'Disputed — Escrow Frozen',
+      label: 'Disputed: Escrow Frozen',
       bg: 'bg-rose-50',
       text: 'text-rose-800',
       border: 'border-rose-300',

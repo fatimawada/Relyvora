@@ -13,10 +13,10 @@ export const metadata: Metadata = {
 
 export default function HowItWorksPage() {
   return (
-    <div className="max-w-container mx-auto px-6 py-14 sm:py-20 space-y-14">
+    <div className="max-w-container mx-auto px-6 pt-16 pb-16 sm:pt-20 sm:pb-20 space-y-12 text-left">
       <div className="max-w-3xl space-y-4">
         <p className="section-label">How it works</p>
-        <h1 className="text-main">Four steps, from chat to delivery.</h1>
+        <h1 className="page-h1 text-main">Four steps, from chat to delivery.</h1>
         <p className="text-muted text-lg sm:text-xl leading-relaxed">
           Relyvora works through a secure link you share in your WhatsApp or Instagram chat. Your money is held until your
           order arrives and you confirm with a <span className="nowrap">six-digit</span> code.

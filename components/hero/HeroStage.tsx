@@ -123,7 +123,7 @@ export function HeroStage() {
 
   return (
     <div
-      className="w-full max-w-[480px] mx-auto flex flex-col items-center"
+      className="w-full max-w-[280px] sm:max-w-[340px] lg:max-w-[380px] xl:max-w-[400px] mx-auto flex flex-col items-center"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onFocus={() => setFocused(true)}
@@ -182,7 +182,7 @@ export function HeroStage() {
       </div>
 
       {/* Step caption + controls (small, unboxed) */}
-      <div className="mt-2 flex flex-col items-center gap-3">
+      <div className="mt-1 flex flex-col items-center gap-1.5">
         <p
           className="text-sm font-medium text-muted"
           aria-live={canAutoPlay && autoAdvance ? 'off' : 'polite'}
@@ -201,7 +201,7 @@ export function HeroStage() {
                 onClick={() => setStep(i)}
                 aria-label={`Show step ${i + 1}: ${label}`}
                 aria-current={i === step ? 'step' : undefined}
-                className="w-8 h-8 inline-flex items-center justify-center rounded-full group"
+                className="w-7 h-7 inline-flex items-center justify-center rounded-full group"
               >
                 <span
                   className={`block rounded-full transition-all duration-300 ${

@@ -82,7 +82,7 @@ export function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 w-full h-[72px] bg-surface/85 backdrop-blur-md border-b border-border">
+      <header className="site-header sticky top-0 z-40 w-full h-[72px]">
         <div className="max-w-container mx-auto h-full px-4 sm:px-6 grid grid-cols-[auto_1fr_auto] items-center gap-3">
           {/* Left: logo (32 to 36 px high, links to /) */}
           <div className="flex items-center">
@@ -143,7 +143,11 @@ export function Header() {
       </header>
 
       {/* Mobile drawer: slides in from the right, full height */}
-      <div className={`nav:hidden fixed inset-0 z-50 ${open ? '' : 'pointer-events-none'}`} aria-hidden={!open}>
+      <div
+        className={`drawer-root nav:hidden fixed inset-0 z-50 overflow-hidden ${open ? '' : 'pointer-events-none'}`}
+        data-open={open}
+        aria-hidden={!open}
+      >
         <div
           className="drawer-backdrop absolute inset-0 bg-[#0A1B3D]/50"
           data-open={open}

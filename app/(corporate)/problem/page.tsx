@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 
 export default function ProblemPage() {
   return (
-    <article className="max-w-container mx-auto px-6 py-14 sm:py-20 space-y-14">
+    <article className="max-w-container mx-auto px-6 pt-16 pb-16 sm:pt-20 sm:pb-20 space-y-12 text-left">
       <JsonLd
         type="BreadcrumbList"
         data={{
@@ -26,10 +26,10 @@ export default function ProblemPage() {
 
       <div className="max-w-3xl space-y-4">
         <p className="section-label">The problem</p>
-        <h1 className="text-main">Buying in the DMs still runs on trust you cannot check.</h1>
+        <h1 className="page-h1 text-main">Buying in the DMs still runs on trust you cannot check.</h1>
         <p className="text-muted text-lg sm:text-xl leading-relaxed">
           People across Nigeria buy and sell every day through WhatsApp and Instagram chats. Without a safe way to hold the
-          payment between agreement and delivery, one side always has to go first—and hope the other follows through.
+          payment between agreement and delivery, one side always has to go first. They simply have to hope the other follows through.
         </p>
       </div>
 
@@ -91,7 +91,7 @@ export default function ProblemPage() {
             <h3 className="text-lg font-semibold text-main">Paying and hoping</h3>
             <p className="text-muted text-sm leading-relaxed">
               A buyer transfers money to a seller’s personal account for shoes, hair, or a gadget they saw online. Delivery
-              day passes with excuses, then silence, or a blocked account—or a package arrives that looks nothing like what
+              day passes with excuses, then silence or a blocked account. In other cases, a package arrives that looks nothing like what
               was shown in the chat.
             </p>
           </div>

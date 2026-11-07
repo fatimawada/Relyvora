@@ -78,6 +78,28 @@ h1, h2, h3, h4, .h1, .h2, .h3 {
   text-wrap: balance;
 }
 
+p {
+  text-wrap: pretty;
+}
+
+/* Page H1 for inner marketing pages: clamp(34px, 4.5vw, 52px) */
+.page-h1 {
+  font-family: var(--font-outfit), sans-serif;
+  font-weight: 600;
+  font-size: clamp(34px, 4.5vw, 52px);
+  letter-spacing: -0.025em;
+  line-height: 1.14;
+}
+
+/* Header with ~95% page background opacity, light blur, and 1px border */
+.site-header {
+  background-color: var(--bg);
+  background-color: color-mix(in srgb, var(--bg) 95%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+
 /* Single section-label style used everywhere on marketing pages */
 .section-label {
   font-family: var(--font-inter), system-ui, sans-serif;
@@ -140,8 +162,19 @@ h1, h2, h3, h4, .h1, .h2, .h3 {
 }
 
 /* Mobile drawer */
+/* Mobile drawer */
+.drawer-root {
+  visibility: hidden;
+  transition: visibility 0.3s;
+}
+
+.drawer-root[data-open='true'] {
+  visibility: visible;
+  transition: none;
+}
+
 .drawer-panel {
-  transform: translateX(100%);
+  transform: translateX(calc(100% + 40px));
   transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -239,9 +272,15 @@ h1, h2, h3, h4, .h1, .h2, .h3 {
 }
 
 /* Accessible interactive focus */
+/* Accessible interactive focus: keyboard only */
+:focus:not(:focus-visible) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 :focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 3px;
+  outline-offset: 2px;
 }
 
 /* Skip to content link */

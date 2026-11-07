@@ -73,9 +73,9 @@ export default function HomePage() {
       {/* ------------------------------------------------------------- */}
       {/* HERO (page background)                                         */}
       {/* ------------------------------------------------------------- */}
-      <section className="max-w-container mx-auto px-6 pt-10 pb-14 sm:pt-14 sm:pb-20">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-center">
-          <div className="lg:col-span-7 space-y-6">
+      <section className="max-w-container mx-auto px-6 pt-5 pb-8 sm:pt-6 sm:pb-10 lg:pt-6 lg:pb-10">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-8 items-center">
+          <div className="lg:col-span-7 space-y-4 sm:space-y-5 lg:space-y-5">
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-border bg-surface text-[13px] font-semibold text-accent">
               <span className="w-1.5 h-1.5 rounded-full bg-accent" aria-hidden="true" />
               <span>Africa-first payment protection</span>
@@ -112,9 +112,9 @@ export default function HomePage() {
               </a>
             </div>
 
-            <p className="pt-1 flex items-center gap-2 text-sm text-muted">
+            <p className="flex items-center gap-2 text-sm text-muted">
               <span className="w-1.5 h-1.5 rounded-full bg-muted/60" aria-hidden="true" />
-              Payments powered by Anchor
+              <span>Payments powered by Anchor</span>
             </p>
           </div>
 
@@ -251,7 +251,7 @@ export default function HomePage() {
 
           <div className="lg:col-span-5 p-6 rounded-card bg-surface border border-border space-y-4">
             <div className="flex items-center justify-between text-xs text-muted font-medium">
-              <span>Example</span>
+              <span>Illustrative example</span>
               <span className="text-accent font-semibold">3%</span>
             </div>
             <div className="space-y-2.5 pt-2 border-t border-border text-sm">

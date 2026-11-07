@@ -6,7 +6,7 @@ import { CorporateHeader } from '@/components/corporate/CorporateHeader';
 import { CorporateFooter } from '@/components/corporate/CorporateFooter';
 
 export const metadata: Metadata = {
-  title: 'Dispute and Refund Policy — Relyvora Technologies',
+  title: 'Dispute and Refund Policy | Relyvora Technologies',
   description: 'The official 8 binding scenarios for Relyvora escrow dispute resolution and refunds.',
 };
 

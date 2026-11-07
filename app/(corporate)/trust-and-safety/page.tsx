@@ -12,10 +12,10 @@ export const metadata: Metadata = {
 
 export default function TrustAndSafetyPage() {
   return (
-    <div className="max-w-container mx-auto px-6 py-14 sm:py-20 space-y-14">
+    <div className="max-w-container mx-auto px-6 pt-16 pb-16 sm:pt-20 sm:pb-20 space-y-12 text-left">
       <div className="max-w-3xl space-y-4">
         <p className="section-label">Trust &amp; Safety</p>
-        <h1 className="text-main">How your payment stays protected.</h1>
+        <h1 className="page-h1 text-main">How your payment stays protected.</h1>
         <p className="text-muted text-lg sm:text-xl leading-relaxed">
           Relyvora holds the buyer’s payment until the order arrives and is confirmed with a{' '}
           <span className="nowrap">six-digit</span> code, backed by a written dispute policy.

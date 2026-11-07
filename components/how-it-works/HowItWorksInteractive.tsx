@@ -22,7 +22,7 @@ const BUYER_STEPS = [
     title: 'Pay through Relyvora',
     body: (
       <>
-        Your money is held with our banking partner—not sent to the seller yet. You receive a secret{' '}
+        Your money is held with our banking partner, not sent to the seller yet. You receive a secret{' '}
         <span className="nowrap">six-digit</span> release code.
       </>
     ),
@@ -68,7 +68,7 @@ const SELLER_STEPS = [
     title: 'See that the buyer has paid',
     body: (
       <>
-        Relyvora confirms when the buyer’s payment is held with our banking partner—no more guessing over transfer
+        Relyvora confirms when the buyer’s payment is held with our banking partner, ending the guesswork over transfer
         screenshots or fake SMS alerts.
       </>
     ),

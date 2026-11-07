@@ -45,3 +45,6 @@ export function formatNaira(amount: number): string {
     maximumFractionDigits: 0,
   }).format(amount);
 }
+
+/** Standard illustrative example: ₦45,000 item + ₦1,350 fee = ₦46,350 total */
+export const ILLUSTRATIVE_EXAMPLE = calculateFee(45000);

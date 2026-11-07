@@ -4,7 +4,7 @@ import { CheckCircle2, Percent } from 'lucide-react';
 import { PricingCalculator } from '@/components/pricing/PricingCalculator';
 
 export const metadata: Metadata = {
-  title: 'Pricing | Flat 3% Buyer Fee — Relyvora',
+  title: 'Pricing | Flat 3% Buyer Fee | Relyvora',
   description:
     'Relyvora charges a flat 3% fee, paid by the buyer and shown before they pay. No subscriptions or account opening fees.',
   alternates: { canonical: '/pricing' },
@@ -12,10 +12,10 @@ export const metadata: Metadata = {
 
 export default function PricingPage() {
   return (
-    <div className="max-w-container mx-auto px-6 py-14 sm:py-20 space-y-14">
+    <div className="max-w-container mx-auto px-6 pt-16 pb-16 sm:pt-20 sm:pb-20 space-y-12 text-left">
       <div className="max-w-3xl space-y-4">
         <p className="section-label">Pricing</p>
-        <h1 className="text-main">Flat 3%, paid by the buyer.</h1>
+        <h1 className="page-h1 text-main">Flat 3%, paid by the buyer.</h1>
         <p className="text-muted text-lg sm:text-xl leading-relaxed">
           A flat 3% fee, paid by the buyer at checkout and shown before they pay. No account opening fees and no monthly
           subscriptions.
@@ -95,14 +95,14 @@ export default function PricingPage() {
           <div className="p-6 rounded-card border border-border bg-surface space-y-2">
             <h3 className="font-semibold text-main text-base">Are fees refunded if an order is cancelled?</h3>
             <p className="text-muted text-sm leading-relaxed">
-              [TODO: Policy pending confirmation from Relyvora team — Cancellation fee refund policy]
+              [TODO: Policy pending confirmation from Relyvora team: Cancellation fee refund policy]
             </p>
           </div>
 
           <div className="p-6 rounded-card border border-border bg-surface space-y-2">
             <h3 className="font-semibold text-main text-base">Does the 3% apply to delivery fees?</h3>
             <p className="text-muted text-sm leading-relaxed">
-              [TODO: Policy pending confirmation from Relyvora team — Whether 3% applies to item price only or item plus courier delivery]
+              [TODO: Policy pending confirmation from Relyvora team: Whether 3% applies to item price only or item plus courier delivery]
             </p>
           </div>
         </div>

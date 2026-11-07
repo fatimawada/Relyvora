@@ -59,7 +59,7 @@ export function ThemeToggle({ className = '' }: { className?: string }) {
     <button
       onClick={toggleTheme}
       type="button"
-      className={`w-10 h-10 shrink-0 rounded-full border border-border bg-surface text-main hover:border-accent hover:text-accent transition-colors duration-200 inline-flex items-center justify-center ${className}`}
+      className={`w-10 h-10 shrink-0 rounded-full border border-border bg-surface text-main hover:border-accent hover:text-accent focus:outline-none focus:ring-0 focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2 transition-colors duration-200 inline-flex items-center justify-center ${className}`}
       aria-label="Toggle theme"
       aria-pressed={theme ? isDark : undefined}
       title={theme ? `Toggle theme (currently ${theme})` : 'Toggle theme'}

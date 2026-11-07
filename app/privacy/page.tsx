@@ -6,7 +6,7 @@ import { CorporateHeader } from '@/components/corporate/CorporateHeader';
 import { CorporateFooter } from '@/components/corporate/CorporateFooter';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy — Relyvora Technologies',
+  title: 'Privacy Policy | Relyvora Technologies',
   description: 'Privacy Policy and Nigeria Data Protection Act (NDPA) 2023 compliance notice for Relyvora.',
 };
 

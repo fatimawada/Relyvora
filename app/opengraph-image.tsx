@@ -1,7 +1,7 @@
 import { ImageResponse } from 'next/og';
 
 export const runtime = 'edge';
-export const alt = 'Relyvora — Safe payments for WhatsApp and Instagram commerce';
+export const alt = 'Relyvora: Safe payments for WhatsApp and Instagram commerce';
 export const size = {
   width: 1200,
   height: 630,

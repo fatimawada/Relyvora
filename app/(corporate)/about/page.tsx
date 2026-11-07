@@ -12,10 +12,10 @@ export const metadata: Metadata = {
 
 export default function AboutPage() {
   return (
-    <div className="max-w-container mx-auto px-6 py-14 sm:py-20 space-y-14">
+    <div className="max-w-container mx-auto px-6 pt-16 pb-16 sm:pt-20 sm:pb-20 space-y-12 text-left">
       <div className="max-w-3xl space-y-4">
         <p className="section-label">About</p>
-        <h1 className="text-main">Payment protection built for social commerce.</h1>
+        <h1 className="page-h1 text-main">Payment protection built for social commerce.</h1>
         <p className="text-muted text-lg sm:text-xl leading-relaxed">
           Everyday buying and selling across Africa happens in WhatsApp and Instagram chats. Relyvora gives buyers and
           sellers a safe way to pay and get paid without guessing who can be trusted.
