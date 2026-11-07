@@ -18,9 +18,9 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://relyvora.com'),
-  title: 'Relyvora | Safe payments for WhatsApp and Instagram sellers in Nigeria',
+  title: 'Relyvora | Safe payments for WhatsApp and Instagram commerce',
   description:
-    'Pay sellers on WhatsApp and Instagram without the fear. Your money is held until your order arrives and you confirm with a six-digit code.',
+    'Pay sellers on WhatsApp and Instagram without the fear. Your money is held until your order arrives and you confirm with a six\u2011digit code.',
   icons: {
     icon: [
       { url: '/favicon.svg', type: 'image/svg+xml' },
@@ -38,21 +38,23 @@ export default function RootLayout({
   return (
     <html
       lang="en-NG"
-      className={`${outfit.variable} ${inter.variable} scroll-smooth`}
+      className={`${outfit.variable} ${inter.variable}`}
       suppressHydrationWarning
     >
       <head>
-        {/* Anti-Flicker Inline Theme Script */}
+        {/* Set theme class before first paint to prevent flash of wrong theme */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
                 try {
-                  const stored = localStorage.getItem('relyvora-theme');
+                  var stored = localStorage.getItem('relyvora-theme');
                   if (stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
                     document.documentElement.classList.add('dark');
+                    document.documentElement.style.colorScheme = 'dark';
                   } else {
                     document.documentElement.classList.remove('dark');
+                    document.documentElement.style.colorScheme = 'light';
                   }
                 } catch (e) {}
               })();

@@ -9,6 +9,10 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      screens: {
+        // Full desktop navigation breakpoint (below this the header collapses to a drawer)
+        nav: "1100px",
+      },
       colors: {
         site: "var(--bg)",
         surface: "var(--surface)",

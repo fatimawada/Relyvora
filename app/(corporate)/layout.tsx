@@ -6,22 +6,22 @@ import { JsonLd } from '@/components/seo/JsonLd';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://relyvora.com'),
-  title: 'Relyvora | Safe payments for WhatsApp and Instagram sellers in Nigeria',
+  title: 'Relyvora | Safe payments for WhatsApp and Instagram commerce',
   description:
-    'Pay sellers on WhatsApp and Instagram without the fear. Your money is held until your order arrives and you confirm with a six-digit code.',
+    'Pay sellers on WhatsApp and Instagram without the fear. Your money is held until your order arrives and you confirm with a six\u2011digit code.',
   openGraph: {
-    title: 'Relyvora | Safe payments for WhatsApp and Instagram sellers in Nigeria',
+    title: 'Relyvora | Safe payments for WhatsApp and Instagram commerce',
     description:
-      'Pay sellers on WhatsApp and Instagram without the fear. Your money is held until your order arrives and you confirm with a six-digit code.',
+      'Pay sellers on WhatsApp and Instagram without the fear. Your money is held until your order arrives and you confirm with a six\u2011digit code.',
     url: 'https://relyvora.com',
     siteName: 'Relyvora',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Relyvora | Safe payments for WhatsApp and Instagram sellers in Nigeria',
+    title: 'Relyvora | Safe payments for WhatsApp and Instagram commerce',
     description:
-      'Pay sellers on WhatsApp and Instagram without the fear. Your money is held until your order arrives and you confirm with a six-digit code.',
+      'Pay sellers on WhatsApp and Instagram without the fear. Your money is held until your order arrives and you confirm with a six\u2011digit code.',
   },
 };
 

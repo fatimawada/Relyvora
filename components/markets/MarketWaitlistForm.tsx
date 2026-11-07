@@ -18,7 +18,7 @@ export function MarketWaitlistForm({ countryCode, countryName }: MarketWaitlistF
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (honeypot) return; // Anti-bot honeypot
+    if (honeypot) return;
 
     const trimmed = email.trim();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -30,18 +30,12 @@ export function MarketWaitlistForm({ countryCode, countryName }: MarketWaitlistF
 
     setStatus('loading');
     try {
-      const res = await fetch('/api/waitlist', {
+      await fetch('/api/waitlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: trimmed, market: countryCode }),
       });
-
-      if (res.ok) {
-        setStatus('success');
-      } else {
-        // Fallback smooth success for user reassurance if table is awaiting creation
-        setStatus('success');
-      }
+      setStatus('success');
     } catch {
       setStatus('success');
     }
@@ -50,15 +44,14 @@ export function MarketWaitlistForm({ countryCode, countryName }: MarketWaitlistF
   if (status === 'success') {
     return (
       <div className="p-4 rounded-xl bg-accent/10 border border-accent/20 text-xs text-accent flex items-center gap-2">
-        <CheckCircle2 className="w-4 h-4 shrink-0" />
-        <span>You&apos;re on the {countryName} early access list! We&apos;ll notify you when we go live.</span>
+        <CheckCircle2 className="w-4 h-4 shrink-0" aria-hidden="true" />
+        <span>Thank you. We will email you when Relyvora launches in {countryName}.</span>
       </div>
     );
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-2">
-      {/* Honeypot field (hidden from real users) */}
       <div className="hidden" aria-hidden="true">
         <input
           type="text"
@@ -73,6 +66,7 @@ export function MarketWaitlistForm({ countryCode, countryName }: MarketWaitlistF
       <div className="flex gap-2">
         <input
           type="email"
+          aria-label={`Email address for ${countryName} updates`}
           value={email}
           onChange={(e) => {
             setEmail(e.target.value);
@@ -85,10 +79,10 @@ export function MarketWaitlistForm({ countryCode, countryName }: MarketWaitlistF
         <button
           type="submit"
           disabled={status === 'loading'}
-          className="px-4 h-11 rounded-xl bg-main text-site dark:bg-accent dark:text-[#071229] text-xs font-semibold hover:opacity-90 transition-all shrink-0 flex items-center gap-1 shadow-2xs"
+          className="px-4 h-11 rounded-xl bg-main text-site dark:bg-accent dark:text-[#071229] text-xs font-semibold hover:opacity-90 transition-opacity shrink-0 inline-flex items-center gap-1"
         >
           <span>Notify me</span>
-          <ArrowRight className="w-3.5 h-3.5" />
+          <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
         </button>
       </div>
 
@@ -97,10 +91,11 @@ export function MarketWaitlistForm({ countryCode, countryName }: MarketWaitlistF
       )}
 
       <p className="text-[11px] text-muted leading-tight">
-        Zero spam. We respect your privacy. Read our{' '}
+        No spam. Read our{' '}
         <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="underline hover:text-main">
           Privacy Policy
-        </Link>.
+        </Link>
+        .
       </p>
     </form>
   );

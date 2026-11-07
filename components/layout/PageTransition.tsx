@@ -1,30 +1,15 @@
-'use client';
-
 import React from 'react';
-import { LazyMotion, domAnimation, m, useReducedMotion } from 'motion/react';
 
 interface PageTransitionProps {
   children: React.ReactNode;
 }
 
+/**
+ * Lightweight page enter transition (250ms fade + 8px rise).
+ * Pure CSS so server and client markup are identical (no hydration branch),
+ * no transform is left behind after the animation (keeps fixed/sticky children working),
+ * and it is disabled automatically under prefers-reduced-motion (see globals.css).
+ */
 export function PageTransition({ children }: PageTransitionProps) {
-  const shouldReduceMotion = useReducedMotion();
-
-  // If user prefers reduced motion, render immediately without animations
-  if (shouldReduceMotion) {
-    return <>{children}</>;
-  }
-
-  return (
-    <LazyMotion features={domAnimation}>
-      <m.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.25, ease: 'easeOut' }}
-        className="w-full flex-1 flex flex-col"
-      >
-        {children}
-      </m.div>
-    </LazyMotion>
-  );
+  return <div className="page-enter w-full flex-1 flex flex-col">{children}</div>;
 }

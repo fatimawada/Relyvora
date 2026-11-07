@@ -1,7 +1,7 @@
 import { ImageResponse } from 'next/og';
 
 export const runtime = 'edge';
-export const alt = 'Relyvora — Safe payments for WhatsApp and Instagram sellers in Nigeria';
+export const alt = 'Relyvora — Safe payments for WhatsApp and Instagram commerce';
 export const size = {
   width: 1200,
   height: 630,
@@ -26,7 +26,6 @@ export default async function Image() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          {/* Logo Symbol Render */}
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="20 4 90 106"
@@ -60,7 +59,7 @@ export default async function Image() {
               color: '#5BE3AB',
             }}
           >
-            Launching in Nigeria
+            Africa-first payment protection
           </div>
         </div>
 
@@ -69,7 +68,7 @@ export default async function Image() {
             Trade with confidence.
           </div>
           <div style={{ fontSize: '24px', color: '#B4C2DA', lineHeight: 1.5, maxWidth: '850px' }}>
-            Payment protection for WhatsApp and Instagram commerce. Your money is held until your order arrives and you confirm with a six-digit code.
+            Payment protection for WhatsApp and Instagram commerce. Your money is held until your order arrives and you confirm with a six‑digit code.
           </div>
         </div>
 

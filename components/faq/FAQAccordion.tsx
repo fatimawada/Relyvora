@@ -9,26 +9,26 @@ interface FAQItem {
   isTodo?: boolean;
 }
 
-const FAQ_ITEMS: FAQItem[] = [
+export const FAQ_ITEMS: FAQItem[] = [
   {
     question: 'How does Relyvora protect buyers?',
     answer:
-      'When you pay through a Relyvora link, your money is held in regulated Anchor banking custody. The seller is not paid until your package arrives, you physically inspect the items, and you share your secret six-digit release code with the courier or confirm in-app.',
+      'When you pay through a Relyvora link, your money is held with our banking partner. The seller is not paid until your order arrives, you check it, and you confirm with your six\u2011digit release code.',
   },
   {
     question: 'How does Relyvora protect sellers?',
     answer:
-      'You never have to dispatch goods on pay-on-delivery only for buyers to change their mind or fail to answer their phone. You package and ship only after Relyvora verifies that the buyer’s payment has cleared into escrow.',
+      'You only send out an order after Relyvora confirms the buyer has paid. That means no more dispatching on pay\u2011on\u2011delivery and getting a no\u2011show at the door.',
   },
   {
     question: 'How much does Relyvora cost and who pays the fee?',
     answer:
-      'Relyvora charges a flat 3% transaction protection fee paid by the buyer at checkout. The fee is calculated transparently and shown on the payment screen prior to authorization. There are no account maintenance fees or monthly subscriptions.',
+      'A flat 3% fee, paid by the buyer and shown on the payment screen before they pay. There are no monthly subscriptions or account opening fees.',
   },
   {
-    question: 'Where are escrow funds held?',
+    question: 'Where is the money held?',
     answer:
-      'Funds are held in segregated virtual accounts powered by our regulated Banking-as-a-Service partner, Anchor Technologies Limited, in partnership with CBN-licensed financial institutions.',
+      'Payments are powered by our regulated Banking\u2011as\u2011a\u2011Service partner, Anchor Technologies Limited, in partnership with CBN\u2011licensed financial institutions.',
   },
   {
     question: 'What happens if a buyer refuses or rejects a delivery?',
@@ -37,13 +37,13 @@ const FAQ_ITEMS: FAQItem[] = [
     isTodo: true,
   },
   {
-    question: 'What happens if a buyer loses their 6-digit release code?',
+    question: 'What happens if a buyer loses their six\u2011digit release code?',
     answer:
       '[TODO: Policy pending confirmation from Relyvora team — Code reissuance and authentication protocol]',
     isTodo: true,
   },
   {
-    question: 'What are the dispute timelines and resolution SLAs?',
+    question: 'What are the dispute timelines?',
     answer:
       '[TODO: Policy pending confirmation from Relyvora team — Official dispute resolution timeline and investigation SLA]',
     isTodo: true,
@@ -55,7 +55,7 @@ const FAQ_ITEMS: FAQItem[] = [
     isTodo: true,
   },
   {
-    question: 'How quickly does the seller receive payout once the code is entered?',
+    question: 'How quickly does the seller receive their payout after the code is confirmed?',
     answer:
       '[TODO: Policy pending confirmation from Relyvora team — Exact payout settlement turnaround time]',
     isTodo: true,
@@ -63,7 +63,7 @@ const FAQ_ITEMS: FAQItem[] = [
   {
     question: 'Which countries is Relyvora available in?',
     answer:
-      'Relyvora is launching in Nigeria. Expansion into Ghana, Kenya, and South Africa is scheduled on our roadmap, with early access waitlists currently open.',
+      'Relyvora is launching in Nigeria first. Ghana, Kenya, and South Africa are coming soon.',
   },
 ];
 
@@ -75,7 +75,7 @@ export function FAQAccordion() {
   };
 
   return (
-    <div className="space-y-3.5 max-w-3xl mx-auto">
+    <div className="space-y-3.5 max-w-3xl">
       {FAQ_ITEMS.map((item, index) => {
         const isOpen = openIndex === index;
         return (
@@ -94,13 +94,14 @@ export function FAQAccordion() {
                 className={`w-5 h-5 text-muted shrink-0 transition-transform duration-200 ${
                   isOpen ? 'rotate-180 text-accent' : ''
                 }`}
+                aria-hidden="true"
               />
             </button>
 
             {isOpen && (
               <div className="px-5 sm:px-6 pb-6 text-sm sm:text-base text-muted leading-relaxed border-t border-border/60 pt-4">
                 {item.isTodo ? (
-                  <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs font-mono">
+                  <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs font-medium">
                     {item.answer}
                   </div>
                 ) : (

@@ -1,179 +1,211 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ArrowUpRight, Menu, X } from 'lucide-react';
 import { Logo } from '@/components/brand/Logo';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
+const NAV_LINKS = [
+  { label: 'The Problem', href: '/problem' },
+  { label: 'How it works', href: '/how-it-works' },
+  { label: 'Pricing', href: '/pricing' },
+  { label: 'Markets', href: '/markets' },
+  { label: 'FAQ', href: '/faq' },
+  { label: 'Trust & Safety', href: '/trust-and-safety' },
+] as const;
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"]), input, select, textarea';
+
 export function Header() {
   const pathname = usePathname();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [open, setOpen] = useState(false);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
 
-  // Close mobile drawer on route change
+  const close = useCallback(() => setOpen(false), []);
+
+  // Close drawer on route change
   useEffect(() => {
-    setMobileMenuOpen(false);
+    setOpen(false);
   }, [pathname]);
 
-  // Lock body scroll when mobile menu is open
+  // Close the drawer if the viewport grows past the 1100px nav breakpoint
   useEffect(() => {
-    if (mobileMenuOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
+    const media = window.matchMedia('(min-width: 1100px)');
+    const onChange = (e: MediaQueryListEvent) => {
+      if (e.matches) setOpen(false);
     };
-  }, [mobileMenuOpen]);
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
 
-  // Handle escape key
+  // Body scroll lock, Esc to close, focus trap, focus restore
   useEffect(() => {
+    if (!open) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const trigger = triggerRef.current;
+    closeRef.current?.focus();
+
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && mobileMenuOpen) {
-        setMobileMenuOpen(false);
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setOpen(false);
+        return;
+      }
+      if (e.key !== 'Tab' || !drawerRef.current) return;
+      const items = Array.from(drawerRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
       }
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [mobileMenuOpen]);
 
-  const navLinks = [
-    { label: 'The Problem', href: '/problem' },
-    { label: 'How it works', href: '/how-it-works' },
-    { label: 'Pricing', href: '/pricing' },
-    { label: 'Markets', href: '/markets' },
-    { label: 'FAQ', href: '/faq' },
-    { label: 'Trust & Safety', href: '/trust-and-safety' },
-  ];
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', onKeyDown);
+      trigger?.focus();
+    };
+  }, [open]);
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-surface/85 backdrop-blur-md border-b border-border transition-colors duration-200">
-      <div className="max-w-container mx-auto px-4 sm:px-6 h-18 sm:h-20 flex items-center justify-between gap-2 sm:gap-4">
-        {/* Brand Logo */}
-        <div className="flex items-center shrink-0">
-          <div className="sm:hidden">
-            <Logo variant="full" height={28} withLink={true} />
+    <>
+      <header className="sticky top-0 z-40 w-full h-[72px] bg-surface/85 backdrop-blur-md border-b border-border">
+        <div className="max-w-container mx-auto h-full px-4 sm:px-6 grid grid-cols-[auto_1fr_auto] items-center gap-3">
+          {/* Left: logo (32 to 36 px high, links to /) */}
+          <div className="flex items-center">
+            <Link href="/" className="inline-flex items-center rounded-md" aria-label="Relyvora home">
+              <span className="sm:hidden inline-flex">
+                <Logo variant="full" height={32} withLink={false} />
+              </span>
+              <span className="hidden sm:inline-flex">
+                <Logo variant="full" height={34} withLink={false} />
+              </span>
+            </Link>
           </div>
-          <div className="hidden sm:block">
-            <Logo variant="full" height={34} withLink={true} />
+
+          {/* Centre: nav (1100px and above, all on ONE line) */}
+          <nav aria-label="Main navigation" className="hidden nav:flex items-center justify-center gap-1 min-w-0">
+            {NAV_LINKS.map((link) => {
+              const active = pathname === link.href;
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  data-label={link.label}
+                  aria-current={active ? 'page' : undefined}
+                  className="nav-link"
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
+          </nav>
+
+          {/* Right: actions */}
+          <div className="col-start-3 flex items-center justify-end gap-2 sm:gap-2.5">
+            <ThemeToggle />
+            <a
+              href="https://ng.relyvora.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:inline-flex items-center gap-1.5 px-4 h-11 nav:h-10 rounded-btn text-sm font-semibold whitespace-nowrap bg-main text-site hover:opacity-90 dark:bg-accent dark:text-[#071229] transition-opacity"
+            >
+              <span>Go to Relyvora NG</span>
+              <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />
+              <span className="sr-only">(opens in a new tab)</span>
+            </a>
+            <button
+              ref={triggerRef}
+              type="button"
+              onClick={() => setOpen(true)}
+              className="nav:hidden w-11 h-11 rounded-btn border border-border bg-surface text-main inline-flex items-center justify-center hover:border-accent transition-colors"
+              aria-label="Open menu"
+              aria-expanded={open}
+              aria-controls="mobile-drawer"
+            >
+              <Menu className="w-5 h-5" aria-hidden="true" />
+            </button>
           </div>
         </div>
+      </header>
 
-        {/* Desktop Navigation */}
-        <nav
-          className="hidden lg:flex items-center gap-1 xl:gap-2 text-[15px]"
-          aria-label="Main navigation"
+      {/* Mobile drawer: slides in from the right, full height */}
+      <div className={`nav:hidden fixed inset-0 z-50 ${open ? '' : 'pointer-events-none'}`} aria-hidden={!open}>
+        <div
+          className="drawer-backdrop absolute inset-0 bg-[#0A1B3D]/50"
+          data-open={open}
+          onClick={close}
+        />
+        <div
+          id="mobile-drawer"
+          ref={drawerRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Site menu"
+          data-open={open}
+          inert={!open}
+          className="drawer-panel absolute top-0 right-0 h-full w-[min(88vw,380px)] bg-surface border-l border-border shadow-2xl flex flex-col"
         >
-          {navLinks.map((link) => {
-            const isActive = pathname === link.href;
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                aria-current={isActive ? 'page' : undefined}
-                className={`px-3.5 py-1.5 rounded-full transition-colors duration-150 ${
-                  isActive
-                    ? 'font-semibold text-accent bg-accent/10'
-                    : 'font-medium text-main hover:text-accent'
-                }`}
-              >
-                {link.label}
-              </Link>
-            );
-          })}
+          <div className="h-[72px] px-5 flex items-center justify-between border-b border-border shrink-0">
+            <Logo variant="full" height={32} withLink={false} />
+            <button
+              ref={closeRef}
+              type="button"
+              onClick={close}
+              className="w-11 h-11 rounded-btn border border-border bg-surface text-main inline-flex items-center justify-center hover:border-accent transition-colors"
+              aria-label="Close menu"
+            >
+              <X className="w-5 h-5" aria-hidden="true" />
+            </button>
+          </div>
 
-          {/* External Foundation Link with arrow */}
-          <a
-            href="https://foundation.relyvora.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3.5 py-1.5 font-medium text-main hover:text-accent transition-colors duration-150 inline-flex items-center gap-1"
-          >
-            <span>Foundation</span>
-            <ArrowUpRight className="w-3.5 h-3.5 opacity-70" />
-          </a>
-        </nav>
+          <nav aria-label="Mobile navigation" className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-1">
+            {NAV_LINKS.map((link) => {
+              const active = pathname === link.href;
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  aria-current={active ? 'page' : undefined}
+                  onClick={close}
+                  className={`h-12 px-4 rounded-xl flex items-center text-base whitespace-nowrap transition-colors ${
+                    active ? 'font-semibold text-accent bg-accent/10' : 'font-medium text-main hover:bg-site'
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
+          </nav>
 
-        {/* Header Right Actions */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          {/* Theme Toggle (Light / Dark) */}
-          <ThemeToggle />
-
-          {/* Go to Relyvora NG Button */}
-          <a
-            href="https://ng.relyvora.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hidden sm:inline-flex items-center gap-1.5 px-4 h-11 rounded-btn text-sm font-semibold bg-main text-site hover:opacity-90 dark:bg-accent dark:text-[#071229] transition-all shadow-xs"
-          >
-            <span>Go to Relyvora NG</span>
-            <ArrowUpRight className="w-3.5 h-3.5" />
-          </a>
-
-          {/* Mobile Hamburger Button */}
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            type="button"
-            className="lg:hidden w-10 h-10 sm:w-11 sm:h-11 rounded-btn border border-border bg-surface text-main flex items-center justify-center hover:border-accent transition-colors"
-            aria-label={mobileMenuOpen ? 'Close navigation drawer' : 'Open navigation drawer'}
-            aria-expanded={mobileMenuOpen}
-          >
-            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
+          <div className="shrink-0 border-t border-border p-4 flex items-center gap-3">
+            <ThemeToggle />
+            <a
+              href="https://ng.relyvora.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 inline-flex items-center justify-center gap-1.5 h-11 rounded-btn text-sm font-semibold whitespace-nowrap bg-main text-site hover:opacity-90 dark:bg-accent dark:text-[#071229] transition-opacity"
+            >
+              <span>Go to Relyvora NG</span>
+              <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />
+              <span className="sr-only">(opens in a new tab)</span>
+            </a>
+          </div>
         </div>
       </div>
-
-      {/* Accessible Mobile Navigation Drawer */}
-      {mobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 top-18 sm:top-20 z-50 bg-[#0A1B3D]/50 backdrop-blur-xs flex flex-col justify-start">
-          <div className="w-full bg-surface border-b border-border p-6 shadow-xl space-y-4 max-h-[calc(100vh-72px)] sm:max-h-[calc(100vh-80px)] overflow-y-auto animate-fadeIn">
-            <nav className="flex flex-col space-y-1.5" aria-label="Mobile navigation">
-              {navLinks.map((link) => {
-                const isActive = pathname === link.href;
-                return (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    aria-current={isActive ? 'page' : undefined}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`px-4 py-3 rounded-xl text-base transition-colors ${
-                      isActive
-                        ? 'font-semibold text-accent bg-accent/10'
-                        : 'font-medium text-main hover:bg-site'
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                );
-              })}
-
-              <a
-                href="https://foundation.relyvora.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-4 py-3 rounded-xl text-base font-medium text-main hover:bg-site flex items-center justify-between"
-              >
-                <span>Relyvora Foundation</span>
-                <ArrowUpRight className="w-4 h-4 opacity-70" />
-              </a>
-            </nav>
-
-            <div className="pt-4 border-t border-border">
-              <a
-                href="https://ng.relyvora.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full h-12 rounded-btn font-semibold bg-main text-site dark:bg-accent dark:text-[#071229] flex items-center justify-center gap-2 shadow-sm"
-              >
-                <span>Go to Relyvora NG</span>
-                <ArrowUpRight className="w-4 h-4" />
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
-    </header>
+    </>
   );
 }

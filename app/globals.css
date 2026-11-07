@@ -74,6 +74,142 @@ h3, .h3 {
   line-height: 1.3;
 }
 
+h1, h2, h3, h4, .h1, .h2, .h3 {
+  text-wrap: balance;
+}
+
+/* Single section-label style used everywhere on marketing pages */
+.section-label {
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+/* Keep short hyphenated phrases on one line */
+.nowrap {
+  white-space: nowrap;
+}
+
+/* ---------------- Header navigation ---------------- */
+.nav-link {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 9999px;
+  white-space: nowrap;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-weight: 500;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--text);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Reserve the bold width so the active state never shifts the nav */
+.nav-link::after {
+  content: attr(data-label);
+  display: block;
+  height: 0;
+  visibility: hidden;
+  overflow: hidden;
+  font-weight: 600;
+  user-select: none;
+  pointer-events: none;
+}
+
+.nav-link:hover {
+  background-color: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.nav-link[aria-current='page'] {
+  font-weight: 600;
+  color: var(--accent);
+  background-color: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.nav-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Mobile drawer */
+.drawer-panel {
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.drawer-panel[data-open='true'] {
+  transform: translateX(0);
+}
+
+.drawer-backdrop {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.drawer-backdrop[data-open='true'] {
+  opacity: 1;
+}
+
+/* Page enter transition (opacity + small rise, no lingering transform) */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.page-enter {
+  animation: page-enter 0.25s ease-out;
+}
+
+/* Hero poster crossfade (phones / low-end devices) */
+@keyframes poster-cycle {
+  0% { opacity: 0; }
+  4% { opacity: 1; }
+  25% { opacity: 1; }
+  29% { opacity: 0; }
+  100% { opacity: 0; }
+}
+
+.poster-cycle {
+  opacity: 0;
+  animation: poster-cycle 24s infinite;
+}
+
+.hero-glow {
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 22%, transparent), transparent 75%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer-panel,
+  .drawer-backdrop {
+    transition: none;
+  }
+  .page-enter {
+    animation: none;
+  }
+  .poster-cycle {
+    animation: none;
+  }
+  .card-lift,
+  .card-lift:hover {
+    transition: none;
+    transform: none;
+  }
+}
+
 /* Card Depth (Outside Hero, No WebGL) */
 .card-perspective {
   perspective: 1000px;

@@ -1,253 +1,271 @@
 import React from 'react';
+import type { Metadata } from 'next';
 import Link from 'next/link';
-import { 
-  ShieldCheck, 
-  ArrowRight, 
-  ArrowUpRight, 
-  Lock, 
-  CheckCircle2, 
-  Store, 
-  ShoppingBag, 
-  Package, 
-  KeyRound, 
-  Percent, 
-  Globe 
-} from 'lucide-react';
-import { Logo } from '@/components/brand/Logo';
+import { ArrowRight, ArrowUpRight, Percent, ShoppingBag, Store } from 'lucide-react';
 import { FlagIcon } from '@/components/flags/FlagIcon';
-import { HeroSymbolWrapper } from '@/components/hero/HeroSymbolWrapper';
-import { LAUNCH_STATUS, calculateFee, formatNaira } from '@/lib/feeConfig';
+import { HeroStage } from '@/components/hero/HeroStage';
+import { PhoneCodeMock } from '@/components/how-it-works/PhoneCodeMock';
+import { LegacyHashRedirect } from '@/components/layout/LegacyHashRedirect';
+import { LAUNCH_STATUS, calculateFee } from '@/lib/feeConfig';
+
+export const metadata: Metadata = {
+  title: 'Relyvora | Safe payments for WhatsApp and Instagram commerce',
+  description:
+    'Pay sellers on WhatsApp and Instagram without the fear. Your money is held until your order arrives and you confirm with a six\u2011digit code. Payments powered by Anchor.',
+  alternates: { canonical: '/' },
+};
+
+const SIX_DIGIT = <span className="nowrap">six-digit</span>;
+
+const STEPS = [
+  {
+    title: 'Seller creates a link',
+    body: 'The seller enters the item and agreed price, then shares the payment link in the chat.',
+  },
+  {
+    title: 'Buyer pays',
+    body: 'The buyer pays through Relyvora. The money is held with our banking partner, not sent to the seller yet.',
+  },
+  {
+    title: 'Seller sends the order',
+    body: 'With the payment held, the seller sends the order to the buyer.',
+  },
+  {
+    title: 'Buyer confirms',
+    body: (
+      <>
+        The buyer checks the order and confirms with their {SIX_DIGIT} code. The money is released to the seller.
+      </>
+    ),
+  },
+];
+
+const PROBLEMS = [
+  {
+    title: <span className="nowrap">Pay-on-delivery</span>,
+    rest: ' no-shows. The seller pays a rider, and the buyer does not pick up at the door.',
+  },
+  {
+    title: 'Fake transfer alerts.',
+    rest: ' A screenshot that looks like payment, but the money never arrives.',
+  },
+  {
+    title: 'Paying and hoping.',
+    rest: ' The buyer transfers first, then the seller goes quiet.',
+  },
+];
+
+const MARKETS = [
+  { code: 'NG' as const, name: 'Nigeria', currency: 'Naira (NGN)', live: true },
+  { code: 'GH' as const, name: 'Ghana', currency: 'Cedi (GHS)', live: false },
+  { code: 'KE' as const, name: 'Kenya', currency: 'Shilling (KES)', live: false },
+  { code: 'ZA' as const, name: 'South Africa', currency: 'Rand (ZAR)', live: false },
+];
 
 export default function HomePage() {
-  const exampleCalculation = calculateFee(45000);
+  const example = calculateFee(45000);
+  const nigeriaStatus = LAUNCH_STATUS === 'launching' ? 'Starting here' : 'Live';
 
   return (
-    <div className="w-full space-y-24 sm:space-y-32 py-12 sm:py-16">
+    <div className="w-full">
+      <LegacyHashRedirect />
+
       {/* ------------------------------------------------------------- */}
-      {/* HERO SECTION */}
+      {/* HERO (page background)                                         */}
       {/* ------------------------------------------------------------- */}
-      <section className="max-w-container mx-auto px-6">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
-          {/* Left Column (1.1 ratio ~ col-span-7) */}
-          <div className="lg:col-span-7 space-y-6 text-left">
-            {/* Launch Status Badge */}
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-border bg-surface text-xs font-semibold text-accent shadow-2xs">
-              <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-              <span>
-                {LAUNCH_STATUS === 'launching' ? 'Launching in Nigeria' : 'Live in Nigeria'}
-              </span>
+      <section className="max-w-container mx-auto px-6 pt-10 pb-14 sm:pt-14 sm:pb-20">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-8 items-center">
+          <div className="lg:col-span-7 space-y-6">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-border bg-surface text-[13px] font-semibold text-accent">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent" aria-hidden="true" />
+              <span>Africa-first payment protection</span>
             </div>
 
-            {/* H1 Heading */}
-            <h1 className="text-main tracking-tight leading-[1.06]">
-              Trade with<br />
+            <h1 className="text-main">
+              Trade with{' '}
+              <br />
               <span className="text-accent">confidence.</span>
             </h1>
 
-            {/* Subheading Body */}
             <p className="text-muted text-base sm:text-lg max-w-xl leading-relaxed">
-              Pay sellers on WhatsApp and Instagram without the fear. Your money is held until your order arrives and you confirm with a six-digit code.
+              Pay sellers on WhatsApp and Instagram without the fear. Your money is held until your order arrives and you
+              confirm with a {SIX_DIGIT} code.
             </p>
 
-            {/* Action Buttons */}
             <div className="pt-2 flex flex-wrap items-center gap-3 sm:gap-4">
-              <a
-                href="#how-it-works"
-                className="px-6 h-12 rounded-btn font-semibold text-sm bg-main text-site dark:bg-accent dark:text-[#071229] hover:opacity-90 transition-all flex items-center justify-center gap-2 shadow-xs"
+              <Link
+                href="/how-it-works"
+                className="px-6 h-12 rounded-btn font-semibold text-sm bg-main text-site dark:bg-accent dark:text-[#071229] hover:opacity-90 transition-opacity inline-flex items-center justify-center gap-2"
               >
                 <span>I&apos;m buying</span>
-                <ArrowRight className="w-4 h-4" />
-              </a>
-
+                <ArrowRight className="w-4 h-4" aria-hidden="true" />
+              </Link>
               <a
                 href="https://ng.relyvora.com"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-6 h-12 rounded-btn font-semibold text-sm border border-border bg-surface text-main hover:border-accent hover:text-accent transition-all flex items-center justify-center gap-2 shadow-xs"
+                className="px-6 h-12 rounded-btn font-semibold text-sm border border-border bg-surface text-main hover:border-accent hover:text-accent transition-colors inline-flex items-center justify-center gap-2"
               >
                 <span>I&apos;m selling</span>
-                <ArrowUpRight className="w-4 h-4 opacity-70" />
+                <ArrowUpRight className="w-4 h-4 opacity-70" aria-hidden="true" />
+                <span className="sr-only">(opens ng.relyvora.com in a new tab)</span>
               </a>
             </div>
 
-            {/* Trust Line */}
-            <div className="pt-2 flex items-center gap-2 text-xs text-muted">
-              <ShieldCheck className="w-4 h-4 text-accent" />
-              <span>Payments powered by Anchor</span>
-            </div>
+            <p className="pt-1 flex items-center gap-2 text-sm text-muted">
+              <span className="w-1.5 h-1.5 rounded-full bg-muted/60" aria-hidden="true" />
+              Payments powered by Anchor
+            </p>
           </div>
 
-          {/* Right Column (0.9 ratio ~ col-span-5) - Brand Symbol Presentation */}
-          <div className="lg:col-span-5 flex items-center justify-center">
-            <div className="relative w-full max-w-[380px] aspect-square rounded-3xl border border-border bg-surface p-4 flex items-center justify-center shadow-lg transition-transform card-lift overflow-hidden">
-              <HeroSymbolWrapper />
-              <div className="absolute bottom-3 left-6 right-6 text-center text-xs font-medium text-muted pointer-events-none">
-                Transaction Protection Infrastructure
-              </div>
-            </div>
+          <div className="lg:col-span-5">
+            <HeroStage />
           </div>
         </div>
       </section>
 
       {/* ------------------------------------------------------------- */}
-      {/* THREE VALUE CARDS */}
+      {/* THE PROBLEM BAND (surface)                                     */}
       {/* ------------------------------------------------------------- */}
-      <section className="max-w-container mx-auto px-6">
-        <div className="text-center max-w-2xl mx-auto space-y-3 mb-12">
-          <h2 className="text-main">
-            Protection built for both sides of social trade.
-          </h2>
-          <p className="text-muted text-base">
-            No complicated apps or paperwork. Relyvora creates a neutral escrow contract over a secure web link.
+      <section className="bg-surface border-y border-border">
+        <div className="max-w-container mx-auto px-6 py-14 sm:py-16 space-y-8">
+          <div className="max-w-2xl space-y-3">
+            <p className="section-label">The problem</p>
+            <h2 className="text-main">Buying in the DMs still runs on trust you cannot check.</h2>
+          </div>
+          <ul className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {PROBLEMS.map((item, i) => (
+              <li key={i} className="p-5 rounded-card border border-border bg-site text-[15px] leading-relaxed text-muted">
+                <span className="font-semibold text-main">{item.title}</span>
+                {item.rest}
+              </li>
+            ))}
+          </ul>
+          <Link href="/problem" className="inline-flex items-center gap-2 text-sm font-semibold text-accent hover:underline">
+            <span>Read more about the problem</span>
+            <ArrowRight className="w-4 h-4" aria-hidden="true" />
+          </Link>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------- */}
+      {/* VALUE CARDS (page background)                                  */}
+      {/* ------------------------------------------------------------- */}
+      <section className="max-w-container mx-auto px-6 py-14 sm:py-20 space-y-10">
+        <div className="max-w-2xl space-y-3">
+          <h2 className="text-main">Safe for the buyer. Fair for the seller.</h2>
+          <p className="text-muted text-base sm:text-lg">
+            Relyvora works through a secure link you share in your WhatsApp or Instagram chat.
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 card-perspective">
-          {/* Card 1: Safe for buyers */}
-          <div className="p-8 rounded-card border border-border bg-surface card-lift space-y-4">
+          <div className="p-7 card-lift space-y-4">
             <div className="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center">
-              <ShoppingBag className="w-6 h-6" />
+              <ShoppingBag className="w-6 h-6" aria-hidden="true" />
             </div>
-            <h3 className="text-main text-xl font-semibold">Safe for buyers</h3>
+            <h3 className="text-main text-xl">Safe for buyers</h3>
             <p className="text-muted text-[15px] leading-relaxed">
-              Never worry about sending money to an Instagram or WhatsApp vendor and hoping for the best. Your money is held in regulated custody until your package is in your hands.
+              Pay without wondering if the seller will deliver. Your money is held with our banking partner until your order
+              arrives and you confirm with your code.
             </p>
           </div>
 
-          {/* Card 2: Fair for sellers */}
-          <div className="p-8 rounded-card border border-border bg-surface card-lift space-y-4">
+          <div className="p-7 card-lift space-y-4">
             <div className="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center">
-              <Store className="w-6 h-6" />
+              <Store className="w-6 h-6" aria-hidden="true" />
             </div>
-            <h3 className="text-main text-xl font-semibold">Fair for sellers</h3>
+            <h3 className="text-main text-xl">Fair for sellers</h3>
             <p className="text-muted text-[15px] leading-relaxed">
-              Say goodbye to dispatching inventory on pay-on-delivery only for buyers to cancel or go unreachable. Pack and ship with confidence knowing payment is verified and waiting.
+              Ship knowing the buyer has already paid. No more sending out an order and getting a <span className="nowrap">no-show</span> at the door.
             </p>
           </div>
 
-          {/* Card 3: Clear pricing */}
-          <div className="p-8 rounded-card border border-border bg-surface card-lift space-y-4">
+          <div className="p-7 card-lift space-y-4">
             <div className="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center">
-              <Percent className="w-6 h-6" />
+              <Percent className="w-6 h-6" aria-hidden="true" />
             </div>
-            <h3 className="text-main text-xl font-semibold">Clear pricing</h3>
-            <p className="text-muted text-[15px] leading-relaxed">
-              A flat 3% transaction protection fee paid by the buyer. Calculated transparently upfront before payment so there are no surprises or hidden maintenance deductions.
-            </p>
+            <h3 className="text-main text-xl">Clear pricing</h3>
+            <p className="text-muted text-[15px] leading-relaxed">A flat 3%, paid by the buyer and shown before they pay.</p>
           </div>
         </div>
       </section>
 
       {/* ------------------------------------------------------------- */}
-      {/* FOUR-STEP SUMMARY */}
+      {/* HOW IT WORKS: four steps + phone mock (surface)                */}
       {/* ------------------------------------------------------------- */}
-      <section id="how-it-works" className="max-w-container mx-auto px-6">
-        <div className="p-8 sm:p-14 rounded-3xl border border-border bg-surface space-y-12 shadow-sm">
-          <div className="max-w-2xl space-y-3">
-            <div className="text-xs font-semibold uppercase tracking-wider text-accent">
-              The 4-Step Escrow Workflow
-            </div>
-            <h2 className="text-main">
-              How Relyvora protects your transactions.
-            </h2>
-            <p className="text-muted text-base">
-              Turn social media direct messages into safe, confirmed transactions in four clear steps.
-            </p>
-          </div>
+      <section className="bg-surface border-y border-border">
+        <div className="max-w-container mx-auto px-6 py-14 sm:py-20">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
+            <div className="lg:col-span-7 space-y-8">
+              <div className="max-w-2xl space-y-3">
+                <p className="section-label">How it works</p>
+                <h2 className="text-main">Four steps, from chat to delivery.</h2>
+              </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* Step 1 */}
-            <div className="space-y-3 p-5 rounded-2xl bg-site border border-border/80">
-              <div className="text-xs font-semibold text-accent">STEP 01</div>
-              <h4 className="text-base font-semibold text-main">Seller creates link</h4>
-              <p className="text-sm text-muted leading-relaxed">
-                The seller enters the agreed item name and price, generating a secure escrow link for the customer.
-              </p>
-            </div>
+              <ol className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {STEPS.map((s, i) => (
+                  <li key={s.title} className="p-5 rounded-2xl bg-site border border-border space-y-2">
+                    <div className="text-[13px] font-semibold text-accent">Step {i + 1}</div>
+                    <h3 className="text-base font-semibold text-main">{s.title}</h3>
+                    <p className="text-sm text-muted leading-relaxed">{s.body}</p>
+                  </li>
+                ))}
+              </ol>
 
-            {/* Step 2 */}
-            <div className="space-y-3 p-5 rounded-2xl bg-site border border-border/80">
-              <div className="text-xs font-semibold text-accent">STEP 02</div>
-              <h4 className="text-base font-semibold text-main">Buyer locks payment</h4>
-              <p className="text-sm text-muted leading-relaxed">
-                The buyer pays securely into Anchor custody. Funds are held safely; neither party can tamper with them.
-              </p>
+              <Link
+                href="/how-it-works"
+                className="inline-flex items-center gap-2 text-sm font-semibold text-accent hover:underline"
+              >
+                <span>See the full walkthrough</span>
+                <ArrowRight className="w-4 h-4" aria-hidden="true" />
+              </Link>
             </div>
 
-            {/* Step 3 */}
-            <div className="space-y-3 p-5 rounded-2xl bg-site border border-border/80">
-              <div className="text-xs font-semibold text-accent">STEP 03</div>
-              <h4 className="text-base font-semibold text-main">Seller dispatches</h4>
-              <p className="text-sm text-muted leading-relaxed">
-                Knowing payment is locked, the seller dispatches the package to the buyer&apos;s delivery address.
-              </p>
+            <div className="lg:col-span-5 flex justify-center">
+              <PhoneCodeMock />
             </div>
-
-            {/* Step 4 */}
-            <div className="space-y-3 p-5 rounded-2xl bg-site border border-border/80">
-              <div className="text-xs font-semibold text-accent">STEP 04</div>
-              <h4 className="text-base font-semibold text-main">Doorstep code release</h4>
-              <p className="text-sm text-muted leading-relaxed">
-                The buyer inspects the order and confirms with their secret 6-digit code, releasing funds to the seller.
-              </p>
-            </div>
-          </div>
-
-          <div className="pt-2 text-center">
-            <Link
-              href="/how-it-works"
-              className="inline-flex items-center gap-2 text-sm font-semibold text-accent hover:underline"
-            >
-              <span>Explore the full walkthrough with interactive demo</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
           </div>
         </div>
       </section>
 
       {/* ------------------------------------------------------------- */}
-      {/* PRICING TEASER */}
+      {/* PRICING (page background)                                      */}
       {/* ------------------------------------------------------------- */}
-      <section className="max-w-container mx-auto px-6">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center p-8 sm:p-12 rounded-3xl border border-border bg-surface">
+      <section className="max-w-container mx-auto px-6 py-14 sm:py-20">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
           <div className="lg:col-span-7 space-y-4">
-            <div className="text-xs font-semibold uppercase tracking-wider text-accent">
-              Transparent Pricing
-            </div>
-            <h2 className="text-main">
-              Flat 3% buyer protection fee.
-            </h2>
-            <p className="text-muted text-base leading-relaxed">
-              We charge a straightforward 3% fee, paid by the buyer at checkout. No setup fees, no monthly software subscriptions, and no surprise charges.
-            </p>
+            <p className="section-label">Pricing</p>
+            <h2 className="text-main">Flat 3%, paid by the buyer.</h2>
+            <p className="text-muted text-base sm:text-lg">A flat 3% fee, paid by the buyer at checkout.</p>
             <div className="pt-2">
               <Link
                 href="/pricing"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-btn text-sm font-semibold border border-border bg-site hover:border-accent text-main hover:text-accent transition-all"
+                className="inline-flex items-center gap-2 px-5 h-11 rounded-btn text-sm font-semibold border border-border bg-surface hover:border-accent text-main hover:text-accent transition-colors"
               >
-                <span>Open interactive fee calculator</span>
-                <ArrowRight className="w-4 h-4" />
+                <span>Open the fee calculator</span>
+                <ArrowRight className="w-4 h-4" aria-hidden="true" />
               </Link>
             </div>
           </div>
 
-          <div className="lg:col-span-5 p-6 rounded-2xl bg-site border border-border space-y-4">
+          <div className="lg:col-span-5 p-6 rounded-card bg-surface border border-border space-y-4">
             <div className="flex items-center justify-between text-xs text-muted font-medium">
-              <span>Illustrative example</span>
-              <span className="text-accent font-semibold">3% Rate</span>
+              <span>Example</span>
+              <span className="text-accent font-semibold">3%</span>
             </div>
             <div className="space-y-2.5 pt-2 border-t border-border text-sm">
               <div className="flex justify-between text-muted">
-                <span>Agreed Item Price</span>
-                <span className="font-semibold text-main">{exampleCalculation.formattedItemPrice}</span>
+                <span>Item price</span>
+                <span className="font-semibold text-main">{example.formattedItemPrice}</span>
               </div>
               <div className="flex justify-between text-muted">
-                <span>Relyvora Protection Fee (3%)</span>
-                <span className="font-semibold text-accent">{exampleCalculation.formattedFeeAmount}</span>
+                <span>Relyvora fee (3%)</span>
+                <span className="font-semibold text-accent">{example.formattedFeeAmount}</span>
               </div>
               <div className="flex justify-between pt-2 border-t border-border font-semibold text-main text-base">
-                <span>Total Buyer Pays</span>
-                <span>{exampleCalculation.formattedTotalAmount}</span>
+                <span>Buyer pays</span>
+                <span>{example.formattedTotalAmount}</span>
               </div>
             </div>
           </div>
@@ -255,168 +273,114 @@ export default function HomePage() {
       </section>
 
       {/* ------------------------------------------------------------- */}
-      {/* MARKETS TEASER */}
+      {/* MARKETS (surface)                                              */}
       {/* ------------------------------------------------------------- */}
-      <section className="max-w-container mx-auto px-6">
-        <div className="p-8 sm:p-12 rounded-3xl border border-border bg-surface space-y-8">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="text-xs font-semibold uppercase tracking-wider text-accent">
-                Regional Coverage
-              </div>
-              <h2 className="text-main text-2xl sm:text-3xl">
-                Built for African commerce.
-              </h2>
+      <section className="bg-surface border-y border-border">
+        <div className="max-w-container mx-auto px-6 py-14 sm:py-20 space-y-8">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            <div className="space-y-3">
+              <p className="section-label">Markets</p>
+              <h2 className="text-main">Built for African commerce.</h2>
             </div>
-            <Link
-              href="/markets"
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent hover:underline self-start sm:self-auto"
-            >
-              <span>View all market timelines</span>
-              <ArrowRight className="w-4 h-4" />
+            <Link href="/markets" className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent hover:underline">
+              <span>View markets</span>
+              <ArrowRight className="w-4 h-4" aria-hidden="true" />
             </Link>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Nigeria */}
-            <div className="p-5 rounded-2xl bg-site border border-border space-y-3">
-              <div className="flex items-center justify-between">
-                <FlagIcon country="NG" size={26} />
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-accent/10 text-accent">
-                  Launching
-                </span>
-              </div>
-              <div>
-                <div className="font-semibold text-main">Nigeria</div>
-                <div className="text-xs text-muted">Operational launch market</div>
-              </div>
-            </div>
-
-            {/* Ghana */}
-            <div className="p-5 rounded-2xl bg-site border border-border space-y-3">
-              <div className="flex items-center justify-between">
-                <FlagIcon country="GH" size={26} />
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-border text-muted">
-                  Coming soon
-                </span>
-              </div>
-              <div>
-                <div className="font-semibold text-main">Ghana</div>
-                <div className="text-xs text-muted">Accra &amp; Kumasi waitlist</div>
-              </div>
-            </div>
-
-            {/* Kenya */}
-            <div className="p-5 rounded-2xl bg-site border border-border space-y-3">
-              <div className="flex items-center justify-between">
-                <FlagIcon country="KE" size={26} />
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-border text-muted">
-                  Coming soon
-                </span>
-              </div>
-              <div>
-                <div className="font-semibold text-main">Kenya</div>
-                <div className="text-xs text-muted">Nairobi waitlist</div>
-              </div>
-            </div>
-
-            {/* South Africa */}
-            <div className="p-5 rounded-2xl bg-site border border-border space-y-3">
-              <div className="flex items-center justify-between">
-                <FlagIcon country="ZA" size={26} />
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-border text-muted">
-                  Coming soon
-                </span>
-              </div>
-              <div>
-                <div className="font-semibold text-main">South Africa</div>
-                <div className="text-xs text-muted">Johannesburg &amp; Cape Town</div>
-              </div>
-            </div>
-          </div>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {MARKETS.map((m) => (
+              <li key={m.code} className="p-5 rounded-2xl bg-site border border-border space-y-3">
+                <div className="flex items-center justify-between">
+                  <FlagIcon country={m.code} size={26} />
+                  <span
+                    className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${
+                      m.live ? 'bg-accent/10 text-accent' : 'bg-border text-muted'
+                    }`}
+                  >
+                    {m.live ? nigeriaStatus : 'Coming soon'}
+                  </span>
+                </div>
+                <div>
+                  <div className="font-semibold text-main">{m.name}</div>
+                  <div className="text-sm text-muted">{m.currency}</div>
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 
       {/* ------------------------------------------------------------- */}
-      {/* TOP 4 FAQS TEASER */}
+      {/* FAQ TEASER (page background)                                   */}
       {/* ------------------------------------------------------------- */}
-      <section className="max-w-container mx-auto px-6 space-y-8">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="text-xs font-semibold uppercase tracking-wider text-accent">
-              Questions &amp; Answers
-            </div>
-            <h2 className="text-main text-2xl sm:text-3xl">
-              Frequently asked questions.
-            </h2>
+      <section className="max-w-container mx-auto px-6 py-14 sm:py-20 space-y-8">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div className="space-y-3">
+            <p className="section-label">Questions</p>
+            <h2 className="text-main">Frequently asked questions.</h2>
           </div>
-          <Link
-            href="/faq"
-            className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent hover:underline self-start sm:self-auto"
-          >
-            <span>See full FAQ directory</span>
-            <ArrowRight className="w-4 h-4" />
+          <Link href="/faq" className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent hover:underline">
+            <span>See all questions</span>
+            <ArrowRight className="w-4 h-4" aria-hidden="true" />
           </Link>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div className="p-6 rounded-card border border-border bg-surface space-y-2">
-            <h4 className="font-semibold text-main text-base">How does Relyvora protect buyers?</h4>
+            <h3 className="font-semibold text-main text-base">How does Relyvora protect buyers?</h3>
             <p className="text-muted text-sm leading-relaxed">
-              When you pay through a Relyvora link, your money is held safely in Anchor-powered banking custody. The seller is not paid until you inspect your package and provide your secret 6-digit release code.
+              When you pay through a Relyvora link, your money is held with our banking partner. The seller is not paid until
+              your order arrives and you confirm with your {SIX_DIGIT} code.
             </p>
           </div>
-
           <div className="p-6 rounded-card border border-border bg-surface space-y-2">
-            <h4 className="font-semibold text-main text-base">How does Relyvora protect sellers?</h4>
+            <h3 className="font-semibold text-main text-base">How does Relyvora protect sellers?</h3>
             <p className="text-muted text-sm leading-relaxed">
-              You no longer have to risk your inventory or delivery fees on pay-on-delivery. You dispatch only after Relyvora verifies that the buyer&apos;s payment is locked in escrow.
+              You send the order only after the buyer has paid and the money is held, so you are not left with a{' '}
+              <span className="nowrap">no-show</span> at the door.
             </p>
           </div>
-
           <div className="p-6 rounded-card border border-border bg-surface space-y-2">
-            <h4 className="font-semibold text-main text-base">Who pays the 3% protection fee?</h4>
+            <h3 className="font-semibold text-main text-base">Who pays the 3% fee?</h3>
             <p className="text-muted text-sm leading-relaxed">
-              The buyer pays the 3% protection fee at checkout. The fee is calculated transparently and shown on the payment screen before any payment is initiated.
+              The buyer pays the 3% fee at checkout. It is shown on the payment screen before they pay.
             </p>
           </div>
-
           <div className="p-6 rounded-card border border-border bg-surface space-y-2">
-            <h4 className="font-semibold text-main text-base">Where is the money held?</h4>
+            <h3 className="font-semibold text-main text-base">Where is the money held?</h3>
             <p className="text-muted text-sm leading-relaxed">
-              Funds are held in segregated accounts powered by our regulated Banking-as-a-Service partner, Anchor Technologies Limited, in partnership with CBN-licensed financial institutions.
+              Payments are powered by our regulated Banking<span className="nowrap">-as-a-</span>Service partner, Anchor
+              Technologies Limited, in partnership with <span className="nowrap">CBN-licensed</span> financial institutions.
             </p>
           </div>
         </div>
       </section>
 
       {/* ------------------------------------------------------------- */}
-      {/* FINAL CALL TO ACTION */}
+      {/* FINAL CTA (surface, centred)                                   */}
       {/* ------------------------------------------------------------- */}
-      <section className="max-w-container mx-auto px-6">
-        <div className="p-10 sm:p-16 rounded-3xl border border-border bg-surface text-center space-y-6 shadow-sm">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 text-accent text-xs font-semibold">
-            <span>Social Commerce Protection</span>
-          </div>
-          <h2 className="text-main max-w-xl mx-auto">
-            Ready to trade without the fear?
-          </h2>
-          <p className="text-muted text-base max-w-lg mx-auto leading-relaxed">
-            Join buyers and merchants creating safe, verified transactions on WhatsApp and Instagram across Nigeria.
+      <section className="bg-surface border-t border-border">
+        <div className="max-w-container mx-auto px-6 py-16 sm:py-20 text-center space-y-5">
+          <p className="section-label">Get started</p>
+          <h2 className="text-main max-w-xl mx-auto">Ready to trade without the fear?</h2>
+          <p className="text-muted text-base sm:text-lg max-w-lg mx-auto">
+            Send your next payment link, or pay your next seller, through Relyvora.
           </p>
           <div className="pt-2 flex flex-wrap items-center justify-center gap-4">
             <a
               href="https://ng.relyvora.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-6 h-12 rounded-btn font-semibold text-sm bg-main text-site dark:bg-accent dark:text-[#071229] hover:opacity-90 transition-all flex items-center justify-center gap-2 shadow-xs"
+              className="px-6 h-12 rounded-btn font-semibold text-sm bg-main text-site dark:bg-accent dark:text-[#071229] hover:opacity-90 transition-opacity inline-flex items-center justify-center gap-2"
             >
               <span>Go to Relyvora NG</span>
-              <ArrowUpRight className="w-4 h-4" />
+              <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
+              <span className="sr-only">(opens in a new tab)</span>
             </a>
             <Link
               href="/how-it-works"
-              className="px-6 h-12 rounded-btn font-semibold text-sm border border-border bg-site text-main hover:border-accent hover:text-accent transition-all flex items-center justify-center"
+              className="px-6 h-12 rounded-btn font-semibold text-sm border border-border bg-site text-main hover:border-accent hover:text-accent transition-colors inline-flex items-center justify-center"
             >
               Learn how it works
             </Link>

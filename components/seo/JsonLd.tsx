@@ -15,7 +15,7 @@ export function JsonLd({ type, data }: JsonLdProps) {
       name: 'Relyvora Technologies Limited',
       url: 'https://relyvora.com',
       logo: 'https://relyvora.com/relyvora-logo.png',
-      description: 'Transaction protection and neutral escrow infrastructure for African social commerce.',
+      description: 'Payment protection for WhatsApp and Instagram commerce in Africa.',
       address: {
         '@type': 'PostalAddress',
         addressLocality: 'Abuja',
@@ -29,7 +29,7 @@ export function JsonLd({ type, data }: JsonLdProps) {
       '@type': 'WebSite',
       name: 'Relyvora',
       url: 'https://relyvora.com',
-      description: 'Safe payments for WhatsApp and Instagram sellers in Nigeria.',
+      description: 'Safe payments for WhatsApp and Instagram commerce.',
       ...data,
     };
   } else if (type === 'FAQPage') {
