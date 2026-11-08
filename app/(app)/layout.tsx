@@ -14,7 +14,7 @@ export default function AppLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-slate-50 text-slate-900 min-h-screen flex flex-col font-sans">
+    <div className="bg-site text-main min-h-screen flex flex-col font-sans selection:bg-accent selection:text-white transition-colors">
       {/* Sandbox compliance banner for transaction flows */}
       <DemoBanner />
 

@@ -34,7 +34,7 @@ export default function FoundationLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-[#090E1A] text-slate-100 min-h-screen flex flex-col font-sans selection:bg-emerald-500 selection:text-white antialiased">
+    <div className="bg-site text-main min-h-screen flex flex-col font-sans selection:bg-accent selection:text-white antialiased transition-colors">
       {children}
     </div>
   );

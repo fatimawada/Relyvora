@@ -22,7 +22,7 @@ export default function TermsOfServicePage() {
           <div>
             <Link
               href="/"
-              className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-[#047857] hover:underline"
+              className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-accent hover:underline"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Return to Relyvora Home</span>
@@ -30,15 +30,15 @@ export default function TermsOfServicePage() {
           </div>
 
           {/* Header Title Block */}
-          <div className="space-y-4 border-b border-[#E7E4DC] pb-8">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-mono font-semibold text-emerald-800">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+          <div className="space-y-4 border-b border-border pb-8">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 border border-accent/20 text-xs font-mono font-semibold text-accent">
+              <ShieldCheck className="w-3.5 h-3.5 text-accent" />
               <span>LEGAL & COMPLIANCE</span>
             </div>
-            <h1 className="text-3xl sm:text-5xl font-serif text-[#090E1A] tracking-tight">
+            <h1 className="text-3xl sm:text-5xl font-heading font-semibold text-main tracking-tight">
               Relyvora Terms of Service
             </h1>
-            <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-[#64748B]">
+            <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-muted">
               <span><strong>Last Updated:</strong> November 5, 2026</span>
               <span>•</span>
               <span>Relyvora Technologies Limited (RC 9982218)</span>
@@ -46,11 +46,11 @@ export default function TermsOfServicePage() {
           </div>
 
           {/* Legal Document Content */}
-          <article className="prose prose-slate max-w-none text-sm sm:text-base text-[#334155] leading-relaxed space-y-8 font-sans">
+          <article className="prose prose-slate dark:prose-invert max-w-none text-sm sm:text-base text-main/90 leading-relaxed space-y-8 font-sans">
             
             {/* Section 1 */}
             <section className="space-y-3">
-              <h2 className="text-xl sm:text-2xl font-bold text-[#090E1A] tracking-tight">
+              <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 1. Introduction and Acceptance of Terms
               </h2>
               <p>
@@ -63,7 +63,7 @@ export default function TermsOfServicePage() {
 
             {/* Section 2 */}
             <section className="space-y-3">
-              <h2 className="text-xl sm:text-2xl font-bold text-[#090E1A] tracking-tight">
+              <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 2. Nature of Our Service &amp; Banking Infrastructure
               </h2>
               <p>
@@ -81,7 +81,7 @@ export default function TermsOfServicePage() {
 
             {/* Section 3 */}
             <section className="space-y-3">
-              <h2 className="text-xl sm:text-2xl font-bold text-[#090E1A] tracking-tight">
+              <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 3. Account Registration &amp; KYC Verification
               </h2>
               <p>
@@ -99,7 +99,7 @@ export default function TermsOfServicePage() {
 
             {/* Section 4 */}
             <section className="space-y-3">
-              <h2 className="text-xl sm:text-2xl font-bold text-[#090E1A] tracking-tight">
+              <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 4. How the Escrow &amp; 6-Digit Delivery Code Works
               </h2>
               <ol className="list-decimal pl-5 space-y-2.5">
@@ -123,7 +123,7 @@ export default function TermsOfServicePage() {
 
             {/* Section 5 */}
             <section className="space-y-3">
-              <h2 className="text-xl sm:text-2xl font-bold text-[#090E1A] tracking-tight">
+              <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 5. Platform Fees &amp; Pricing
               </h2>
               <ul className="list-disc pl-5 space-y-2">
@@ -141,7 +141,7 @@ export default function TermsOfServicePage() {
 
             {/* Section 6 */}
             <section className="space-y-3">
-              <h2 className="text-xl sm:text-2xl font-bold text-[#090E1A] tracking-tight">
+              <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 6. Disputes, Frozen Funds, and Resolution Authority
               </h2>
               <p>
@@ -152,14 +152,14 @@ export default function TermsOfServicePage() {
                   <strong>Effect of a Freeze:</strong> Once a dispute is flagged, the automated 6-digit code trigger is locked, and the funds remain safely frozen in the escrow ledger.
                 </li>
                 <li>
-                  <strong>Arbitration by Relyvora:</strong> Both parties agree to submit required evidence (such as unboxing videos, item photos, original product listings, or rider call logs) within the timeframes specified in our <strong><Link href="/disputes" target="_blank" rel="noopener noreferrer" className="text-emerald-700 underline font-semibold">Dispute and Refund Policy</Link></strong>. You grant Relyvora Technologies Limited full authority to review the evidence and manually execute a Full Refund, Partial Split (deducting delivery fees), or Full Vendor Payout based on our findings.
+                  <strong>Arbitration by Relyvora:</strong> Both parties agree to submit required evidence (such as unboxing videos, item photos, original product listings, or rider call logs) within the timeframes specified in our <strong><Link href="/disputes" target="_blank" rel="noopener noreferrer" className="text-accent underline font-semibold">Dispute and Refund Policy</Link></strong>. You grant Relyvora Technologies Limited full authority to review the evidence and manually execute a Full Refund, Partial Split (deducting delivery fees), or Full Vendor Payout based on our findings.
                 </li>
               </ul>
             </section>
 
             {/* Section 7 */}
             <section className="space-y-3">
-              <h2 className="text-xl sm:text-2xl font-bold text-[#090E1A] tracking-tight">
+              <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 7. Prohibited Goods and Transactions
               </h2>
               <p>
@@ -172,14 +172,14 @@ export default function TermsOfServicePage() {
                 <li>Adult content, human trafficking, or illegal services.</li>
                 <li>Money laundering, terrorist financing, Ponzi schemes, or fraudulent cash-out schemes.</li>
               </ul>
-              <p className="text-xs text-[#64748B] pt-1">
+              <p className="text-xs text-muted pt-1">
                 Relyvora reserves the right to immediately freeze funds, terminate accounts, and report suspicious transactions to the Special Control Unit Against Money Laundering (SCUML), the Economic and Financial Crimes Commission (EFCC), and other Nigerian law enforcement agencies.
               </p>
             </section>
 
             {/* Section 8 */}
             <section className="space-y-3">
-              <h2 className="text-xl sm:text-2xl font-bold text-[#090E1A] tracking-tight">
+              <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 8. Logistics Disclaimer &amp; Limitation of Liability
               </h2>
               <p>
@@ -188,32 +188,32 @@ export default function TermsOfServicePage() {
             </section>
 
             {/* Section 9 */}
-            <section className="space-y-4 pt-4 border-t border-[#E7E4DC]">
-              <h2 className="text-xl sm:text-2xl font-bold text-[#090E1A] tracking-tight">
+            <section className="space-y-4 pt-4 border-t border-border">
+              <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 9. Governing Law &amp; Contact Us
               </h2>
               <p>
                 These Terms are governed by the laws of the Federal Republic of Nigeria. For questions, support, or official correspondence, contact us at:
               </p>
-              <div className="p-5 rounded-2xl bg-white border border-[#E7E4DC] space-y-2.5 text-xs sm:text-sm font-sans">
+              <div className="p-5 rounded-card bg-surface border border-border space-y-2.5 text-xs sm:text-sm font-sans">
                 <div className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-[#047857]" />
-                  <span><strong>General Inquiries:</strong> <a href="mailto:hello@relyvora.com" className="text-emerald-700 hover:underline">hello@relyvora.com</a></span>
+                  <Mail className="w-4 h-4 text-accent" />
+                  <span><strong>General Inquiries:</strong> <a href="mailto:hello@relyvora.com" className="text-accent hover:underline">hello@relyvora.com</a></span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-[#047857]" />
-                  <span><strong>Customer &amp; Dispute Support:</strong> <a href="mailto:support@relyvora.com" className="text-emerald-700 hover:underline">support@relyvora.com</a></span>
+                  <Mail className="w-4 h-4 text-accent" />
+                  <span><strong>Customer &amp; Dispute Support:</strong> <a href="mailto:support@relyvora.com" className="text-accent hover:underline">support@relyvora.com</a></span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-[#047857]" />
-                  <span><strong>Compliance &amp; Legal:</strong> <a href="mailto:compliance@relyvora.com" className="text-emerald-700 hover:underline">compliance@relyvora.com</a></span>
+                  <Mail className="w-4 h-4 text-accent" />
+                  <span><strong>Compliance &amp; Legal:</strong> <a href="mailto:compliance@relyvora.com" className="text-accent hover:underline">compliance@relyvora.com</a></span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Phone className="w-4 h-4 text-[#047857]" />
-                  <span><strong>Phone:</strong> <a href="tel:+2347033841860" className="text-emerald-700 hover:underline">+234 703 384 1860</a></span>
+                  <Phone className="w-4 h-4 text-accent" />
+                  <span><strong>Phone:</strong> <a href="tel:+2347033841860" className="text-accent hover:underline">+234 703 384 1860</a></span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-[#047857]" />
+                  <MapPin className="w-4 h-4 text-accent" />
                   <span><strong>Location:</strong> Abuja, Nigeria</span>
                 </div>
               </div>

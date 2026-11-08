@@ -22,7 +22,7 @@ export default function PrivacyPolicyPage() {
           <div>
             <Link
               href="/"
-              className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-[#047857] hover:underline"
+              className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-accent hover:underline"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Return to Relyvora Home</span>
@@ -30,15 +30,15 @@ export default function PrivacyPolicyPage() {
           </div>
 
           {/* Header Title Block */}
-          <div className="space-y-4 border-b border-[#E7E4DC] pb-8">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-mono font-semibold text-emerald-800">
-              <Lock className="w-3.5 h-3.5 text-emerald-600" />
+          <div className="space-y-4 border-b border-border pb-8">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 border border-accent/20 text-xs font-mono font-semibold text-accent">
+              <Lock className="w-3.5 h-3.5 text-accent" />
               <span>DATA PROTECTION & PRIVACY</span>
             </div>
-            <h1 className="text-3xl sm:text-5xl font-serif text-[#090E1A] tracking-tight">
+            <h1 className="text-3xl sm:text-5xl font-heading font-semibold text-main tracking-tight">
               Relyvora Privacy Policy
             </h1>
-            <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-[#64748B]">
+            <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-muted">
               <span><strong>Last Updated:</strong> November 5, 2026</span>
               <span>•</span>
               <span>Nigeria Data Protection Act (NDPA) 2023 Compliant</span>
@@ -46,11 +46,11 @@ export default function PrivacyPolicyPage() {
           </div>
 
           {/* Legal Document Content */}
-          <article className="prose prose-slate max-w-none text-sm sm:text-base text-[#334155] leading-relaxed space-y-8 font-sans">
+          <article className="prose prose-slate dark:prose-invert max-w-none text-sm sm:text-base text-main/90 leading-relaxed space-y-8 font-sans">
             
             {/* Section 1 */}
             <section className="space-y-3">
-              <h2 className="text-xl sm:text-2xl font-bold text-[#090E1A] tracking-tight">
+              <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 1. Introduction
               </h2>
               <p>
@@ -60,7 +60,7 @@ export default function PrivacyPolicyPage() {
 
             {/* Section 2 */}
             <section className="space-y-4">
-              <h2 className="text-xl sm:text-2xl font-bold text-[#090E1A] tracking-tight">
+              <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 2. Information We Collect
               </h2>
               <p>
@@ -69,11 +69,11 @@ export default function PrivacyPolicyPage() {
 
               <div className="space-y-4 pl-2">
                 {/* Subsection A */}
-                <div className="p-5 rounded-2xl bg-white border border-[#E7E4DC] space-y-2">
-                  <h3 className="text-base font-bold text-[#090E1A]">
+                <div className="p-5 rounded-card bg-surface border border-border space-y-2">
+                  <h3 className="text-base font-heading font-semibold text-main">
                     A. Data Collected from Vendors (Merchants)
                   </h3>
-                  <p className="text-xs sm:text-sm text-[#475569]">
+                  <p className="text-xs sm:text-sm text-muted">
                     Because vendors receive financial payouts through regulated banking rails, Nigerian law requires mandatory identity verification (KYC):
                   </p>
                   <ul className="list-disc pl-5 space-y-1.5 text-xs sm:text-sm">
@@ -90,11 +90,11 @@ export default function PrivacyPolicyPage() {
                 </div>
 
                 {/* Subsection B */}
-                <div className="p-5 rounded-2xl bg-white border border-[#E7E4DC] space-y-2">
-                  <h3 className="text-base font-bold text-[#090E1A]">
+                <div className="p-5 rounded-card bg-surface border border-border space-y-2">
+                  <h3 className="text-base font-heading font-semibold text-main">
                     B. Data Collected from Buyers (Customers)
                   </h3>
-                  <p className="text-xs sm:text-sm text-[#475569]">
+                  <p className="text-xs sm:text-sm text-muted">
                     Buyers are <strong>never</strong> required to provide a BVN or NIN to make an escrow payment. From buyers, we only collect:
                   </p>
                   <ul className="list-disc pl-5 space-y-1.5 text-xs sm:text-sm">
@@ -108,11 +108,11 @@ export default function PrivacyPolicyPage() {
                 </div>
 
                 {/* Subsection C */}
-                <div className="p-5 rounded-2xl bg-white border border-[#E7E4DC] space-y-2">
-                  <h3 className="text-base font-bold text-[#090E1A]">
+                <div className="p-5 rounded-card bg-surface border border-border space-y-2">
+                  <h3 className="text-base font-heading font-semibold text-main">
                     C. Dispute Resolution Data (Both Parties)
                   </h3>
-                  <p className="text-xs sm:text-sm text-[#475569]">
+                  <p className="text-xs sm:text-sm text-muted">
                     If a transaction enters a dispute, we collect evidence submitted by either party, including product photos, unboxing videos, WhatsApp/Instagram chat screenshots, and dispatch rider call logs.
                   </p>
                 </div>
@@ -121,7 +121,7 @@ export default function PrivacyPolicyPage() {
 
             {/* Section 3 */}
             <section className="space-y-3">
-              <h2 className="text-xl sm:text-2xl font-bold text-[#090E1A] tracking-tight">
+              <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 3. How We Use Your Data
               </h2>
               <p>
@@ -138,7 +138,7 @@ export default function PrivacyPolicyPage() {
 
             {/* Section 4 */}
             <section className="space-y-3">
-              <h2 className="text-xl sm:text-2xl font-bold text-[#090E1A] tracking-tight">
+              <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 4. Data Sharing &amp; Third-Party Disclosures
               </h2>
               <p>
@@ -159,7 +159,7 @@ export default function PrivacyPolicyPage() {
 
             {/* Section 5 */}
             <section className="space-y-3">
-              <h2 className="text-xl sm:text-2xl font-bold text-[#090E1A] tracking-tight">
+              <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 5. Data Security &amp; Statutory Retention
               </h2>
               <p>
@@ -171,8 +171,8 @@ export default function PrivacyPolicyPage() {
             </section>
 
             {/* Section 6 */}
-            <section className="space-y-3 pt-4 border-t border-[#E7E4DC]">
-              <h2 className="text-xl sm:text-2xl font-bold text-[#090E1A] tracking-tight">
+            <section className="space-y-3 pt-4 border-t border-border">
+              <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 6. Your Rights Under the NDPA 2023
               </h2>
               <p>
@@ -183,11 +183,11 @@ export default function PrivacyPolicyPage() {
                 <li>Request correction of inaccurate or incomplete personal data.</li>
                 <li>Object to processing or request the deletion of your account (subject to our mandatory 5-year regulatory retention obligation for financial and KYC records).</li>
               </ul>
-              <div className="p-4 rounded-xl bg-white border border-[#E7E4DC] flex items-center gap-3 text-xs sm:text-sm mt-4">
-                <Mail className="w-5 h-5 text-[#047857] shrink-0" />
+              <div className="p-4 rounded-card bg-surface border border-border flex items-center gap-3 text-xs sm:text-sm mt-4">
+                <Mail className="w-5 h-5 text-accent shrink-0" />
                 <span>
                   To exercise any of your privacy rights or contact our Data Protection Officer, please email{' '}
-                  <a href="mailto:compliance@relyvora.com" className="text-emerald-700 font-semibold hover:underline">
+                  <a href="mailto:compliance@relyvora.com" className="text-accent font-semibold hover:underline">
                     compliance@relyvora.com
                   </a>.
                 </span>
