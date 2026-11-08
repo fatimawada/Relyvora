@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getTransactionById } from '@/lib/supabase';
 import { isLiveMode } from '@/lib/paymentsMode';
+import { isCheckoutEnabled } from '@/lib/safetyLimits';
 import { Transaction } from '@/lib/types';
 import { formatNaira } from '@/lib/pricing';
 import { Logo } from '@/components/Logo';
@@ -296,6 +297,14 @@ export default function BuyerCheckoutPage() {
                 <span>Go to Escrow Tracker & Release Code</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
+            </div>
+          ) : !isCheckoutEnabled() ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-center space-y-2">
+              <AlertCircle className="w-8 h-8 text-amber-600 mx-auto" />
+              <h3 className="text-sm font-bold text-amber-900">Checkout Temporarily Suspended</h3>
+              <p className="text-xs text-amber-700">
+                Payment collection is temporarily paused for scheduled maintenance. Please try again shortly or contact your vendor.
+              </p>
             </div>
           ) : liveMode && transaction.virtual_account_number ? (
             /* Live Mode: Dedicated Virtual NUBAN Bank Transfer Details */

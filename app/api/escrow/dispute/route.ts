@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabaseServer';
+import { recordLedgerEntry } from '@/lib/ledger';
+import { sendSystemAlert } from '@/lib/alerts';
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,11 +42,13 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date().toISOString();
+    const cleanReason = disputeReason.trim();
+
     const { data: updated, error: updateErr } = await supabase
       .from('transactions')
       .update({
         status: 'DISPUTED',
-        dispute_reason: disputeReason.trim(),
+        dispute_reason: cleanReason,
         disputed_at: now,
         updated_at: now,
       })
@@ -55,6 +59,33 @@ export async function POST(request: NextRequest) {
     if (updateErr) {
       return NextResponse.json({ success: false, error: updateErr.message }, { status: 500 });
     }
+
+    // Phase G2: Record dispute freeze in immutable audit ledger
+    await recordLedgerEntry({
+      transactionId,
+      entryType: 'DISPUTE_FREEZE',
+      amount: Number(existing.total_amount) || 0,
+      currency: 'NGN',
+      fromAccount: 'Relyvora Escrow Vault',
+      toAccount: 'Dispute Arbitration Vault',
+      idempotencyKey: `ledger_${transactionId}_DISPUTE_FREEZE`,
+      metadata: { reason: cleanReason, disputedAt: now },
+    });
+
+    // Phase G2: Send immediate high-priority alert to dispute team
+    sendSystemAlert({
+      type: 'NEW_DISPUTE',
+      severity: 'WARNING',
+      title: 'New Escrow Dispute Flagged',
+      transactionId,
+      vendorHandle: existing.vendor_handle,
+      details: {
+        itemName: existing.item_name,
+        amount: existing.total_amount,
+        disputeReason: cleanReason,
+        buyerPhone: existing.buyer_phone,
+      },
+    }).catch(() => {});
 
     return NextResponse.json({ success: true, transaction: updated });
   } catch (err: any) {

@@ -37,6 +37,10 @@ export interface Transaction {
   dispatched_at?: string | null;
   released_at?: string | null;
   disputed_at?: string | null;
+  dispute_scenario?: number | null;
+  resolved_at?: string | null;
+  resolution_action?: string | null;
+  resolution_notes?: string | null;
 }
 
 export interface VendorMetrics {

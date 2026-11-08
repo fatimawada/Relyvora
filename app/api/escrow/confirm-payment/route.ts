@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { isLiveMode } from '@/lib/paymentsMode';
+import { isCheckoutEnabled } from '@/lib/safetyLimits';
+import { recordLedgerEntry } from '@/lib/ledger';
 import { 
   generateCryptographicReleaseCode, 
   generateCodeSalt, 
@@ -11,6 +13,13 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { transactionId, paymentMethod = 'SIMULATED' } = body;
+
+    if (!isCheckoutEnabled()) {
+      return NextResponse.json(
+        { success: false, error: 'Checkout is temporarily disabled for maintenance.' },
+        { status: 503 }
+      );
+    }
 
     if (!transactionId) {
       return NextResponse.json({ success: false, error: 'transactionId is required.' }, { status: 400 });
@@ -74,6 +83,18 @@ export async function POST(request: NextRequest) {
       console.error('Failed to update transaction to FUNDS_LOCKED:', updateErr);
       return NextResponse.json({ success: false, error: updateErr.message }, { status: 500 });
     }
+
+    // Phase G2: Record deposit in immutable transaction ledger
+    await recordLedgerEntry({
+      transactionId: transactionId,
+      entryType: 'DEPOSIT_LOCKED',
+      amount: Number(existing.total_amount) || 0,
+      currency: 'NGN',
+      fromAccount: `Buyer (${paymentMethod})`,
+      toAccount: 'Relyvora Escrow Vault',
+      idempotencyKey: `ledger_${transactionId}_DEPOSIT_LOCKED`,
+      metadata: { paymentMethod, mode: 'sandbox' },
+    });
 
     return NextResponse.json({ success: true, transaction: updated });
   } catch (err: any) {

@@ -122,7 +122,8 @@ export default function VendorDashboardPage() {
           await loadTransactions();
           return;
         } else if (json.error) {
-          console.warn('Server link creation returned error, attempting fallback:', json.error);
+          alert(`Link creation rejected: ${json.error}`);
+          return;
         }
       } catch (serverErr) {
         console.warn('Network issue reaching /api/escrow/create-link, using fallback:', serverErr);

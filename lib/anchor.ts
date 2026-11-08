@@ -802,3 +802,28 @@ export async function payoutToVendorBank(
     transfer: transferResult.raw.data,
   };
 }
+
+/**
+ * Retrieves account balance details for reconciliation.
+ */
+export async function getAnchorAccountBalance(accountId: string): Promise<{ availableBalance: number; ledgerBalance: number }> {
+  const baseUrl = getAnchorBaseUrl();
+  const url = `${baseUrl}/accounts/${accountId}`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: getAnchorHeaders(),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new AnchorApiError(response.status, errorBody.errors || [{ detail: 'Failed to fetch account balance' }], errorBody);
+  }
+
+  const json = await response.json();
+  const attributes = json.data?.attributes || json.data || {};
+  return {
+    availableBalance: attributes.availableBalance ?? attributes.balance ?? 0,
+    ledgerBalance: attributes.ledgerBalance ?? attributes.balance ?? 0,
+  };
+}

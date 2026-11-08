@@ -3,6 +3,7 @@ import { getServiceSupabase } from '@/lib/supabaseServer';
 import { calculatePricing } from '@/lib/pricing';
 import { isLiveMode, getPaymentsMode } from '@/lib/paymentsMode';
 import { createAnchorCollectionAccount, RELYVORA_FBO_ACCOUNT_ID } from '@/lib/anchor';
+import { validateOrderCreation } from '@/lib/safetyLimits';
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,6 +24,20 @@ export async function POST(request: NextRequest) {
 
     const mode = getPaymentsMode();
     const activeHandle = (vendorHandle || '').trim() || '@LagosHairPlug';
+
+    // Phase G2: Kill Switch, Maximum Cap & Vendor Allowlist validation
+    const safetyCheck = validateOrderCreation({
+      vendorHandle: activeHandle,
+      totalAmount: pricing.totalAmount,
+    });
+
+    if (!safetyCheck.allowed) {
+      const statusCode = safetyCheck.code === 'CHECKOUT_DISABLED' ? 503 : 403;
+      return NextResponse.json(
+        { success: false, error: safetyCheck.error, code: safetyCheck.code },
+        { status: statusCode }
+      );
+    }
     const txId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `tx-${Date.now()}`;
     const now = new Date().toISOString();
 

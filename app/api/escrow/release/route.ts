@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { isLiveMode } from '@/lib/paymentsMode';
 import { verifyReleaseCode, MAX_CODE_ATTEMPTS } from '@/lib/releaseCode';
+import { recordLedgerEntry } from '@/lib/ledger';
+import { sendSystemAlert } from '@/lib/alerts';
 import { 
   releaseEscrowFunds, 
   RELYVORA_FBO_ACCOUNT_ID, 
@@ -105,6 +107,20 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', transactionId);
 
+      if (isNowLocked) {
+        sendSystemAlert({
+          type: 'SECURITY_LOCKOUT',
+          severity: 'CRITICAL',
+          title: 'Brute-Force Lockout Activated (5 Failed Attempts)',
+          transactionId,
+          vendorHandle: existing.vendor_handle,
+          details: {
+            failedAttempts: newAttempts,
+            lockedAt: now,
+          },
+        }).catch(() => {});
+      }
+
       return NextResponse.json(
         {
           success: false,
@@ -150,6 +166,18 @@ export async function POST(request: NextRequest) {
         anchorRevenueTransferId = splitResult.revenueTransfer.transferId;
       } catch (anchorErr: any) {
         console.error('Anchor escrow split transfer failure:', anchorErr);
+        sendSystemAlert({
+          type: 'PAYOUT_FAILURE',
+          severity: 'CRITICAL',
+          title: 'Anchor Escrow Settlement BookTransfer Failed',
+          transactionId,
+          vendorHandle: existing.vendor_handle,
+          details: {
+            errorMessage: anchorErr.message,
+            totalAmount: existing.total_amount,
+          },
+        }).catch(() => {});
+
         // Do not mark RELEASED if live banking transfer failed!
         return NextResponse.json(
           {
@@ -181,6 +209,34 @@ export async function POST(request: NextRequest) {
       console.error('Failed to update status to RELEASED:', updateErr);
       return NextResponse.json({ success: false, error: updateErr.message }, { status: 500 });
     }
+
+    // Phase G2: Record immutable ledger entries for vendor payout and platform fee
+    const vendorPayout = Number(existing.item_price) || 0;
+    const platformFee = Number(existing.protection_fee) || 0;
+
+    await recordLedgerEntry({
+      transactionId,
+      entryType: 'PAYOUT_VENDOR',
+      amount: vendorPayout,
+      currency: 'NGN',
+      fromAccount: 'Relyvora Escrow FBO',
+      toAccount: `Vendor (${existing.vendor_handle})`,
+      anchorTransferId,
+      idempotencyKey: `ledger_${transactionId}_PAYOUT_VENDOR`,
+      metadata: { vendorHandle: existing.vendor_handle },
+    });
+
+    await recordLedgerEntry({
+      transactionId,
+      entryType: 'FEE_REVENUE',
+      amount: platformFee,
+      currency: 'NGN',
+      fromAccount: 'Relyvora Escrow FBO',
+      toAccount: 'Relyvora Revenue Account',
+      anchorTransferId: anchorRevenueTransferId,
+      idempotencyKey: `ledger_${transactionId}_FEE_REVENUE`,
+      metadata: { feeFloorApplied: platformFee === 500 },
+    });
 
     return NextResponse.json({ success: true, transaction: updated });
   } catch (err: any) {

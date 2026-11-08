@@ -6,6 +6,8 @@ import {
   generateCodeSalt, 
   hashReleaseCode 
 } from '@/lib/releaseCode';
+import { recordLedgerEntry } from '@/lib/ledger';
+import { sendSystemAlert } from '@/lib/alerts';
 
 // In-memory replay guard for fast lookups & resilience
 const processedEventsCache = new Set<string>();
@@ -48,6 +50,16 @@ export async function POST(request: NextRequest) {
     const isValidSignature = verifyAnchorSignature(rawBody, signature);
     if (!isValidSignature) {
       console.warn('Rejected Anchor webhook with invalid signature.');
+      sendSystemAlert({
+        type: 'WEBHOOK_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Unauthorized Anchor Webhook Signature Rejection',
+        details: {
+          clientIp: request.headers.get('x-forwarded-for') || 'unknown',
+          hasSignature: Boolean(signature),
+        },
+      }).catch(() => {});
+
       return NextResponse.json(
         { success: false, error: 'Unauthorized: Invalid webhook signature' },
         { status: 401 }
@@ -132,9 +144,34 @@ export async function POST(request: NextRequest) {
             })
             .eq('id', tx.id);
 
+          // Phase G2: Record deposit in immutable transaction ledger
+          await recordLedgerEntry({
+            transactionId: tx.id,
+            entryType: 'DEPOSIT_LOCKED',
+            amount: amountNaira,
+            currency: 'NGN',
+            fromAccount: accountNumber || 'Providus Virtual NUBAN',
+            toAccount: 'Relyvora Escrow FBO',
+            anchorTransferId: eventId,
+            idempotencyKey: `ledger_${eventId}_DEPOSIT_LOCKED`,
+            metadata: { eventId, eventType, vendorHandle: tx.vendor_handle },
+          });
+
           console.log(`Successfully locked escrow funds for transaction ${tx.id} via Anchor webhook credit.`);
         } else {
           console.warn(`Partial payment detected for tx ${tx.id}: received ${amountNaira}, expected ${expectedTotal}`);
+          sendSystemAlert({
+            type: 'STUCK_FUNDS',
+            severity: 'WARNING',
+            title: 'Partial Escrow Payment Received',
+            transactionId: tx.id,
+            vendorHandle: tx.vendor_handle,
+            details: {
+              receivedAmountNaira: amountNaira,
+              expectedTotalNaira: expectedTotal,
+              eventId,
+            },
+          }).catch(() => {});
         }
       }
     }
