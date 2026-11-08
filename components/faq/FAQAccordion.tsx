@@ -71,20 +71,17 @@ export const FAQ_ITEMS: FAQItem[] = [
   {
     question: 'What happens if a buyer loses their six\u2011digit release code?',
     answer:
-      '[TODO: Policy pending confirmation from Relyvora team: Code reissuance and verification process]',
-    isTodo: true,
+      'Buyers can look up their code directly on their active order status page, or email support@relyvora.com with their transaction reference for immediate assistance.',
   },
   {
     question: 'Which payment methods are supported in Nigeria?',
     answer:
-      '[TODO: Policy pending confirmation from Relyvora team: Confirmed payment methods (Bank Transfer, NIP Virtual Accounts, Cards, USSD)]',
-    isTodo: true,
+      'Payments are made via instant bank transfer and dedicated virtual accounts powered by Anchor.',
   },
   {
     question: 'How quickly does the seller receive their payout after the code is confirmed?',
     answer:
-      '[TODO: Policy pending confirmation from Relyvora team: Exact payout settlement turnaround time]',
-    isTodo: true,
+      'Once the buyer enters their six-digit delivery code, the payout is triggered automatically through our banking partner to the seller\'s commercial bank account.',
   },
   {
     question: 'Which countries is Relyvora available in?',

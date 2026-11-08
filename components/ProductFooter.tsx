@@ -18,7 +18,7 @@ export function ProductFooter() {
           </div>
         </div>
         <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-slate-400">
-          <span>Relyvora Technologies Limited (RC 9982218 | TIN 2623717709692). Abuja, Nigeria.</span>
+          <span>Relyvora Technologies Limited (RC 9982218). Abuja, Nigeria.</span>
           <span className="font-medium text-slate-600">Payments powered by Anchor</span>
         </div>
       </div>

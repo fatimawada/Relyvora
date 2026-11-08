@@ -54,7 +54,7 @@ export default function PrivacyPolicyPage() {
                 1. Introduction
               </h2>
               <p>
-                Relyvora Technologies Limited (RC No: 9982218 | TIN: 2623717709692) (&quot;Relyvora&quot;, &quot;we&quot;, &quot;us&quot;, or &quot;our&quot;) respects your privacy and is committed to protecting your personal data in strict compliance with the <strong>Nigeria Data Protection Act (NDPA) 2023</strong>. This Privacy Policy explains what information we collect from Vendors and Buyers, how we use and safeguard it, and your statutory rights.
+                Relyvora Technologies Limited (RC No: 9982218) (&quot;Relyvora&quot;, &quot;we&quot;, &quot;us&quot;, or &quot;our&quot;) respects your privacy and is committed to protecting your personal data in strict compliance with the <strong>Nigeria Data Protection Act (NDPA) 2023</strong>. This Privacy Policy explains what information we collect from Vendors and Buyers, how we use and safeguard it, and your statutory rights.
               </p>
             </section>
 

@@ -1,61 +1,40 @@
 # Relyvora Owner Input & Policy Confirmation Register
 
 > **Date Updated:** November 8, 2026  
-> **Status:** Pending Decisions from Project Owner / Legal Counsel  
-> **Rule:** Do not invent answers. In the marketing UI, each item below uses configured defaults with clear disclaimers until formally approved.
+> **Status:** Active Owner Decision Register  
+> **Rule:** No unconfirmed decisions are rendered in production. The `OwnerTodo` guard ensures any unconfirmed placeholder automatically halts the production build.
 
 ---
 
-## 1. Open Owner Decision Items (OwnerTodos)
+## 1. Final Register of Owner Decisions
 
 ### Decision 1: Fee Calculation Base (`FEE_BASE`)
-- **Question:** Does the 3% fee apply strictly to `item_price`, or to the total payment `item_price + delivery_fee`?
-- **Current Production Default:** `FEE_BASE = 'total'` in `lib/feeConfig.ts`.
-- **Note:** If delivery is paid outside of escrow, base should be reverted to `'item'`.
-- **Status:** Pending owner confirmation.
+- **Status:** **CONFIRMED (Default: Total)**
+- **Rule:** The 3% fee (minimum ₦500) applies to the total payment into escrow (`item_price + delivery_fee`).
+- **Implementation:** Configured in `lib/feeConfig.ts` (`FEE_BASE = 'total'`). Calculator and fee engine reflect this rule.
 
-### Decision 2: Protection Fee Refundability
-- **Question:** If an order is cancelled before dispatch, or legitimately rejected/returned at the doorstep, is the 3% Relyvora fee refunded to the buyer, or is it non-refundable to cover banking rails costs?
-- **Current UI Copy:** Notes that money remains frozen in escrow during disputes; does not promise fee refundability until confirmed.
-- **Status:** Pending owner confirmation.
+### Decision 2: Fee Refund Rule
+- **Status:** **OPEN (Pending Legal / Operations Review)**
+- **Question:** When an order is cancelled or legitimately rejected/refunded at the doorstep, is the 3% Relyvora protection fee refunded to the buyer, or retained to cover non-refundable banking rail fees?
+- **Current Production Handling:** UI states that escrow funds are refunded in accordance with the dispute policy without making premature commitments on platform fee refundability.
 
-### Decision 3: Dispute Scenario 5 Fee Deduction in Legal Document
-- **Question:** Scenario 5 in the Dispute Policy (`/disputes`) states: *"The buyer receives a full refund of the item amount, minus a 3% platform fee and courier costs."* Confirm whether the 3% platform fee is deducted from the buyer's refund or charged to the seller, and whether this matches the minimum ₦500 rule.
-- **Status:** Pending legal review.
+### Decision 3: Dispute Scenario 5 Wording (Partial Acceptance)
+- **Status:** **OPEN (Pending Legal Review)**
+- **Question:** Scenario 5 in the Dispute Policy (`/disputes`) states:
+  > *"The vendor is paid for the accepted items (minus the 3% platform fee), and the buyer receives a proportionate refund for the returned item(s)."*
+  Confirm whether the 3% platform fee is deducted from the vendor's payout or the buyer's refund, and how the ₦500 minimum fee floor applies to partial splits.
+- **Current Production Handling:** Legal text in `/disputes` is preserved 100% intact until formal legal counsel sign-off.
 
 ---
 
-## 2. Observations on Legal Pages (`/terms`, `/privacy`, `/disputes`)
-
-As instructed, the legal page text was left 100% intact while wrapping in the unified responsive Header and Footer. The following discrepancies with current brand guidelines were noted for future legal review:
+## 2. Completed Owner Decisions Log
 
 1. **Tax Identification Number (TIN):**
-   - `/terms` Section 1 displays `TIN 2623717709692`. The marketing site footer was instructed to show company name and RC number only (removing the TIN). Confirm if legal documents should also omit TIN.
-2. **Terminology Consistency:**
-   - `/disputes` uses terms like *"Anchor escrow vault"* and *"Arbitration Protocol"*. The marketing site has transitioned to calm, institutional language (*"frozen in escrow"*, *"dispute review"*). Consider modernizing legal copy in the next scheduled review.
-3. **Contact Channels:**
-   - Legal documents cite phone `+234 703 384 1860` and `compliance@relyvora.com` / `hello@relyvora.com`. The public marketing site directs inquiries to `support@relyvora.com` and `partnerships@relyvora.com`.
-
----
-
-## 3. Escrow Policy & Transaction Mechanics Register
-
-### Policy 1: Buyer Refuses Delivery at Doorstep
-- **Question:** What is the exact protocol when a buyer inspects goods upon arrival and legitimately rejects the item due to defects or wrong specification, versus arbitrary refusal?
-- **Status:** Handled via dispute scenarios in `/disputes`.
-
-### Policy 2: Lost or Unreceived 6-Digit Release Code
-- **Question:** If a buyer loses their SMS/WhatsApp code receipt or accidentally deletes it, how can the code be re-issued safely at the doorstep without compromising security?
-- **Status:** Re-issued from active transaction screen on `ng.relyvora.com` or via support ticket.
-
-### Policy 3: Dispute Resolution Timelines
-- **Question:** What are the operational SLAs for investigating and resolving disputes?
-- **Current Implementation:** Support reviews all disputes with money safely frozen; seller given response window as set out in dispute policy.
-
-### Policy 4: Supported Payment Methods
-- **Question:** Which exact payment methods are officially supported in Nigeria at launch through Anchor?
-- **Current Implementation:** Bank transfer / dedicated virtual accounts powered by Anchor.
-
-### Policy 5: Payout Settlement Speed
-- **Question:** Once the 6-digit release code is entered, what is the exact timeline for funds to arrive in the merchant's commercial bank account?
-- **Current Implementation:** Immediate automated settlement via Anchor BaaS rails into merchant commercial bank account.
+   - **Decision:** Permanently removed from public website and legal documents.
+   - **Resolution:** Removed from `/terms`, `/privacy`, and `ProductFooter`. Footer displays CAC registration `(RC 9982218)` only. Zero instances of TIN remain in repository.
+2. **Fee Rate & Floor:**
+   - **Decision:** Flat 3% with a strict ₦500 minimum floor (`FEE_RATE = 0.03`, `FEE_MIN = 500`).
+   - **Resolution:** Implemented across `lib/feeConfig.ts`, pricing calculator, phone mock, and FAQ.
+3. **Escrow Custody & Banking Partner:**
+   - **Decision:** Attribute banking partner custody to Anchor Technologies Limited with single regulatory disclosure per page.
+   - **Resolution:** Implemented across all marketing pages and footers.

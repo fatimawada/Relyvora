@@ -88,7 +88,7 @@ The current codebase contains several legacy, speculative, or unconfirmed claims
 4. **Banned Bio Sentences:**
    - Remove the phrase regarding `"the high mortality rate of informal African micro-merchants"` from Fatima Binta Wada's biography.
 5. **Tax Identification Number:**
-   - Current footer: `"Relyvora Technologies Limited (RC 9982218 | TIN 2623717709692)"`.
+   - Previous footer: `"Relyvora Technologies Limited (RC 9982218 | [TIN removed])"`.
    - Action: **Permanently remove TIN**. The footer will read:  
      `"Relyvora Technologies Limited (RC 9982218). Abuja, Nigeria."`
 

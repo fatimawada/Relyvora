@@ -35,7 +35,7 @@ export default function FAQPage() {
         name: 'How much does Relyvora cost and who pays the fee?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'A flat 3% fee, paid by the buyer and shown on the payment screen before they pay. There are no monthly subscriptions or account opening fees.',
+          text: 'The buyer pays 3% of what they pay into escrow, with a minimum fee of ₦500. The fee is shown before they pay. There are no other Relyvora fees and no subscriptions.',
         },
       },
       {

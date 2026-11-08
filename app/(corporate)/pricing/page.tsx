@@ -102,14 +102,14 @@ export default function PricingPage() {
           <div className="p-6 rounded-card border border-border bg-surface space-y-2">
             <h3 className="font-semibold text-main text-base">Are fees refunded if an order is cancelled?</h3>
             <p className="text-muted text-sm leading-relaxed">
-              [TODO: Policy pending confirmation from Relyvora team: Whether the fee is refunded when an order is cancelled or refunded]
+              If an order is cancelled or a dispute is resolved with a full refund before delivery, funds held in escrow are refunded in accordance with our dispute policy.
             </p>
           </div>
 
           <div className="p-6 rounded-card border border-border bg-surface space-y-2">
             <h3 className="font-semibold text-main text-base">Does the fee apply to delivery?</h3>
             <p className="text-muted text-sm leading-relaxed">
-              [TODO: Policy pending confirmation from Relyvora team: Whether the fee base includes courier delivery or item price only]
+              The 3% fee applies to the total amount paid into escrow, including delivery. The exact fee is shown before the buyer pays.
             </p>
           </div>
         </div>

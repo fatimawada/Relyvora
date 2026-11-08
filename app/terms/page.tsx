@@ -41,7 +41,7 @@ export default function TermsOfServicePage() {
             <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-[#64748B]">
               <span><strong>Last Updated:</strong> November 5, 2026</span>
               <span>•</span>
-              <span>Relyvora Technologies Limited (RC 9982218 | TIN 2623717709692)</span>
+              <span>Relyvora Technologies Limited (RC 9982218)</span>
             </div>
           </div>
 
@@ -57,7 +57,7 @@ export default function TermsOfServicePage() {
                 Welcome to Relyvora. These Terms of Service (&quot;Terms&quot;) constitute a legally binding agreement governing your access to and use of the Relyvora website (relyvora.com), web application (ng.relyvora.com), escrow payment links, and related services (collectively, the &quot;Service&quot;).
               </p>
               <p>
-                The Service is operated by <strong>Relyvora Technologies Limited</strong> (RC No: 9982218 | TIN: 2623717709692), headquartered in Abuja, Nigeria (&quot;Relyvora&quot;, &quot;we&quot;, &quot;us&quot;, or &quot;our&quot;). By registering a vendor account, generating an escrow link, or making a payment as a buyer through Relyvora, you agree to be bound by these Terms.
+                The Service is operated by <strong>Relyvora Technologies Limited</strong> (RC No: 9982218), headquartered in Abuja, Nigeria (&quot;Relyvora&quot;, &quot;we&quot;, &quot;us&quot;, or &quot;our&quot;). By registering a vendor account, generating an escrow link, or making a payment as a buyer through Relyvora, you agree to be bound by these Terms.
               </p>
             </section>
 
