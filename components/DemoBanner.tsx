@@ -1,7 +1,12 @@
 import React from 'react';
-import { AlertCircle, ShieldAlert } from 'lucide-react';
+import { isLiveMode } from '@/lib/paymentsMode';
 
 export function DemoBanner() {
+  // Hide completely in live payments mode
+  if (isLiveMode()) {
+    return null;
+  }
+
   return (
     <div className="w-full bg-slate-900 text-slate-100 border-b border-slate-800 text-xs sm:text-sm py-2 px-3 sm:px-4 text-center font-medium sticky top-0 z-50 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-slate-900/95">
       <div className="max-w-6xl mx-auto flex items-center justify-center gap-2">

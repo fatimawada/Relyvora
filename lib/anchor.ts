@@ -573,9 +573,12 @@ export async function releaseEscrowFunds(
   // Convert to Kobo if amount is passed in Naira (Anchor amounts are in Kobo)
   const amountInKobo = options.isKobo ? totalAmount : Math.round(totalAmount * 100);
 
-  // 3% platform fee, 97% vendor settlement
-  const feeAmountKobo = Math.round(amountInKobo * 0.03);
-  const vendorAmountKobo = amountInKobo - feeAmountKobo;
+  // Standardized fee engine: fee = max(round(totalPaid * 0.03), 500)
+  // In Kobo: ₦500 = 50,000 Kobo
+  const MINIMUM_FEE_KOBO = 50000;
+  const rawFeeKobo = Math.round(amountInKobo * 0.03);
+  const feeAmountKobo = amountInKobo > 0 ? Math.max(MINIMUM_FEE_KOBO, rawFeeKobo) : 0;
+  const vendorAmountKobo = Math.max(0, amountInKobo - feeAmountKobo);
 
   const prefix = options.referencePrefix || `rv_escrow_${Date.now()}`;
 

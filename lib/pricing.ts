@@ -4,15 +4,32 @@ export const MINIMUM_PROTECTION_FEE = 500;
 export const PROTECTION_FEE_RATE = 0.03;
 
 /**
- * Calculates the Relyvora Buyer Protection Fee.
- * Formula: Math.max(500, Math.round(itemPrice * 0.03))
+ * Single standardized fee calculation engine:
+ * fee = max(round(totalPaid * 0.03), 500)
+ * 
+ * @param itemPriceInput Price of the item in NGN
+ * @param deliveryFeeInput Optional courier/delivery fee in NGN (defaults to 0)
  */
-export function calculatePricing(itemPriceInput: number | string): PricingBreakdown {
-  const itemPrice = Math.max(0, typeof itemPriceInput === 'string' ? parseFloat(itemPriceInput) || 0 : itemPriceInput);
+export function calculatePricing(
+  itemPriceInput: number | string,
+  deliveryFeeInput: number | string = 0
+): PricingBreakdown {
+  const parseNum = (val: number | string) => {
+    if (typeof val === 'string') {
+      const cleaned = val.replace(/[^0-9.]/g, '');
+      return parseFloat(cleaned) || 0;
+    }
+    return typeof val === 'number' && !isNaN(val) ? val : 0;
+  };
+
+  const itemPrice = Math.max(0, parseNum(itemPriceInput));
+  const deliveryFee = Math.max(0, parseNum(deliveryFeeInput));
+  const baseAmount = itemPrice + deliveryFee;
   
-  if (itemPrice <= 0) {
+  if (baseAmount <= 0) {
     return {
       itemPrice: 0,
+      deliveryFee: 0,
       protectionFee: 0,
       totalAmount: 0,
       feePercentage: 3,
@@ -20,12 +37,14 @@ export function calculatePricing(itemPriceInput: number | string): PricingBreakd
     };
   }
 
-  const calculatedFee = Math.round(itemPrice * PROTECTION_FEE_RATE);
+  // Calculate 3% fee with strict ₦500 floor
+  const calculatedFee = Math.round(baseAmount * PROTECTION_FEE_RATE);
   const protectionFee = Math.max(MINIMUM_PROTECTION_FEE, calculatedFee);
-  const totalAmount = itemPrice + protectionFee;
+  const totalAmount = baseAmount + protectionFee;
 
   return {
-    itemPrice,
+    itemPrice: baseAmount, // Base goods & delivery
+    deliveryFee,
     protectionFee,
     totalAmount,
     feePercentage: 3,

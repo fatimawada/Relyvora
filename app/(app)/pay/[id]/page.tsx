@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { getTransactionById, updateTransaction } from '@/lib/supabase';
+import { getTransactionById } from '@/lib/supabase';
+import { isLiveMode } from '@/lib/paymentsMode';
 import { Transaction } from '@/lib/types';
 import { formatNaira } from '@/lib/pricing';
 import { Logo } from '@/components/Logo';
@@ -20,7 +21,10 @@ import {
   HelpCircle,
   Truck,
   KeyRound,
-  AlertCircle
+  AlertCircle,
+  Copy,
+  Building2,
+  RefreshCw
 } from 'lucide-react';
 
 export default function BuyerCheckoutPage() {
@@ -32,6 +36,10 @@ export default function BuyerCheckoutPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [copiedAccount, setCopiedAccount] = useState(false);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+
+  const liveMode = isLiveMode() || transaction?.payments_mode === 'live' || Boolean(transaction?.virtual_account_number);
 
   useEffect(() => {
     async function load() {
@@ -48,28 +56,70 @@ export default function BuyerCheckoutPage() {
     load();
   }, [id]);
 
+  // Real-time polling for incoming bank transfer (Anchor Webhook updates status)
+  useEffect(() => {
+    if (!id || !transaction || transaction.status !== 'AWAITING_PAYMENT') return;
+
+    const interval = setInterval(async () => {
+      const { data } = await getTransactionById(id);
+      if (data && data.status !== 'AWAITING_PAYMENT') {
+        setTransaction(data);
+        if (data.status === 'FUNDS_LOCKED') {
+          router.push(`/order/${data.id}?new_payment=true`);
+        }
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [id, transaction?.status, router]);
+
   const handleConfirmPayment = async (method: string) => {
     if (!transaction) return;
 
-    // Generate random 6-digit release code
-    const randomCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const now = new Date().toISOString();
+    try {
+      const res = await fetch('/api/escrow/confirm-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactionId: transaction.id,
+          paymentMethod: method,
+        }),
+      });
 
-    const { data, error } = await updateTransaction(transaction.id, {
-      status: 'FUNDS_LOCKED',
-      release_code: randomCode,
-      payment_method: method,
-      paid_at: now,
-    });
-
-    if (data) {
-      setTransaction(data);
-      setIsPaymentModalOpen(false);
-      // Redirect to Escrow Tracker (Screen 3)
-      router.push(`/order/${transaction.id}?new_payment=true`);
-    } else {
-      alert(`Payment simulation error: ${error}`);
+      const json = await res.json();
+      if (json.success && json.transaction) {
+        setTransaction(json.transaction);
+        setIsPaymentModalOpen(false);
+        router.push(`/order/${transaction.id}?new_payment=true`);
+      } else {
+        alert(`Payment error: ${json.error || 'Failed to process payment'}`);
+      }
+    } catch (err: any) {
+      alert(`Network error during payment confirmation: ${err.message}`);
     }
+  };
+
+  const handleCheckStatus = async () => {
+    if (!id) return;
+    setIsCheckingStatus(true);
+    try {
+      const { data } = await getTransactionById(id);
+      if (data) {
+        setTransaction(data);
+        if (data.status !== 'AWAITING_PAYMENT') {
+          router.push(`/order/${data.id}?new_payment=true`);
+        }
+      }
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
+
+  const handleCopyAccount = () => {
+    if (!transaction?.virtual_account_number) return;
+    navigator.clipboard.writeText(transaction.virtual_account_number);
+    setCopiedAccount(true);
+    setTimeout(() => setCopiedAccount(false), 2000);
   };
 
   if (isLoading) {
@@ -246,6 +296,87 @@ export default function BuyerCheckoutPage() {
                 <span>Go to Escrow Tracker & Release Code</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
+            </div>
+          ) : liveMode && transaction.virtual_account_number ? (
+            /* Live Mode: Dedicated Virtual NUBAN Bank Transfer Details */
+            <div className="space-y-4 pt-2">
+              <div className="bg-slate-900 text-white rounded-2xl p-5 space-y-4 border border-slate-800 shadow-md">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-emerald-400" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                      Providus Bank Escrow NUBAN
+                    </span>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>Awaiting Transfer</span>
+                  </span>
+                </div>
+
+                <div className="space-y-3 bg-white/5 border border-white/10 rounded-xl p-4">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-400 font-medium">Bank:</span>
+                    <span className="font-bold text-white">{transaction.virtual_bank_name || 'Providus Bank'}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-400 font-medium">Account Name:</span>
+                    <span className="font-semibold text-slate-200 truncate max-w-[220px]">
+                      {transaction.virtual_account_name || `Relyvora Escrow / ${transaction.vendor_handle}`}
+                    </span>
+                  </div>
+
+                  <div className="pt-2 border-t border-white/10 flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] text-slate-400 font-medium block">Account Number:</span>
+                      <span className="text-2xl font-black font-mono tracking-widest text-emerald-400 select-all">
+                        {transaction.virtual_account_number}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopyAccount}
+                      className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      {copiedAccount ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedAccount ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+
+                  <div className="pt-2 border-t border-white/10 flex items-center justify-between">
+                    <span className="text-xs text-slate-400 font-medium">Exact Amount to Transfer:</span>
+                    <span className="text-base font-bold font-mono text-emerald-400">
+                      {formatNaira(Number(transaction.total_amount))}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-400 leading-snug">
+                  Transfer the exact amount above from your bank app. Your payment will be locked safely in Relyvora escrow immediately upon credit.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={handleCheckStatus}
+                  disabled={isCheckingStatus}
+                  className="w-full py-3 px-4 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center justify-center gap-2 border border-white/20 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isCheckingStatus ? 'animate-spin' : ''}`} />
+                  <span>{isCheckingStatus ? 'Checking Escrow Balance...' : "I've Sent the Transfer • Check Status"}</span>
+                </button>
+              </div>
+
+              <div className="flex items-center justify-center gap-4 text-[11px] text-slate-500 text-center">
+                <span className="flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  NDIC Protected Escrow
+                </span>
+                <span>•</span>
+                <span>Providus Bank Rails</span>
+                <span>•</span>
+                <span>Instant Code Generation</span>
+              </div>
             </div>
           ) : (
             <div className="space-y-3 pt-2">

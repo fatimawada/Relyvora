@@ -8,6 +8,7 @@ import {
 } from '@/lib/supabase';
 import { Transaction, VendorMetrics } from '@/lib/types';
 import { calculatePricing, formatNaira, MINIMUM_PROTECTION_FEE } from '@/lib/pricing';
+import { isLiveMode } from '@/lib/paymentsMode';
 import { StatusBadge } from '@/components/StatusBadge';
 import { 
   Store, 
@@ -43,6 +44,7 @@ export default function VendorDashboardPage() {
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
   const [isUsingFallback, setIsUsingFallback] = useState(false);
+  const liveMode = isLiveMode();
 
   // Compute live fee preview
   const pricing = useMemo(() => {
@@ -98,6 +100,35 @@ export default function VendorDashboardPage() {
     setIsSubmitting(true);
     try {
       const activeVendorHandle = vendorHandle.trim() || '@LagosHairPlug';
+
+      // 1. Try server-side route handler with service role (and Anchor Virtual NUBAN in live mode)
+      try {
+        const res = await fetch('/api/escrow/create-link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            itemName: itemName.trim(),
+            itemPrice: pricing.itemPrice,
+            deliveryFee: pricing.deliveryFee,
+            vendorHandle: activeVendorHandle,
+            buyerPhone: buyerPhone.trim() || null,
+            buyerNotes: buyerNotes.trim() || null,
+          }),
+        });
+
+        const json = await res.json();
+        if (json.success && json.transaction) {
+          setGeneratedTx(json.transaction);
+          await loadTransactions();
+          return;
+        } else if (json.error) {
+          console.warn('Server link creation returned error, attempting fallback:', json.error);
+        }
+      } catch (serverErr) {
+        console.warn('Network issue reaching /api/escrow/create-link, using fallback:', serverErr);
+      }
+
+      // 2. Client fallback for local caching / demo resilience
       const { data, error } = await createTransaction({
         item_name: itemName.trim(),
         item_price: pricing.itemPrice,
@@ -111,7 +142,6 @@ export default function VendorDashboardPage() {
 
       if (data) {
         setGeneratedTx(data);
-        // Refresh transactions list
         await loadTransactions();
       } else if (error) {
         alert(`Could not create link: ${error}`);
@@ -172,7 +202,7 @@ export default function VendorDashboardPage() {
               </span>
             </div>
             <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-              Social Commerce Escrow Dashboard • Real-time settlement simulation
+              {liveMode ? 'Social Commerce Escrow Dashboard • Live Anchor BaaS Settlement' : 'Social Commerce Escrow Dashboard • Real-time settlement simulation'}
             </p>
           </div>
         </div>

@@ -18,6 +18,19 @@ export interface Transaction {
   buyer_notes?: string | null;
   status: TransactionStatus;
   release_code?: string | null;
+  release_code_hash?: string | null;
+  release_code_salt?: string | null;
+  failed_code_attempts?: number;
+  code_locked?: boolean;
+  code_locked_at?: string | null;
+  virtual_nuban_id?: string | null;
+  virtual_account_number?: string | null;
+  virtual_bank_name?: string | null;
+  virtual_account_name?: string | null;
+  anchor_transfer_id?: string | null;
+  anchor_revenue_transfer_id?: string | null;
+  idempotency_key?: string | null;
+  payments_mode?: string;
   dispute_reason?: string | null;
   payment_method?: string | null;
   paid_at?: string | null;
@@ -35,6 +48,7 @@ export interface VendorMetrics {
 
 export interface PricingBreakdown {
   itemPrice: number;
+  deliveryFee?: number;
   protectionFee: number;
   totalAmount: number;
   feePercentage: number;

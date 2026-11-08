@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { getTransactionById, updateTransaction } from '@/lib/supabase';
+import { getTransactionById } from '@/lib/supabase';
 import { Transaction } from '@/lib/types';
 import { formatNaira } from '@/lib/pricing';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -95,16 +95,19 @@ function EscrowTrackerContent() {
     if (!transaction || transaction.status !== 'FUNDS_LOCKED') return;
     setIsDispatching(true);
     try {
-      const now = new Date().toISOString();
-      const { data, error } = await updateTransaction(transaction.id, {
-        status: 'DISPATCHED',
-        dispatched_at: now,
+      const res = await fetch('/api/escrow/dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactionId: transaction.id }),
       });
-      if (data) {
-        setTransaction(data);
-      } else if (error) {
-        alert(`Dispatch update failed: ${error}`);
+      const json = await res.json();
+      if (json.success && json.transaction) {
+        setTransaction(json.transaction);
+      } else {
+        alert(`Dispatch update failed: ${json.error || 'Failed to dispatch'}`);
       }
+    } catch (err: any) {
+      alert(`Network error during dispatch: ${err.message}`);
     } finally {
       setIsDispatching(false);
     }
@@ -122,6 +125,11 @@ function EscrowTrackerContent() {
       return;
     }
 
+    if (transaction.code_locked || (transaction.failed_code_attempts || 0) >= 5) {
+      setVerificationError('SECURITY LOCKOUT: Maximum verification attempts exceeded. Escrow is locked.');
+      return;
+    }
+
     const cleanInput = enteredCode.trim();
     if (cleanInput.length !== 6) {
       setVerificationError('Please enter a complete 6-digit release code.');
@@ -130,23 +138,18 @@ function EscrowTrackerContent() {
 
     setIsVerifying(true);
     try {
-      // Simulate verification delay
-      await new Promise(resolve => setTimeout(resolve, 800));
-
-      if (cleanInput !== transaction.release_code) {
-        setVerificationError('Invalid 6-digit release code. Please confirm with the buyer.');
-        return;
-      }
-
-      // Valid code! Release escrow funds
-      const now = new Date().toISOString();
-      const { data, error } = await updateTransaction(transaction.id, {
-        status: 'RELEASED',
-        released_at: now,
+      const res = await fetch('/api/escrow/release', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactionId: transaction.id,
+          releaseCode: cleanInput,
+        }),
       });
 
-      if (data) {
-        setTransaction(data);
+      const json = await res.json();
+      if (json.success && json.transaction) {
+        setTransaction(json.transaction);
         setEnteredCode('');
         try {
           confetti({
@@ -155,9 +158,25 @@ function EscrowTrackerContent() {
             origin: { y: 0.5 }
           });
         } catch (e) {}
-      } else if (error) {
-        setVerificationError(`Release failed: ${error}`);
+      } else {
+        if (json.isLocked) {
+          setVerificationError('SECURITY LOCKOUT: 5 incorrect attempts exceeded. Escrow is now locked to protect against brute-force.');
+          if (json.transaction) {
+            setTransaction(json.transaction);
+          } else {
+            setTransaction(prev => prev ? { ...prev, code_locked: true, failed_code_attempts: 5 } : null);
+          }
+        } else if (json.remainingAttempts !== undefined) {
+          setVerificationError(`Invalid 6-digit release code. ${json.remainingAttempts} attempt(s) remaining before security lockout.`);
+          if (json.transaction) {
+            setTransaction(json.transaction);
+          }
+        } else {
+          setVerificationError(json.error || 'Invalid 6-digit release code.');
+        }
       }
+    } catch (err: any) {
+      setVerificationError(`Network error during code verification: ${err.message}`);
     } finally {
       setIsVerifying(false);
     }
@@ -170,19 +189,24 @@ function EscrowTrackerContent() {
 
     setIsSubmittingDispute(true);
     try {
-      const now = new Date().toISOString();
-      const { data, error } = await updateTransaction(transaction.id, {
-        status: 'DISPUTED',
-        dispute_reason: disputeReason.trim(),
-        disputed_at: now,
+      const res = await fetch('/api/escrow/dispute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactionId: transaction.id,
+          disputeReason: disputeReason.trim(),
+        }),
       });
 
-      if (data) {
-        setTransaction(data);
+      const json = await res.json();
+      if (json.success && json.transaction) {
+        setTransaction(json.transaction);
         setIsDisputeModalOpen(false);
-      } else if (error) {
-        alert(`Dispute submission failed: ${error}`);
+      } else {
+        alert(`Dispute submission failed: ${json.error || 'Server error'}`);
       }
+    } catch (err: any) {
+      alert(`Network error during dispute submission: ${err.message}`);
     } finally {
       setIsSubmittingDispute(false);
     }
@@ -214,6 +238,7 @@ function EscrowTrackerContent() {
   const isDisputed = transaction.status === 'DISPUTED';
   const isReleased = transaction.status === 'RELEASED';
   const isAwaitingPayment = transaction.status === 'AWAITING_PAYMENT';
+  const isCodeLocked = Boolean(transaction.code_locked || (transaction.failed_code_attempts || 0) >= 5);
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 sm:py-8 space-y-6 w-full">
@@ -342,15 +367,29 @@ function EscrowTrackerContent() {
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={handleCopyCode}
-                      className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center justify-center gap-2 border border-white/20 transition-all self-center sm:self-auto"
-                    >
-                      {copiedCode ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                      <span>{copiedCode ? 'Copied to Clipboard' : 'Copy Code'}</span>
-                    </button>
+                    {transaction.release_code ? (
+                      <button
+                        type="button"
+                        onClick={handleCopyCode}
+                        className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center justify-center gap-2 border border-white/20 transition-all self-center sm:self-auto"
+                      >
+                        {copiedCode ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                        <span>{copiedCode ? 'Copied to Clipboard' : 'Copy Code'}</span>
+                      </button>
+                    ) : null}
                   </div>
+
+                  {!transaction.release_code && (
+                    <div className="bg-white/10 border border-white/20 rounded-xl p-3 text-xs text-slate-200">
+                      🔒 <strong>Live Security:</strong> Your 6-digit release code was dispatched via SMS to your registered phone number. Keep it secret until you inspect your item.
+                    </div>
+                  )}
+
+                  {isCodeLocked && (
+                    <div className="bg-rose-500/20 border border-rose-400/40 rounded-xl p-3 text-xs text-rose-200">
+                      ⚠️ <strong>Security Notice:</strong> Escrow release has been temporarily locked due to 5 incorrect code attempts by the vendor/rider. Your funds remain 100% protected in escrow.
+                    </div>
+                  )}
 
                   {/* Warning Notice */}
                   <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3.5 text-left flex items-start gap-3">
@@ -459,6 +498,16 @@ function EscrowTrackerContent() {
                   <div>
                     <strong>Code Entry Disabled:</strong> This transaction is in dispute. Escrow funds cannot be released until resolved.
                   </div>
+                </div>
+              ) : isCodeLocked ? (
+                <div className="bg-rose-50 border-2 border-rose-300 rounded-2xl p-5 space-y-2">
+                  <div className="flex items-center gap-2 text-rose-900 font-bold text-sm">
+                    <AlertOctagon className="w-5 h-5 text-rose-600" />
+                    <span>SECURITY LOCKOUT ACTIVATED</span>
+                  </div>
+                  <p className="text-xs text-rose-800 leading-relaxed">
+                    This escrow transaction has been locked after 5 consecutive incorrect code attempts to protect against brute-force attacks. Release is frozen. Please contact Relyvora Dispute Mediation.
+                  </p>
                 </div>
               ) : isReleased ? (
                 <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 text-center space-y-1">

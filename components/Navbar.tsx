@@ -5,12 +5,15 @@ import Link from 'next/link';
 import { Logo } from '@/components/brand/Logo';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { FlagIcon } from '@/components/flags/FlagIcon';
+import { isLiveMode } from '@/lib/paymentsMode';
 import { Store, ArrowUpRight, ShieldCheck } from 'lucide-react';
 
 export function Navbar() {
   const corporateUrl = process.env.NODE_ENV === 'production' 
     ? 'https://relyvora.com' 
     : '/';
+
+  const live = isLiveMode();
 
   return (
     <header className="w-full bg-site/95 backdrop-blur-md border-b border-border sticky top-[33px] sm:top-[37px] z-40 transition-colors">
@@ -50,10 +53,12 @@ export function Navbar() {
             <span>Vendor Portal</span>
           </Link>
           
-          <div className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-surface text-muted border border-border">
-            <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-            <span>Simulated Escrow</span>
-          </div>
+          {!live && (
+            <div className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-surface text-muted border border-border">
+              <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+              <span>Simulated Escrow</span>
+            </div>
+          )}
 
           <ThemeToggle />
         </div>
