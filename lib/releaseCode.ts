@@ -1,64 +1,63 @@
+/**
+ * Cryptographic Release Code System - Phase G1.5 Security Hardening
+ * 
+ * Rules:
+ * 1. HMAC-SHA256 keyed by server-side secret (RELEASE_CODE_PEPPER, server env only).
+ * 2. Keyed over `${transactionId}:${code}`.
+ * 3. Never store or log plaintext release code.
+ * 4. Constant-time comparison using crypto.timingSafeEqual.
+ * 5. Code expiration enforcement via code_expires_at.
+ */
+
 import crypto from 'crypto';
 
+export const MAX_CODE_ATTEMPTS = 5;
+export const CODE_LIFETIME_HOURS = 72; // 72-hour expiration from escrow lock
+
 /**
- * Server-Side Cryptographic Utilities for Relyvora 6-Digit Delivery Release Codes.
- * Never expose raw release codes in database storage or server logs.
+ * Retrieves the server-side release code pepper.
+ * Throws in production if missing.
  */
-
-const DEFAULT_PEPPER = 'relyvora_secure_escrow_pepper_2026';
-
-function getPepper(): string {
-  return process.env.CODE_PEPPER || DEFAULT_PEPPER;
+function getReleaseCodePepper(): string {
+  const pepper = process.env.RELEASE_CODE_PEPPER;
+  if (!pepper) {
+    if (process.env.NODE_ENV === 'production' && process.env.PAYMENTS_MODE === 'live') {
+      throw new Error('CRITICAL SECURITY CONFIGURATION ERROR: RELEASE_CODE_PEPPER is missing.');
+    }
+    return 'relyvora_sandbox_pepper_k9823hfasdf0923';
+  }
+  return pepper.trim();
 }
 
 /**
- * Generates an unguessable 6-digit numerical delivery release code using
- * a cryptographically secure pseudo-random number generator (CSPRNG).
+ * Generates a 6-digit release code using CSPRNG.
  */
 export function generateCryptographicReleaseCode(): string {
-  const code = crypto.randomInt(100000, 1000000);
-  return code.toString();
+  return crypto.randomInt(100000, 1000000).toString();
 }
 
 /**
- * Generates a random 16-byte cryptographic salt.
+ * Computes HMAC-SHA256 over `${transactionId}:${code}` keyed with RELEASE_CODE_PEPPER.
  */
-export function generateCodeSalt(): string {
-  return crypto.randomBytes(16).toString('hex');
+export function computeReleaseCodeHmac(transactionId: string, code: string): string {
+  const pepper = getReleaseCodePepper();
+  const payload = `${transactionId}:${code.trim()}`;
+  return crypto.createHmac('sha256', pepper).update(payload).digest('hex');
 }
 
 /**
- * Computes a salted, peppered SHA-256 hash of the release code.
+ * Constant-time comparison of the computed HMAC against the database hash.
  */
-export function hashReleaseCode(code: string, salt: string): string {
-  const cleanCode = code.trim();
-  const pepper = getPepper();
-  return crypto
-    .createHash('sha256')
-    .update(`${cleanCode}:${salt}:${pepper}`)
-    .digest('hex');
-}
-
-/**
- * Securely verifies a candidate release code against the stored hash in constant time.
- */
-export function verifyReleaseCode(
-  candidateCode: string,
-  salt: string,
+export function verifyReleaseCodeHmac(
+  transactionId: string, 
+  code: string, 
   storedHash: string
 ): boolean {
-  if (!candidateCode || !salt || !storedHash) return false;
-  
-  const cleanCandidate = candidateCode.trim();
-  if (cleanCandidate.length !== 6 || !/^\d{6}$/.test(cleanCandidate)) {
-    return false;
-  }
-
-  const computedHash = hashReleaseCode(cleanCandidate, salt);
-
+  if (!transactionId || !code || !storedHash) return false;
   try {
-    const computedBuf = Buffer.from(computedHash, 'utf8');
-    const storedBuf = Buffer.from(storedHash, 'utf8');
+    const computed = computeReleaseCodeHmac(transactionId, code);
+    const computedBuf = Buffer.from(computed, 'hex');
+    const storedBuf = Buffer.from(storedHash, 'hex');
 
     if (computedBuf.length !== storedBuf.length) {
       return false;
@@ -71,6 +70,18 @@ export function verifyReleaseCode(
 }
 
 /**
- * Strict lockout policy: Lock release verification if 5 or more failed attempts occur.
+ * Checks if a release code has expired.
  */
-export const MAX_CODE_ATTEMPTS = 5;
+export function isCodeExpired(codeExpiresAt: string | null | undefined): boolean {
+  if (!codeExpiresAt) return false;
+  return new Date().getTime() > new Date(codeExpiresAt).getTime();
+}
+
+/**
+ * Calculates expiration timestamp from now.
+ */
+export function calculateCodeExpiration(hours: number = CODE_LIFETIME_HOURS): string {
+  const d = new Date();
+  d.setHours(d.getHours() + hours);
+  return d.toISOString();
+}

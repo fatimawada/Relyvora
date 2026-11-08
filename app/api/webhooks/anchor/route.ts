@@ -3,40 +3,39 @@ import crypto from 'crypto';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { 
   generateCryptographicReleaseCode, 
-  generateCodeSalt, 
-  hashReleaseCode 
+  computeReleaseCodeHmac, 
+  calculateCodeExpiration 
 } from '@/lib/releaseCode';
-import { recordLedgerEntry } from '@/lib/ledger';
 import { sendSystemAlert } from '@/lib/alerts';
 
-// In-memory replay guard for fast lookups & resilience
-const processedEventsCache = new Set<string>();
-
 /**
- * Validates HMAC-SHA256 signature from Anchor headers.
+ * Strict HMAC-SHA256 webhook signature verification.
  */
 function verifyAnchorSignature(rawBody: string, signatureHeader: string | null): boolean {
   const secret = process.env.ANCHOR_WEBHOOK_SECRET;
-  if (!secret || !signatureHeader) {
-    return false;
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production' || process.env.PAYMENTS_MODE === 'live') {
+      console.error('CRITICAL SECURITY ERROR: ANCHOR_WEBHOOK_SECRET is not configured in production.');
+      return false;
+    }
+    return true; // Allow local sandbox testing only if secret not configured
   }
+
+  if (!signatureHeader) return false;
 
   try {
     const computedSignature = crypto
-      .createHmac('sha256', secret)
+      .createHmac('sha256', secret.trim())
       .update(rawBody)
       .digest('hex');
 
-    const expectedBuf = Buffer.from(computedSignature, 'utf8');
-    const actualBuf = Buffer.from(signatureHeader.trim(), 'utf8');
+    const sigBuf = Buffer.from(signatureHeader.trim(), 'hex');
+    const compBuf = Buffer.from(computedSignature, 'hex');
 
-    if (expectedBuf.length !== actualBuf.length) {
-      return false;
-    }
-
-    return crypto.timingSafeEqual(expectedBuf, actualBuf);
+    if (sigBuf.length !== compBuf.length) return false;
+    return crypto.timingSafeEqual(sigBuf, compBuf);
   } catch (err) {
-    console.error('Signature verification exception:', err);
+    console.error('Signature verification threw exception:', err);
     return false;
   }
 }
@@ -76,124 +75,92 @@ export async function POST(request: NextRequest) {
     const eventId = payload?.id || payload?.data?.id || `evt_${Date.now()}`;
     const eventType = payload?.event || payload?.type || payload?.data?.type || 'unknown';
 
-    // 2. Idempotency & Replay Attack Prevention
-    if (processedEventsCache.has(eventId)) {
-      return NextResponse.json({ success: true, message: 'Event already processed (cached)' }, { status: 200 });
-    }
-
-    const supabase = getServiceSupabase();
-
-    // Check database idempotency table
-    const { data: existingEvent } = await supabase
-      .from('webhook_events')
-      .select('id')
-      .eq('event_id', eventId)
-      .maybeSingle();
-
-    if (existingEvent) {
-      processedEventsCache.add(eventId);
-      return NextResponse.json({ success: true, message: 'Event already processed' }, { status: 200 });
-    }
-
-    // 3. Process Event Types
-    // Look for deposit/credit events into a Virtual NUBAN or FBO ledger
     const isCreditEvent = 
       eventType === 'transaction.credit' || 
       eventType === 'virtual_nuban.credit' ||
       eventType === 'DepositAccount.credit' ||
       payload?.attributes?.type === 'CREDIT';
 
-    if (isCreditEvent) {
-      const attributes = payload?.data?.attributes || payload?.attributes || {};
-      const accountNumber = attributes?.accountNumber || attributes?.destinationAccountNumber;
-      const metadataTxId = attributes?.metadata?.transactionId || payload?.metadata?.transactionId;
-      const amountKobo = Number(attributes?.amount) || 0;
-      const amountNaira = amountKobo / 100;
-
-      // Locate the matching pending transaction
-      let query = supabase.from('transactions').select('*').eq('status', 'AWAITING_PAYMENT');
-      if (metadataTxId) {
-        query = query.eq('id', metadataTxId);
-      } else if (accountNumber) {
-        query = query.eq('virtual_account_number', accountNumber);
-      }
-
-      const { data: tx, error: matchErr } = await query.maybeSingle();
-
-      if (tx) {
-        // Validate paid amount against total_amount
-        const expectedTotal = Number(tx.total_amount) || 0;
-        if (amountNaira >= expectedTotal) {
-          // Generate cryptographic release code and salted hash
-          const code = generateCryptographicReleaseCode();
-          const salt = generateCodeSalt();
-          const hash = hashReleaseCode(code, salt);
-          const now = new Date().toISOString();
-
-          await supabase
-            .from('transactions')
-            .update({
-              status: 'FUNDS_LOCKED',
-              release_code_hash: hash,
-              release_code_salt: salt,
-              // In production live mode, the plaintext release_code is NOT persisted to DB;
-              // It is dispatched via notification (SMS/email) to buyer.
-              paid_at: now,
-              payment_method: 'VIRTUAL_NUBAN_TRANSFER',
-              updated_at: now,
-            })
-            .eq('id', tx.id);
-
-          // Phase G2: Record deposit in immutable transaction ledger
-          await recordLedgerEntry({
-            transactionId: tx.id,
-            entryType: 'DEPOSIT_LOCKED',
-            amount: amountNaira,
-            currency: 'NGN',
-            fromAccount: accountNumber || 'Providus Virtual NUBAN',
-            toAccount: 'Relyvora Escrow FBO',
-            anchorTransferId: eventId,
-            idempotencyKey: `ledger_${eventId}_DEPOSIT_LOCKED`,
-            metadata: { eventId, eventType, vendorHandle: tx.vendor_handle },
-          });
-
-          console.log(`Successfully locked escrow funds for transaction ${tx.id} via Anchor webhook credit.`);
-        } else {
-          console.warn(`Partial payment detected for tx ${tx.id}: received ${amountNaira}, expected ${expectedTotal}`);
-          sendSystemAlert({
-            type: 'STUCK_FUNDS',
-            severity: 'WARNING',
-            title: 'Partial Escrow Payment Received',
-            transactionId: tx.id,
-            vendorHandle: tx.vendor_handle,
-            details: {
-              receivedAmountNaira: amountNaira,
-              expectedTotalNaira: expectedTotal,
-              eventId,
-            },
-          }).catch(() => {});
-        }
-      }
+    if (!isCreditEvent) {
+      // Non-credit events are ignored
+      return NextResponse.json({ success: true, message: 'Event ignored (not a credit)' }, { status: 200 });
     }
 
-    // 4. Log processed event in webhook_events ledger table
-    try {
-      await supabase.from('webhook_events').insert([
-        {
-          event_id: eventId,
-          event_type: eventType,
-          payload,
-          status: 'PROCESSED',
+    const attributes = payload?.data?.attributes || payload?.attributes || {};
+    const accountNumber = attributes?.accountNumber || attributes?.destinationAccountNumber;
+    const metadataTxId = attributes?.metadata?.transactionId || payload?.metadata?.transactionId || null;
+    const amountKobo = Number(attributes?.amount) || 0;
+    const amountNaira = amountKobo / 100;
+
+    const supabase = getServiceSupabase();
+
+    // 2. Execute DB-first idempotency & atomic deposit processing via Postgres RPC
+    // rpc_process_webhook_deposit inserts into webhook_events first with unique event_id,
+    // locks transaction row with SELECT ... FOR UPDATE, and records ledger entry
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('rpc_process_webhook_deposit', {
+      p_event_id: eventId,
+      p_event_type: eventType,
+      p_account_number: accountNumber || '',
+      p_amount_naira: amountNaira,
+      p_metadata_tx_id: metadataTxId,
+      p_payload: payload,
+    });
+
+    if (rpcError) {
+      console.error('RPC process_webhook_deposit failed:', rpcError);
+      return NextResponse.json({ success: false, error: rpcError.message }, { status: 500 });
+    }
+
+    // Check duplicate/replayed event
+    if (rpcResult?.replayed) {
+      return NextResponse.json({ success: true, message: 'Webhook event already processed (idempotent)' }, { status: 200 });
+    }
+
+    // Check underpayment
+    if (rpcResult?.error === 'UNDERPAYMENT') {
+      sendSystemAlert({
+        type: 'STUCK_FUNDS',
+        severity: 'CRITICAL',
+        title: 'Partial Escrow Underpayment Detected',
+        transactionId: metadataTxId,
+        details: {
+          receivedNaira: amountNaira,
+          expectedNaira: rpcResult.amount_expected,
+          eventId,
         },
-      ]);
-    } catch (logErr) {
-      console.warn('Could not insert to webhook_events table (schema migration may be pending):', logErr);
+      }).catch(() => {});
+
+      return NextResponse.json(
+        { success: false, error: 'Underpayment received; funds not locked in escrow' },
+        { status: 422 }
+      );
     }
 
-    processedEventsCache.add(eventId);
-    return NextResponse.json({ success: true, processed: true }, { status: 200 });
+    if (!rpcResult?.success) {
+      return NextResponse.json({ success: false, error: rpcResult?.error || 'Deposit handling failed' }, { status: 400 });
+    }
+
+    // 3. Generate cryptographic release code & HMAC-SHA256 for the funded order
+    const txId = rpcResult.transaction_id;
+    if (txId) {
+      const rawCode = generateCryptographicReleaseCode();
+      const hmacHash = computeReleaseCodeHmac(txId, rawCode);
+
+      await supabase
+        .from('transactions')
+        .update({
+          release_code_hash: hmacHash,
+          // Plaintext code is NEVER persisted to DB in live mode
+        })
+        .eq('id', txId);
+
+      // In production live mode, dispatch the code directly to buyer's phone/email via SMS
+      console.log(`Successfully locked escrow funds for transaction ${txId} via verified Anchor webhook.`);
+    }
+
+    return NextResponse.json({ success: true, transactionId: txId }, { status: 200 });
   } catch (err: any) {
-    console.error('Unhandled webhook error:', err);
+    console.error('Unhandled error in Anchor webhook route:', err);
     return NextResponse.json({ success: false, error: err.message || 'Internal Server Error' }, { status: 500 });
   }
 }

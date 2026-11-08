@@ -1,35 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { isLiveMode } from '@/lib/paymentsMode';
-import { isCheckoutEnabled } from '@/lib/safetyLimits';
+import { isCheckoutEnabledServer } from '@/lib/safetyLimits';
 import { recordLedgerEntry } from '@/lib/ledger';
+import { getClientIp, checkRateLimit } from '@/lib/rateLimit';
 import { 
   generateCryptographicReleaseCode, 
-  generateCodeSalt, 
-  hashReleaseCode 
+  computeReleaseCodeHmac, 
+  calculateCodeExpiration 
 } from '@/lib/releaseCode';
 
 export async function POST(request: NextRequest) {
   try {
+    // 1. IP Rate Limiting
+    const clientIp = getClientIp(request);
+    const rateCheck = checkRateLimit(`${clientIp}:confirm_payment`, 10, 15 * 60 * 1000);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Too many requests. Please wait before attempting again.' },
+        { status: 429 }
+      );
+    }
+
     const body = await request.json();
     const { transactionId, paymentMethod = 'SIMULATED' } = body;
 
-    if (!isCheckoutEnabled()) {
+    if (!transactionId) {
+      return NextResponse.json({ success: false, error: 'transactionId is required.' }, { status: 400 });
+    }
+
+    const checkoutEnabled = await isCheckoutEnabledServer();
+    if (!checkoutEnabled) {
       return NextResponse.json(
         { success: false, error: 'Checkout is temporarily disabled for maintenance.' },
         { status: 503 }
       );
     }
 
-    if (!transactionId) {
-      return NextResponse.json({ success: false, error: 'transactionId is required.' }, { status: 400 });
-    }
-
     if (isLiveMode()) {
       return NextResponse.json(
         { 
           success: false, 
-          error: 'Simulated payment confirmation is disabled in live mode. Payments must be deposited via Virtual NUBAN.' 
+          error: 'Simulated payment confirmation is disabled in live mode. Payments must be deposited via Providus Virtual NUBAN.' 
         },
         { status: 403 }
       );
@@ -37,7 +49,7 @@ export async function POST(request: NextRequest) {
 
     const supabase = getServiceSupabase();
 
-    // 1. Fetch current transaction
+    // 2. Fetch current transaction
     const { data: existing, error: fetchErr } = await supabase
       .from('transactions')
       .select('*')
@@ -55,20 +67,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. Generate cryptographic release code and salted hash
+    // 3. Generate cryptographic release code and HMAC-SHA256 (keyed by server-side RELEASE_CODE_PEPPER)
     const rawCode = generateCryptographicReleaseCode();
-    const salt = generateCodeSalt();
-    const hash = hashReleaseCode(rawCode, salt);
+    const hmacHash = computeReleaseCodeHmac(transactionId, rawCode);
+    const codeExpiresAt = calculateCodeExpiration(72);
     const now = new Date().toISOString();
 
-    // 3. Atomically update status to FUNDS_LOCKED
+    // 4. Atomically update status to FUNDS_LOCKED with Anchor deposit reference & expiry
     const { data: updated, error: updateErr } = await supabase
       .from('transactions')
       .update({
         status: 'FUNDS_LOCKED',
-        release_code: rawCode, // Retained in sandbox mode for testing UI display
-        release_code_hash: hash,
-        release_code_salt: salt,
+        release_code: rawCode, // Retained strictly in sandbox mode for UI display
+        release_code_hash: hmacHash,
+        code_expires_at: codeExpiresAt,
+        amount_paid: Number(existing.total_amount) || 0,
+        anchor_deposit_id: `sandbox_deposit_${Date.now()}`,
         failed_code_attempts: 0,
         code_locked: false,
         payment_method: paymentMethod,
@@ -84,7 +98,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: updateErr.message }, { status: 500 });
     }
 
-    // Phase G2: Record deposit in immutable transaction ledger
+    // 5. Record deposit in immutable transaction ledger
     await recordLedgerEntry({
       transactionId: transactionId,
       entryType: 'DEPOSIT_LOCKED',

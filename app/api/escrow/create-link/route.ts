@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { calculatePricing } from '@/lib/pricing';
-import { isLiveMode, getPaymentsMode } from '@/lib/paymentsMode';
+import { isLiveMode, getServerPaymentsMode } from '@/lib/paymentsMode';
 import { createAnchorCollectionAccount, RELYVORA_FBO_ACCOUNT_ID } from '@/lib/anchor';
-import { validateOrderCreation } from '@/lib/safetyLimits';
+import { validateOrderCreationServer } from '@/lib/safetyLimits';
+import { 
+  generateCryptographicReleaseCode, 
+  computeReleaseCodeHmac, 
+  calculateCodeExpiration 
+} from '@/lib/releaseCode';
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,11 +27,11 @@ export async function POST(request: NextRequest) {
     const deliveryNum = Number(deliveryFee) || 0;
     const pricing = calculatePricing(priceNum, deliveryNum);
 
-    const mode = getPaymentsMode();
+    const serverMode = getServerPaymentsMode();
     const activeHandle = (vendorHandle || '').trim() || '@LagosHairPlug';
 
-    // Phase G2: Kill Switch, Maximum Cap & Vendor Allowlist validation
-    const safetyCheck = validateOrderCreation({
+    // Phase G1.5: Database-backed hot kill switches, caps & allowlist validation
+    const safetyCheck = await validateOrderCreationServer({
       vendorHandle: activeHandle,
       totalAmount: pricing.totalAmount,
     });
@@ -38,8 +43,14 @@ export async function POST(request: NextRequest) {
         { status: statusCode }
       );
     }
+
     const txId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `tx-${Date.now()}`;
     const now = new Date().toISOString();
+
+    // Generate cryptographic release code and HMAC-SHA256 (keyed by server-side RELEASE_CODE_PEPPER)
+    const rawCode = generateCryptographicReleaseCode();
+    const hmacHash = computeReleaseCodeHmac(txId, rawCode);
+    const codeExpiresAt = calculateCodeExpiration(72);
 
     let virtualNubanId: string | null = null;
     let virtualAccountNumber: string | null = null;
@@ -69,6 +80,8 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getServiceSupabase();
+    const isLive = isLiveMode();
+
     const { data, error } = await supabase
       .from('transactions')
       .insert([
@@ -82,10 +95,16 @@ export async function POST(request: NextRequest) {
           buyer_phone: (buyerPhone || '').trim() || null,
           buyer_notes: (buyerNotes || '').trim() || null,
           status: 'AWAITING_PAYMENT',
-          payments_mode: mode,
+          payments_mode: serverMode,
           virtual_nuban_id: virtualNubanId,
           virtual_account_number: virtualAccountNumber,
           virtual_bank_name: virtualBankName,
+          // CRITICAL: Plaintext code is NEVER stored in live mode; stored HMAC-SHA256 only
+          release_code: isLive ? null : rawCode,
+          release_code_hash: hmacHash,
+          code_expires_at: codeExpiresAt,
+          failed_code_attempts: 0,
+          code_locked: false,
           created_at: now,
           updated_at: now,
         },

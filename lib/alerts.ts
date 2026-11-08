@@ -23,12 +23,25 @@ export async function sendSystemAlert(alert: SystemAlert): Promise<{ success: bo
   const alertRecipient = process.env.ALERT_EMAIL || 'support@relyvora.com';
   const fromEmail = process.env.RESEND_FROM_EMAIL || 'Relyvora Alerts <alerts@relyvora.com>';
 
-  // Format alert payload safely (never log or transmit full release codes or credentials)
-  const sanitizedDetails = { ...alert.details };
-  delete sanitizedDetails.releaseCode;
-  delete sanitizedDetails.release_code;
-  delete sanitizedDetails.secretKey;
-  delete sanitizedDetails.anchorSecret;
+  // Format alert payload safely: strictly sanitize release codes, account numbers, and phone numbers
+  const sanitizedDetails: Record<string, any> = {};
+  for (const [key, value] of Object.entries(alert.details)) {
+    const k = key.toLowerCase();
+    if (k.includes('code') || k.includes('secret') || k.includes('hash') || k.includes('salt') || k.includes('key')) {
+      continue; // Strip entirely
+    }
+    if (k.includes('account') && typeof value === 'string') {
+      // Mask account number: e.g. ******1234
+      sanitizedDetails[key] = value.length > 4 ? `******${value.slice(-4)}` : '******';
+      continue;
+    }
+    if (k.includes('phone') && typeof value === 'string') {
+      // Mask phone number: e.g. ***-***-1234
+      sanitizedDetails[key] = value.length > 4 ? `***-***-${value.slice(-4)}` : '***-***-****';
+      continue;
+    }
+    sanitizedDetails[key] = value;
+  }
 
   const timestamp = new Date().toISOString();
   const subject = `[${alert.severity}] [Relyvora Ops] ${alert.title}`;

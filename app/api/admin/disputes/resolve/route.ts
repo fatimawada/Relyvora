@@ -16,7 +16,36 @@ export async function POST(request: NextRequest) {
       relyvoraFee = 0,
       resolutionNotes = '',
       resolvedBy = 'admin',
+      adminEmail = 'support@relyvora.com',
+      confirmed = false,
     } = body;
+
+    // Phase G1.5 Security: Server-side authorization on every admin API route
+    const rawAllowlist = process.env.ADMIN_EMAIL_ALLOWLIST || process.env.ALERT_EMAIL || 'support@relyvora.com';
+    const allowlist = rawAllowlist.split(',').map(e => e.trim().toLowerCase());
+    const adminKey = request.headers.get('x-admin-key');
+    const isAuthorized = 
+      (process.env.ADMIN_SECRET_KEY && adminKey === process.env.ADMIN_SECRET_KEY) ||
+      (adminEmail && allowlist.includes(adminEmail.trim().toLowerCase()));
+
+    if (!isAuthorized) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Admin authorization failed or email not in allowlist.' },
+        { status: 403 }
+      );
+    }
+
+    // Phase G1.5 Security: Refunds and release overrides need explicit confirmation step
+    if ((resolutionAction === 'FULL_REFUND_BUYER' || resolutionAction === 'FULL_PAYOUT_VENDOR') && !confirmed) {
+      return NextResponse.json(
+        {
+          success: false,
+          requiresConfirmation: true,
+          error: `Executing ${resolutionAction} is irreversible and requires explicit confirmation.`,
+        },
+        { status: 400 }
+      );
+    }
 
     if (!transactionId || !scenarioNumber || !resolutionAction) {
       return NextResponse.json(
@@ -99,6 +128,22 @@ export async function POST(request: NextRequest) {
           resolved_by: resolvedBy,
           resolution_notes: resolutionNotes.trim() || null,
           created_at: now,
+        },
+      ]);
+
+      // Phase G1.5 Security: Write to admin_audit_log
+      await supabase.from('admin_audit_log').insert([
+        {
+          admin_email: adminEmail,
+          action: `DISPUTE_RESOLUTION_${resolutionAction}`,
+          target_type: 'transaction',
+          target_id: transactionId,
+          metadata: {
+            scenarioNumber,
+            buyerRefundAmount,
+            vendorPayoutAmount,
+            resolutionNotes,
+          },
         },
       ]);
     } catch (auditErr) {

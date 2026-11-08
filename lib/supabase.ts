@@ -46,61 +46,48 @@ function saveLocalTransaction(tx: Transaction) {
 /**
  * Fetch all transactions for a vendor, falling back to local storage if Supabase table is not yet created.
  */
-export async function getTransactions(): Promise<{ data: Transaction[]; isLocalFallback?: boolean }> {
+export async function getTransactions(vendorHandle?: string): Promise<{ data: Transaction[]; isLocalFallback?: boolean }> {
   try {
-    const { data, error } = await supabase
-      .from('transactions')
-      .select('*')
-      .order('created_at', { ascending: false });
+    // Phase G1.5 Security: Traverse server route handler with service role
+    const url = vendorHandle 
+      ? `/api/escrow/list?vendorHandle=${encodeURIComponent(vendorHandle)}`
+      : '/api/escrow/list';
 
-    if (error) {
-      console.warn('Supabase fetch error (schema might not be run yet):', error.message);
-      return { data: getLocalTransactions(), isLocalFallback: true };
+    const res = await fetch(url);
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.transactions)) {
+        return { data: json.transactions };
+      }
     }
 
-    // Merge/sync into local storage for offline resilience
-    if (typeof window !== 'undefined' && data) {
-      const local = getLocalTransactions();
-      const map = new Map<string, Transaction>();
-      data.forEach((t: Transaction) => map.set(t.id, t));
-      // keep any locally created items that might not have pushed
-      local.forEach(t => {
-        if (!map.has(t.id)) map.set(t.id, t);
-      });
-      const merged = Array.from(map.values()).sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(merged));
-    }
-
-    return { data: (data as Transaction[]) || [] };
+    return { data: getLocalTransactions(), isLocalFallback: true };
   } catch (err) {
-    console.error('Supabase query failed:', err);
+    console.warn('Escrow list fetch failed, falling back to local cache:', err);
     return { data: getLocalTransactions(), isLocalFallback: true };
   }
 }
 
 /**
- * Fetch a single transaction by ID.
+ * Fetch a single transaction by ID through authenticated server route handler.
  */
 export async function getTransactionById(id: string): Promise<{ data: Transaction | null; error?: string }> {
   try {
-    const { data, error } = await supabase
-      .from('transactions')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (error || !data) {
-      // Check local cache
-      const local = getLocalTransactions().find(t => t.id === id);
-      if (local) {
-        return { data: local };
+    // Phase G1.5 Security: Always fetch through sanitized server route handler
+    const res = await fetch(`/api/escrow/${encodeURIComponent(id)}`);
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.transaction) {
+        return { data: json.transaction as Transaction };
       }
-      return { data: null, error: error?.message || 'Transaction not found' };
     }
 
-    return { data: data as Transaction };
+    // Check local cache if server route returned 404 or network error
+    const local = getLocalTransactions().find(t => t.id === id);
+    if (local) {
+      return { data: local };
+    }
+    return { data: null, error: 'Transaction not found' };
   } catch (err: any) {
     const local = getLocalTransactions().find(t => t.id === id);
     if (local) return { data: local };
