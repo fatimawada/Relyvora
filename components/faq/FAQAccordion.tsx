@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import Link from 'next/link';
+import { ChevronDown, ArrowUpRight } from 'lucide-react';
 
 interface FAQItem {
   question: string;
-  answer: string;
+  answer: React.ReactNode;
   isTodo?: boolean;
 }
 
@@ -18,12 +19,17 @@ export const FAQ_ITEMS: FAQItem[] = [
   {
     question: 'How does Relyvora protect sellers?',
     answer:
-      'You only send out an order after Relyvora confirms the buyer has paid. That means no more dispatching on pay\u2011on\u2011delivery and getting a no\u2011show at the door.',
+      'The seller is paid when the buyer checks the order and confirms with their six\u2011digit code. If there is a dispute, the money stays frozen while Relyvora Support reviews it. In some cases set out in the dispute policy, Relyvora can refund or release without the code.',
   },
   {
     question: 'How much does Relyvora cost and who pays the fee?',
     answer:
-      'A flat 3% fee, paid by the buyer and shown on the payment screen before they pay. There are no monthly subscriptions or account opening fees.',
+      'The buyer pays 3% of what they pay into escrow, with a minimum fee of ₦500. The fee is shown before they pay. There are no other Relyvora fees and no subscriptions.',
+  },
+  {
+    question: 'Are there any other charges?',
+    answer:
+      'Relyvora charges only the 3% fee (minimum ₦500) to the buyer. Delivery is a separate cost agreed between buyer and seller.',
   },
   {
     question: 'Where is the money held?',
@@ -31,21 +37,41 @@ export const FAQ_ITEMS: FAQItem[] = [
       'Payments are powered by our regulated Banking\u2011as\u2011a\u2011Service partner, Anchor Technologies Limited, in partnership with CBN\u2011licensed financial institutions.',
   },
   {
-    question: 'What happens if a buyer refuses or rejects a delivery?',
-    answer:
-      '[TODO: Policy pending confirmation from Relyvora team: Doorstep rejection protocol and return shipping allocation]',
-    isTodo: true,
+    question: 'What happens if an order goes wrong or there is a dispute?',
+    answer: (
+      <div className="space-y-3">
+        <p>
+          If an order does not match what was agreed, arrives damaged, or goes wrong in another way, the buyer raises a
+          dispute from their transaction page before sharing the code, or emails{' '}
+          <a href="mailto:support@relyvora.com" className="text-accent underline">
+            support@relyvora.com
+          </a>{' '}
+          with the transaction reference. The money stays frozen while Relyvora Support reviews it.
+        </p>
+        <ul className="list-disc pl-5 space-y-1.5 text-xs sm:text-sm text-muted">
+          <li><strong>Wrong or damaged item:</strong> Full refund after the item is returned to the seller.</li>
+          <li><strong>Lost in transit:</strong> Full refund to the buyer.</li>
+          <li><strong>Buyer unreachable or refuses delivery:</strong> Refund less the delivery fee, with the delivery fee paid to the seller.</li>
+          <li><strong>Seller does not deliver:</strong> Seller has 6 hours to provide valid proof, otherwise a full refund is issued.</li>
+        </ul>
+        <p className="pt-1">
+          <Link
+            href="/disputes"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 font-semibold text-accent hover:underline"
+          >
+            <span>Read the full dispute policy</span>
+            <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />
+          </Link>
+        </p>
+      </div>
+    ),
   },
   {
     question: 'What happens if a buyer loses their six\u2011digit release code?',
     answer:
-      '[TODO: Policy pending confirmation from Relyvora team: Code reissuance and authentication protocol]',
-    isTodo: true,
-  },
-  {
-    question: 'What are the dispute timelines?',
-    answer:
-      '[TODO: Policy pending confirmation from Relyvora team: Official dispute resolution timeline and investigation SLA]',
+      '[TODO: Policy pending confirmation from Relyvora team: Code reissuance and verification process]',
     isTodo: true,
   },
   {
@@ -75,7 +101,7 @@ export function FAQAccordion() {
   };
 
   return (
-    <div className="space-y-3.5 max-w-3xl">
+    <div className="space-y-4 max-w-3xl">
       {FAQ_ITEMS.map((item, index) => {
         const isOpen = openIndex === index;
         return (
@@ -84,28 +110,25 @@ export function FAQAccordion() {
             className="rounded-2xl border border-border bg-surface overflow-hidden transition-colors"
           >
             <button
-              onClick={() => toggle(index)}
               type="button"
-              className="w-full p-5 sm:p-6 text-left flex items-center justify-between gap-4 font-semibold text-main text-base sm:text-[17px] hover:text-accent transition-colors"
+              onClick={() => toggle(index)}
               aria-expanded={isOpen}
+              className="w-full p-6 text-left flex items-center justify-between gap-4 font-semibold text-main hover:text-accent transition-colors"
             >
-              <span>{item.question}</span>
+              <span className="text-base sm:text-lg">{item.question}</span>
               <ChevronDown
-                className={`w-5 h-5 text-muted shrink-0 transition-transform duration-200 ${
-                  isOpen ? 'rotate-180 text-accent' : ''
+                className={`w-5 h-5 shrink-0 transition-transform duration-200 ${
+                  isOpen ? 'rotate-180 text-accent' : 'text-muted'
                 }`}
                 aria-hidden="true"
               />
             </button>
-
             {isOpen && (
-              <div className="px-5 sm:px-6 pb-6 text-sm sm:text-base text-muted leading-relaxed border-t border-border/60 pt-4">
+              <div className="px-6 pb-6 pt-1 text-sm text-muted leading-relaxed border-t border-border/50">
                 {item.isTodo ? (
-                  <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs font-medium">
-                    {item.answer}
-                  </div>
+                  <p className="text-amber-800 dark:text-amber-300 font-medium">{item.answer}</p>
                 ) : (
-                  <p>{item.answer}</p>
+                  <div>{item.answer}</div>
                 )}
               </div>
             )}

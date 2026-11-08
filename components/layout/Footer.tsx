@@ -1,5 +1,8 @@
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { ArrowUpRight } from 'lucide-react';
 import { Logo } from '@/components/brand/Logo';
 
@@ -26,13 +29,15 @@ const LEGAL_LINKS = [
 
 export function Footer() {
   const currentYear = new Date().getFullYear();
+  const pathname = usePathname();
+  const isTrustPage = pathname === '/trust-and-safety';
 
   return (
     <footer className="w-full bg-surface border-t border-border mt-auto">
       <div className="max-w-container mx-auto px-6 py-14 lg:py-16 space-y-10">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-10 lg:gap-12">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-10">
           {/* Brand */}
-          <div className="md:col-span-5 space-y-4">
+          <div className="md:col-span-4 space-y-4">
             <Logo variant="full" height={34} withLink={true} />
             <p className="text-muted text-[15px] leading-relaxed max-w-sm">
               Payment protection for WhatsApp and Instagram commerce. Your money is held until your order arrives and you
@@ -56,7 +61,7 @@ export function Footer() {
           </div>
 
           {/* Products (external) */}
-          <div className="md:col-span-4 space-y-3">
+          <div className="md:col-span-2 space-y-3">
             <h2 className="section-label !text-muted">Products</h2>
             <ul className="space-y-3">
               {PRODUCT_LINKS.map((link) => (
@@ -65,31 +70,61 @@ export function Footer() {
                     href={link.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="p-3.5 rounded-card border border-border bg-site hover:border-accent transition-colors flex items-center justify-between group"
+                    className="p-3 rounded-card border border-border bg-site hover:border-accent transition-colors flex items-center justify-between group"
                   >
                     <span>
-                      <span className="block text-sm font-semibold text-main group-hover:text-accent transition-colors">
+                      <span className="block text-xs font-semibold text-main group-hover:text-accent transition-colors">
                         {link.label}
                       </span>
-                      <span className="block text-xs text-muted">{link.sub}</span>
+                      <span className="block text-[11px] text-muted">{link.sub}</span>
                     </span>
-                    <ArrowUpRight className="w-4 h-4 text-muted group-hover:text-accent transition-colors" aria-hidden="true" />
+                    <ArrowUpRight className="w-3.5 h-3.5 text-muted group-hover:text-accent transition-colors shrink-0 ml-1" aria-hidden="true" />
                     <span className="sr-only">(opens in a new tab)</span>
                   </a>
                 </li>
               ))}
             </ul>
           </div>
+
+          {/* Contact */}
+          <div className="md:col-span-3 space-y-3">
+            <h2 className="section-label !text-muted">Contact</h2>
+            <ul className="space-y-3.5 text-[14px]">
+              <li>
+                <span className="block text-[11px] font-semibold uppercase tracking-wider text-muted">Support</span>
+                <a
+                  href="mailto:support@relyvora.com"
+                  className="text-main hover:text-accent font-medium transition-colors"
+                >
+                  support@relyvora.com
+                </a>
+                <span className="block text-xs text-muted mt-0.5">
+                  For help with active transactions and delivery codes.
+                </span>
+              </li>
+              <li>
+                <span className="block text-[11px] font-semibold uppercase tracking-wider text-muted">Partnerships</span>
+                <a
+                  href="mailto:partnerships@relyvora.com"
+                  className="text-main hover:text-accent font-medium transition-colors"
+                >
+                  partnerships@relyvora.com
+                </a>
+              </li>
+            </ul>
+          </div>
         </div>
 
-        {/* Regulatory disclosure (approved wording) */}
-        <div className="p-5 rounded-card border border-border bg-site text-xs text-muted leading-relaxed">
-          <p>
-            Relyvora Technologies Limited is a transaction protection technology platform. Payments are powered by our
-            regulated Banking<span className="nowrap">-as-a-</span>Service partner, Anchor Technologies Limited, in
-            partnership with <span className="nowrap">CBN-licensed</span> financial institutions.
-          </p>
-        </div>
+        {/* Regulatory disclosure (approved wording) - shown once per page; suppressed on /trust-and-safety */}
+        {!isTrustPage && (
+          <div className="p-5 rounded-card border border-border bg-site text-xs text-muted leading-relaxed">
+            <p>
+              Relyvora Technologies Limited is a transaction protection technology platform. Payments are powered by our
+              regulated Banking<span className="nowrap">-as-a-</span>Service partner, Anchor Technologies Limited, in
+              partnership with <span className="nowrap">CBN-licensed</span> financial institutions.
+            </p>
+          </div>
+        )}
 
         {/* Legal links and statutory details (TIN intentionally not shown) */}
         <div className="pt-6 border-t border-border flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-muted">
@@ -98,8 +133,6 @@ export function Footer() {
               <Link
                 key={link.href}
                 href={link.href}
-                target="_blank"
-                rel="noopener noreferrer"
                 className="hover:text-main transition-colors"
               >
                 {link.label}

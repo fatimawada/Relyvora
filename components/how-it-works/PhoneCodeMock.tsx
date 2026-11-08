@@ -4,14 +4,14 @@ import { ILLUSTRATIVE_EXAMPLE } from '@/lib/feeConfig';
 
 /**
  * CSS-only phone mock showing the buyer's six-digit release code.
- * Illustrative example derived from FEE_CONFIG (item ₦45,000, fee ₦1,350, buyer pays ₦46,350).
+ * Example order derived from FEE_CONFIG (item ₦45,000, fee ₦1,350, buyer pays ₦46,350).
  */
 export function PhoneCodeMock({ className = '' }: { className?: string }) {
   return (
     <div
       className={`relative w-full max-w-[300px] rounded-[40px] border-[6px] border-[#0A1B3D] dark:border-[#1B315E] bg-surface p-4 shadow-xl ${className}`}
       role="img"
-      aria-label="Illustrative example phone screen showing an order with the money held and a six-digit release code"
+      aria-label="Example phone screen showing an order with the money held and a six-digit release code"
     >
       <div className="w-24 h-4 bg-[#0A1B3D] dark:bg-[#1B315E] rounded-b-xl mx-auto mb-4" aria-hidden="true" />
 
@@ -26,8 +26,8 @@ export function PhoneCodeMock({ className = '' }: { className?: string }) {
 
         <div className="p-3.5 rounded-xl bg-site border border-border space-y-2">
           <div className="flex items-center justify-between text-[11px] text-muted">
-            <span>Illustrative example</span>
-            <span className="text-accent font-semibold">3% fee</span>
+            <span>Example order</span>
+            <span className="text-accent font-semibold">3% (min ₦500)</span>
           </div>
           <div className="text-sm font-semibold text-main">Human hair wig (30&quot;)</div>
           <div className="space-y-1 text-xs pt-2 border-t border-border">
@@ -40,7 +40,7 @@ export function PhoneCodeMock({ className = '' }: { className?: string }) {
               <span className="font-semibold text-accent">{ILLUSTRATIVE_EXAMPLE.formattedFeeAmount}</span>
             </div>
             <div className="flex items-center justify-between pt-1 border-t border-border text-main font-semibold">
-              <span>Buyer pays</span>
+              <span>Total paid</span>
               <span>{ILLUSTRATIVE_EXAMPLE.formattedTotalAmount}</span>
             </div>
           </div>
@@ -51,7 +51,7 @@ export function PhoneCodeMock({ className = '' }: { className?: string }) {
             <KeyRound className="w-3.5 h-3.5" />
             <span>Your release code</span>
           </div>
-          <div className="py-2 px-3 rounded-lg bg-surface border border-accent/30 font-heading tabular-nums text-2xl font-semibold tracking-[0.2em] text-main whitespace-nowrap">
+          <div className="py-2 px-3 rounded-lg bg-surface border border-accent/30 font-heading tabular-nums text-2xl font-semibold tracking-[0.12em] text-main whitespace-nowrap">
             842 195
           </div>
           <p className="text-[11px] text-muted leading-snug">Only share this code after you have checked your order.</p>

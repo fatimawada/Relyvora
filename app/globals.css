@@ -91,12 +91,9 @@ p {
   line-height: 1.14;
 }
 
-/* Header with ~95% page background opacity, light blur, and 1px border */
+/* Header with solid page background and 1px border so content never shows through */
 .site-header {
   background-color: var(--bg);
-  background-color: color-mix(in srgb, var(--bg) 95%, transparent);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
 }
 

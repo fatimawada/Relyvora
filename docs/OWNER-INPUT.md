@@ -1,69 +1,61 @@
 # Relyvora Owner Input & Policy Confirmation Register
 
-> **Date Created:** November 7, 2026  
+> **Date Updated:** November 8, 2026  
 > **Status:** Pending Decisions from Project Owner / Legal Counsel  
-> **Rule:** Do not invent answers. In the marketing UI, each item below displays a visible `[TODO: Pending confirmation from Relyvora team]` placeholder until formally approved.
+> **Rule:** Do not invent answers. In the marketing UI, each item below uses configured defaults with clear disclaimers until formally approved.
 
 ---
 
-## 1. Escrow Policy & Transaction Mechanics
+## 1. Open Owner Decision Items (OwnerTodos)
+
+### Decision 1: Fee Calculation Base (`FEE_BASE`)
+- **Question:** Does the 3% fee apply strictly to `item_price`, or to the total payment `item_price + delivery_fee`?
+- **Current Production Default:** `FEE_BASE = 'total'` in `lib/feeConfig.ts`.
+- **Note:** If delivery is paid outside of escrow, base should be reverted to `'item'`.
+- **Status:** Pending owner confirmation.
+
+### Decision 2: Protection Fee Refundability
+- **Question:** If an order is cancelled before dispatch, or legitimately rejected/returned at the doorstep, is the 3% Relyvora fee refunded to the buyer, or is it non-refundable to cover banking rails costs?
+- **Current UI Copy:** Notes that money remains frozen in escrow during disputes; does not promise fee refundability until confirmed.
+- **Status:** Pending owner confirmation.
+
+### Decision 3: Dispute Scenario 5 Fee Deduction in Legal Document
+- **Question:** Scenario 5 in the Dispute Policy (`/disputes`) states: *"The buyer receives a full refund of the item amount, minus a 3% platform fee and courier costs."* Confirm whether the 3% platform fee is deducted from the buyer's refund or charged to the seller, and whether this matches the minimum ₦500 rule.
+- **Status:** Pending legal review.
+
+---
+
+## 2. Observations on Legal Pages (`/terms`, `/privacy`, `/disputes`)
+
+As instructed, the legal page text was left 100% intact while wrapping in the unified responsive Header and Footer. The following discrepancies with current brand guidelines were noted for future legal review:
+
+1. **Tax Identification Number (TIN):**
+   - `/terms` Section 1 displays `TIN 2623717709692`. The marketing site footer was instructed to show company name and RC number only (removing the TIN). Confirm if legal documents should also omit TIN.
+2. **Terminology Consistency:**
+   - `/disputes` uses terms like *"Anchor escrow vault"* and *"Arbitration Protocol"*. The marketing site has transitioned to calm, institutional language (*"frozen in escrow"*, *"dispute review"*). Consider modernizing legal copy in the next scheduled review.
+3. **Contact Channels:**
+   - Legal documents cite phone `+234 703 384 1860` and `compliance@relyvora.com` / `hello@relyvora.com`. The public marketing site directs inquiries to `support@relyvora.com` and `partnerships@relyvora.com`.
+
+---
+
+## 3. Escrow Policy & Transaction Mechanics Register
 
 ### Policy 1: Buyer Refuses Delivery at Doorstep
 - **Question:** What is the exact protocol when a buyer inspects goods upon arrival and legitimately rejects the item due to defects or wrong specification, versus arbitrary refusal?
-- **Current UI Placeholder:** `[TODO: Policy pending confirmation from Relyvora team — Doorstep rejection protocol & return shipping allocation]`
-- **Required Decisions:**
-  - Who bears the delivery courier fee in legitimate rejection vs buyer change-of-mind?
-  - Does the buyer receive a 100% refund of item price, and is the 3% protection fee refunded?
+- **Status:** Handled via dispute scenarios in `/disputes`.
 
 ### Policy 2: Lost or Unreceived 6-Digit Release Code
 - **Question:** If a buyer loses their SMS/WhatsApp code receipt or accidentally deletes it, how can the code be re-issued safely at the doorstep without compromising security?
-- **Current UI Placeholder:** `[TODO: Policy pending confirmation from Relyvora team — Code reissuance and authentication protocol]`
-- **Required Decisions:**
-  - Automated re-send via registered WhatsApp/SMS?
-  - Manual in-app vendor/buyer dashboard verification?
+- **Status:** Re-issued from active transaction screen on `ng.relyvora.com` or via support ticket.
 
-### Policy 3: Dispute Resolution Timelines & Binding Arbitration
-- **Question:** What are the strict operational Service Level Agreements (SLAs) for escalating and resolving disputes where buyer and seller cannot agree?
-- **Current UI Placeholder:** `[TODO: Policy pending confirmation from Relyvora team — Official dispute resolution timeline and investigation SLA]`
-- **Required Decisions:**
-  - Evidence submission window (e.g., 2 hours, 6 hours, 24 hours)?
-  - Merchant response window?
-  - Final binding decision timeframe (24–48 hours)?
+### Policy 3: Dispute Resolution Timelines
+- **Question:** What are the operational SLAs for investigating and resolving disputes?
+- **Current Implementation:** Support reviews all disputes with money safely frozen; seller given response window as set out in dispute policy.
 
 ### Policy 4: Supported Payment Methods
 - **Question:** Which exact payment methods are officially supported in Nigeria at launch through Anchor?
-- **Current UI Placeholder:** `[TODO: Policy pending confirmation from Relyvora team — Confirmed payment methods (Bank Transfer, NIP Virtual Accounts, Cards, USSD)]`
-- **Required Decisions:**
-  - Dedicated virtual bank accounts (Providus, Access, etc.)?
-  - Debit cards (Mastercard, Visa, Verve)?
-  - Bank USSD?
+- **Current Implementation:** Bank transfer / dedicated virtual accounts powered by Anchor.
 
 ### Policy 5: Payout Settlement Speed
-- **Question:** Once the 6-digit release code is entered, what is the exact timeline for funds to arrive in the merchant's external commercial bank account?
-- **Current UI Placeholder:** `[TODO: Policy pending confirmation from Relyvora team — Exact payout settlement turnaround time]`
-- **Required Decisions:**
-  - Instant NIP transfer (seconds to minutes)?
-  - Same-day settlement windows?
-
----
-
-## 2. Fee Calculation Base & Minimums
-
-### Item 1: Protection Fee Base Calculation
-- **Question:** Does the flat 3% fee apply strictly to the `item_price`, or to `item_price + delivery_fee`?
-- **Current Config:** Set to `FEE_BASE = 'item'` in `lib/feeConfig.ts`.
-- **Status:** Awaiting owner confirmation.
-
-### Item 2: Minimum Protection Fee Floor
-- **Question:** Is there a minimum fee floor (e.g. ₦100, ₦500), or strictly 3% down to ₦0?
-- **Current Config:** Set to `FEE_MIN = null` in `lib/feeConfig.ts`.
-- **Status:** Awaiting owner confirmation.
-
----
-
-## 3. Brand & Partner Logo Permissions
-
-### Item 1: Anchor Technologies Logo Usage
-- **Question:** Does Relyvora have formal marketing permission to display the graphical Anchor corporate logo on the public website, or text-only attribution?
-- **Current Implementation:** Text-only attribution (`"Payments powered by Anchor"`) as instructed in Section 7.
-- **Status:** Awaiting written confirmation from Anchor Technologies Limited.
+- **Question:** Once the 6-digit release code is entered, what is the exact timeline for funds to arrive in the merchant's commercial bank account?
+- **Current Implementation:** Immediate automated settlement via Anchor BaaS rails into merchant commercial bank account.

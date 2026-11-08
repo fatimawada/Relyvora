@@ -69,7 +69,7 @@ export default function AboutPage() {
           </li>
           <li className="flex items-center gap-2.5">
             <CheckCircle2 className="w-4 h-4 text-accent shrink-0" aria-hidden="true" />
-            <span>Flat 3% buyer fee, shown before payment</span>
+            <span>3% (minimum ₦500) buyer fee, shown before payment</span>
           </li>
         </ul>
       </div>

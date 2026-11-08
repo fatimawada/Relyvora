@@ -2,8 +2,8 @@ import React from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ShieldCheck, ArrowLeft, Mail, Phone, MapPin } from 'lucide-react';
-import { CorporateHeader } from '@/components/corporate/CorporateHeader';
-import { CorporateFooter } from '@/components/corporate/CorporateFooter';
+import { Header } from '@/components/layout/Header';
+import { Footer } from '@/components/layout/Footer';
 
 export const metadata: Metadata = {
   title: 'Terms of Service | Relyvora Technologies',
@@ -12,8 +12,8 @@ export const metadata: Metadata = {
 
 export default function TermsOfServicePage() {
   return (
-    <div className="bg-[#FAF8F5] text-[#090E1A] min-h-screen flex flex-col font-sans selection:bg-[#047857] selection:text-white">
-      <CorporateHeader />
+    <div className="bg-site text-main min-h-screen flex flex-col font-sans selection:bg-accent selection:text-white">
+      <Header />
 
       <main className="flex-1 w-full py-16 sm:py-24 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto space-y-12">
@@ -223,7 +223,7 @@ export default function TermsOfServicePage() {
         </div>
       </main>
 
-      <CorporateFooter />
+      <Footer />
     </div>
   );
 }

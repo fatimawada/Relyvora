@@ -65,9 +65,9 @@ export default function FAQPage() {
 
       <div className="p-8 sm:p-10 rounded-3xl border border-border bg-surface flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 max-w-3xl">
         <div className="space-y-1">
-          <h2 className="text-xl font-semibold text-main">Still have a question?</h2>
+          <h2 className="text-xl font-semibold text-main">Still stuck? Email support@relyvora.com</h2>
           <p className="text-muted text-sm max-w-md leading-relaxed">
-            Reach out to our team if you need help with an order or have a question before getting started.
+            Reach out to our team if you need help with an active transaction or have a question before getting started.
           </p>
         </div>
         <a

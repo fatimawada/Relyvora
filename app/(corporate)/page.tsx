@@ -186,7 +186,7 @@ export default function HomePage() {
               <Percent className="w-6 h-6" aria-hidden="true" />
             </div>
             <h3 className="text-main text-xl">Clear pricing</h3>
-            <p className="text-muted text-[15px] leading-relaxed">A flat 3%, paid by the buyer and shown before they pay.</p>
+            <p className="text-muted text-[15px] leading-relaxed">3% (minimum ₦500), paid by the buyer and shown before they pay.</p>
           </div>
         </div>
       </section>
@@ -236,8 +236,8 @@ export default function HomePage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
           <div className="lg:col-span-7 space-y-4">
             <p className="section-label">Pricing</p>
-            <h2 className="text-main">Flat 3%, paid by the buyer.</h2>
-            <p className="text-muted text-base sm:text-lg">A flat 3% fee, paid by the buyer at checkout.</p>
+            <h2 className="text-main">3% (minimum ₦500), paid by the buyer.</h2>
+            <p className="text-muted text-base sm:text-lg">The buyer pays 3% at checkout, with a minimum fee of ₦500. Shown before you pay.</p>
             <div className="pt-2">
               <Link
                 href="/pricing"
@@ -252,7 +252,7 @@ export default function HomePage() {
           <div className="lg:col-span-5 p-6 rounded-card bg-surface border border-border space-y-4">
             <div className="flex items-center justify-between text-xs text-muted font-medium">
               <span>Illustrative example</span>
-              <span className="text-accent font-semibold">3%</span>
+              <span className="text-accent font-semibold">3% (min ₦500)</span>
             </div>
             <div className="space-y-2.5 pt-2 border-t border-border text-sm">
               <div className="flex justify-between text-muted">
@@ -342,9 +342,9 @@ export default function HomePage() {
             </p>
           </div>
           <div className="p-6 rounded-card border border-border bg-surface space-y-2">
-            <h3 className="font-semibold text-main text-base">Who pays the 3% fee?</h3>
+            <h3 className="font-semibold text-main text-base">Who pays the fee?</h3>
             <p className="text-muted text-sm leading-relaxed">
-              The buyer pays the 3% fee at checkout. It is shown on the payment screen before they pay.
+              The buyer pays the 3% fee (minimum ₦500) at checkout. It is shown on the payment screen before they pay.
             </p>
           </div>
           <div className="p-6 rounded-card border border-border bg-surface space-y-2">

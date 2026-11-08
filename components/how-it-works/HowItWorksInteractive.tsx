@@ -1,18 +1,17 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ShoppingBag, Store } from 'lucide-react';
-import { PhoneCodeMock } from './PhoneCodeMock';
+import { ArrowRight, CheckCircle2, ShieldCheck, ShoppingBag, Store } from 'lucide-react';
 
 const BUYER_STEPS = [
   {
     step: 'Step 1',
-    tag: 'Link received',
-    title: 'Open the seller’s payment link',
+    tag: 'Get the link',
+    title: 'Agree on your order in the chat',
     body: (
       <>
-        The seller sends you a Relyvora link in your WhatsApp or Instagram chat. You see the item, the agreed price, and
-        the 3% buyer fee before you pay.
+        Agree on the item, price, and delivery in your WhatsApp or Instagram DMs. The seller sends you a secure Relyvora
+        link.
       </>
     ),
   },
@@ -43,8 +42,9 @@ const BUYER_STEPS = [
     title: 'Check your order and confirm with your code',
     body: (
       <>
-        When the rider arrives, check your order. Once you are happy with it, share your{' '}
-        <span className="nowrap">six-digit</span> code to release the payment to the seller.
+        The seller is paid when the buyer checks the order and confirms with their six-digit code. If there is a dispute,
+        the money stays frozen while Relyvora Support reviews it. In some cases set out in the dispute policy, Relyvora can
+        refund or release without the code.
       </>
     ),
   },
@@ -90,8 +90,9 @@ const SELLER_STEPS = [
     title: 'Get paid when the code is confirmed',
     body: (
       <>
-        Once the buyer checks the order and confirms with their <span className="nowrap">six-digit</span> code, the
-        payment is released to your bank account.
+        The seller is paid when the buyer checks the order and confirms with their six-digit code. If there is a dispute,
+        the money stays frozen while Relyvora Support reviews it. In some cases set out in the dispute policy, Relyvora can
+        refund or release without the code.
       </>
     ),
   },
@@ -122,7 +123,7 @@ export function HowItWorksInteractive() {
             }`}
           >
             <ShoppingBag className="w-4 h-4" aria-hidden="true" />
-            <span>I&apos;m buying</span>
+            <span>I&apos;m a buyer</span>
           </button>
           <button
             role="tab"
@@ -136,29 +137,34 @@ export function HowItWorksInteractive() {
             }`}
           >
             <Store className="w-4 h-4" aria-hidden="true" />
-            <span>I&apos;m selling</span>
+            <span>I&apos;m a seller</span>
           </button>
         </div>
       </div>
 
-      {/* Main Grid: Steps list on left, CSS Phone Mockup on right */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
-        <ol className="lg:col-span-7 space-y-4">
-          {steps.map((item) => (
-            <li key={item.step} className="p-6 rounded-2xl border border-border bg-surface space-y-2">
-              <div className="flex items-center justify-between text-xs font-semibold text-accent">
-                <span>{item.step}</span>
-                <span className="text-muted">{item.tag}</span>
+      {/* 4 Steps Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {steps.map((item, index) => (
+          <div
+            key={item.title}
+            className="p-7 sm:p-8 rounded-3xl border border-border bg-surface space-y-4 flex flex-col justify-between"
+          >
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-accent/10 text-accent">
+                  {item.step}
+                </span>
+                <span className="text-xs text-muted font-medium">{item.tag}</span>
               </div>
-              <h2 className="text-lg font-semibold text-main">{item.title}</h2>
-              <p className="text-muted text-sm leading-relaxed">{item.body}</p>
-            </li>
-          ))}
-        </ol>
-
-        <div className="lg:col-span-5 flex justify-center">
-          <PhoneCodeMock />
-        </div>
+              <h3 className="text-xl font-semibold text-main">{item.title}</h3>
+              <p className="text-muted text-[15px] leading-relaxed">{item.body}</p>
+            </div>
+            <div className="pt-4 border-t border-border/60 flex items-center gap-2 text-xs text-muted">
+              <ShieldCheck className="w-4 h-4 text-accent" aria-hidden="true" />
+              <span>Step {index + 1} of 4</span>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
