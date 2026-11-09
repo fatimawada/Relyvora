@@ -123,7 +123,6 @@ export async function createTransaction(payload: Omit<Transaction, 'id' | 'creat
           buyer_phone: fullTx.buyer_phone || null,
           buyer_notes: fullTx.buyer_notes || null,
           status: fullTx.status,
-          release_code: fullTx.release_code || null,
         }
       ])
       .select()

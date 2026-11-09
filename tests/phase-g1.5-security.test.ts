@@ -216,7 +216,7 @@ async function runTestSuite() {
       recordResult(
         'Anon Client SELECT Pre-Migration Status',
         false,
-        `PENDING MIGRATION: ${selectData.length} rows currently visible under Phase G1 read policy. docs/PHASE-G1.5-RLS.sql drops this policy to enforce complete denial.`
+        `PENDING MIGRATION: ${selectData.length} rows currently visible under Phase G1 read policy. docs/PHASE-G1.5-RLS-v2.sql drops this policy to enforce complete denial.`
       );
     }
 

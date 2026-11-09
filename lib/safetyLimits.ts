@@ -140,7 +140,97 @@ export async function isVendorAllowlistedServer(vendorHandle: string): Promise<b
 export interface OrderSafetyValidation {
   allowed: boolean;
   error?: string;
-  code?: 'CHECKOUT_DISABLED' | 'AMOUNT_EXCEEDED' | 'VENDOR_NOT_ALLOWLISTED' | 'DAILY_LIMIT_EXCEEDED';
+  code?: 'CHECKOUT_DISABLED' | 'AMOUNT_EXCEEDED' | 'VENDOR_NOT_ALLOWLISTED' | 'DAILY_LIMIT_EXCEEDED' | 'VENDOR_NOT_FOUND';
+  vendor?: {
+    id: string;
+    store_name: string;
+    email: string;
+    is_allowlisted: boolean;
+    anchor_deposit_account_id?: string | null;
+    daily_volume_ngn: number;
+  };
+}
+
+/**
+ * Resolves a vendor and validates allowlist status and daily volume ceiling.
+ */
+export async function resolveAndValidateVendorServer(params: {
+  vendorIdOrHandle: string;
+  totalAmount: number;
+}): Promise<OrderSafetyValidation> {
+  const supabase = getServiceSupabase();
+  const input = (params.vendorIdOrHandle || '').trim();
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input);
+
+  let query = supabase.from('vendors').select('*');
+  if (isUuid) {
+    query = query.eq('id', input);
+  } else {
+    const cleanHandle = input.toLowerCase().replace(/^@/, '');
+    query = query.or(`store_name.ilike.%${cleanHandle}%,email.ilike.%${cleanHandle}%`);
+  }
+
+  const { data: vendor, error } = await query.maybeSingle();
+
+  if (error || !vendor) {
+    // In sandbox mode without a vendor seeded in DB, fallback gracefully for demo handles
+    if (process.env.PAYMENTS_MODE !== 'live') {
+      return {
+        allowed: true,
+        vendor: {
+          id: '00000000-0000-0000-0000-000000000001',
+          store_name: input,
+          email: `${input.replace(/^@/, '')}@sandbox.relyvora.com`,
+          is_allowlisted: true,
+          daily_volume_ngn: 0,
+        },
+      };
+    }
+    return {
+      allowed: false,
+      code: 'VENDOR_NOT_FOUND',
+      error: `Vendor account for "${input}" could not be verified on the server.`,
+    };
+  }
+
+  // Check allowlist flag
+  const settings = await getHotSettings();
+  const allowlistMode = settings.vendor_allowlist_mode ?? true;
+  if (allowlistMode && !vendor.is_allowlisted) {
+    return {
+      allowed: false,
+      code: 'VENDOR_NOT_ALLOWLISTED',
+      error: `Vendor "${vendor.store_name}" is pending allowlist verification for the invite-only launch.`,
+    };
+  }
+
+  // Check 24-hour daily volume reset
+  const maxDailyLimit = Number(settings.max_daily_vendor_volume_ngn) || DEFAULT_MAX_DAILY_VENDOR_VOLUME_NGN;
+  const now = new Date();
+  const resetAt = vendor.daily_volume_reset_at ? new Date(vendor.daily_volume_reset_at) : new Date(0);
+  const isExpired = now.getTime() - resetAt.getTime() > 24 * 60 * 60 * 1000;
+
+  const currentDailyVolume = isExpired ? 0 : (Number(vendor.daily_volume_ngn) || 0);
+
+  if (currentDailyVolume + params.totalAmount > maxDailyLimit) {
+    return {
+      allowed: false,
+      code: 'DAILY_LIMIT_EXCEEDED',
+      error: `Order total of ₦${params.totalAmount.toLocaleString()} exceeds your remaining daily volume limit of ₦${Math.max(0, maxDailyLimit - currentDailyVolume).toLocaleString()} (24-hour cap: ₦${maxDailyLimit.toLocaleString()}).`,
+    };
+  }
+
+  return {
+    allowed: true,
+    vendor: {
+      id: vendor.id,
+      store_name: vendor.store_name,
+      email: vendor.email,
+      is_allowlisted: vendor.is_allowlisted,
+      anchor_deposit_account_id: vendor.anchor_deposit_account_id,
+      daily_volume_ngn: currentDailyVolume,
+    },
+  };
 }
 
 /**
@@ -168,14 +258,8 @@ export async function validateOrderCreationServer(params: {
     };
   }
 
-  const isAllowlisted = await isVendorAllowlistedServer(params.vendorHandle);
-  if (!isAllowlisted) {
-    return {
-      allowed: false,
-      code: 'VENDOR_NOT_ALLOWLISTED',
-      error: `Vendor handle "${params.vendorHandle}" is not on the invite-only launch allowlist. Please request access from the Relyvora team.`,
-    };
-  }
-
-  return { allowed: true };
+  return resolveAndValidateVendorServer({
+    vendorIdOrHandle: params.vendorHandle,
+    totalAmount: params.totalAmount,
+  });
 }

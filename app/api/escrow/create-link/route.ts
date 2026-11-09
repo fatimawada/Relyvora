@@ -13,7 +13,7 @@ import {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { itemName, itemPrice, deliveryFee = 0, vendorHandle, buyerPhone, buyerNotes } = body;
+    const { itemName, itemPrice, deliveryFee = 0, vendorHandle, vendorId, buyerPhone, buyerNotes } = body;
 
     if (!itemName || typeof itemName !== 'string' || !itemName.trim()) {
       return NextResponse.json({ success: false, error: 'Item name is required.' }, { status: 400 });
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     // Phase G1.5: Database-backed hot kill switches, caps & allowlist validation
     const safetyCheck = await validateOrderCreationServer({
-      vendorHandle: activeHandle,
+      vendorHandle: (vendorId || activeHandle),
       totalAmount: pricing.totalAmount,
     });
 
@@ -87,10 +87,13 @@ export async function POST(request: NextRequest) {
       .insert([
         {
           id: txId,
+          vendor_id: safetyCheck.vendor?.id || null,
           item_name: itemName.trim(),
           item_price: priceNum,
           protection_fee: pricing.protectionFee,
           total_amount: pricing.totalAmount,
+          amount_paid: 0,
+          excess_amount: 0,
           vendor_handle: activeHandle,
           buyer_phone: (buyerPhone || '').trim() || null,
           buyer_notes: (buyerNotes || '').trim() || null,
@@ -99,8 +102,7 @@ export async function POST(request: NextRequest) {
           virtual_nuban_id: virtualNubanId,
           virtual_account_number: virtualAccountNumber,
           virtual_bank_name: virtualBankName,
-          // CRITICAL: Plaintext code is NEVER stored in live mode; stored HMAC-SHA256 only
-          release_code: isLive ? null : rawCode,
+          // CRITICAL: Plaintext code is NEVER stored in database; verified via HMAC-SHA256 only
           release_code_hash: hmacHash,
           code_expires_at: codeExpiresAt,
           failed_code_attempts: 0,
@@ -117,7 +119,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, transaction: data }, { status: 201 });
+    return NextResponse.json({ 
+      success: true, 
+      transaction: data,
+      // In sandbox mode only: return raw code to caller for automated test suites
+      ...(isLive ? {} : { sandbox_release_code: rawCode })
+    }, { status: 201 });
   } catch (err: any) {
     console.error('Unhandled error in create-link:', err);
     return NextResponse.json({ success: false, error: err.message || 'Internal Server Error' }, { status: 500 });

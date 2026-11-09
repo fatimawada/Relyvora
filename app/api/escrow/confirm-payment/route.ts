@@ -78,7 +78,6 @@ export async function POST(request: NextRequest) {
       .from('transactions')
       .update({
         status: 'FUNDS_LOCKED',
-        release_code: rawCode, // Retained strictly in sandbox mode for UI display
         release_code_hash: hmacHash,
         code_expires_at: codeExpiresAt,
         amount_paid: Number(existing.total_amount) || 0,
@@ -110,7 +109,11 @@ export async function POST(request: NextRequest) {
       metadata: { paymentMethod, mode: 'sandbox' },
     });
 
-    return NextResponse.json({ success: true, transaction: updated });
+    return NextResponse.json({ 
+      success: true, 
+      transaction: updated,
+      sandbox_release_code: rawCode 
+    });
   } catch (err: any) {
     console.error('Unhandled error in confirm-payment:', err);
     return NextResponse.json({ success: false, error: err.message || 'Internal Server Error' }, { status: 500 });

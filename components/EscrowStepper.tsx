@@ -15,9 +15,9 @@ export function EscrowStepper({ status }: EscrowStepperProps) {
   // 3: Dispatched
   // 4: Released to Vendor
   let currentStep = 1;
-  if (status === 'FUNDS_LOCKED') currentStep = 2;
+  if (status === 'FUNDS_LOCKED' || status === 'PARTIALLY_FUNDED') currentStep = 2;
   if (status === 'DISPATCHED') currentStep = 3;
-  if (status === 'RELEASED') currentStep = 4;
+  if (status === 'RELEASING' || status === 'VENDOR_PAID' || status === 'RELEASED') currentStep = 4;
 
   const steps = [
     {
@@ -87,7 +87,7 @@ export function EscrowStepper({ status }: EscrowStepperProps) {
           <div 
             className="h-full bg-emerald-500 transition-all duration-500 rounded-full"
             style={{ 
-              width: `${status === 'AWAITING_PAYMENT' ? 0 : status === 'FUNDS_LOCKED' ? 33 : status === 'DISPATCHED' ? 66 : 100}%` 
+              width: `${status === 'AWAITING_PAYMENT' ? 0 : (status === 'FUNDS_LOCKED' || status === 'PARTIALLY_FUNDED') ? 33 : status === 'DISPATCHED' ? 66 : 100}%` 
             }}
           />
         </div>

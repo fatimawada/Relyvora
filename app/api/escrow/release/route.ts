@@ -56,7 +56,6 @@ export async function POST(request: NextRequest) {
       p_transaction_id: transactionId,
       p_hmac_hash: hmacHash,
       p_max_attempts: MAX_CODE_ATTEMPTS,
-      p_is_sandbox: isSandbox,
     });
 
     if (rpcError) {
@@ -96,12 +95,19 @@ export async function POST(request: NextRequest) {
 
     // 5. Execution: Sandbox vs Live Split Transfers
     if (serverPaymentsMode === 'sandbox') {
-      // In sandbox mode: Complete atomic transition directly to RELEASED
+      // In sandbox mode: Complete atomic transitions sequentially (RELEASING -> VENDOR_PAID -> RELEASED)
+      await supabase.rpc('rpc_finalize_release_step', {
+        p_transaction_id: transactionId,
+        p_step: 'VENDOR_PAID',
+        p_transfer_id: `sandbox_vendor_transfer_${transactionId}`,
+        p_idempotency_key: `${transactionId}_PAYOUT_VENDOR`,
+      });
+
       await supabase.rpc('rpc_finalize_release_step', {
         p_transaction_id: transactionId,
         p_step: 'RELEASED',
-        p_transfer_id: `sandbox_transfer_${Date.now()}`,
-        p_idempotency_key: `sandbox_idem_${transactionId}`,
+        p_transfer_id: `sandbox_fee_transfer_${transactionId}`,
+        p_idempotency_key: `${transactionId}_FEE_REVENUE`,
       });
 
       const { data: finalTx } = await supabase.from('transactions').select('*').eq('id', transactionId).single();

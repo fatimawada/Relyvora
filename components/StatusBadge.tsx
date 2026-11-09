@@ -28,6 +28,13 @@ export function StatusBadge({ status, size = 'md' }: StatusBadgeProps) {
       border: 'border-amber-200',
       icon: <Clock className="w-3.5 h-3.5 text-amber-600" />,
     },
+    PARTIALLY_FUNDED: {
+      label: 'Partially Funded',
+      bg: 'bg-amber-50',
+      text: 'text-amber-900',
+      border: 'border-amber-300',
+      icon: <Clock className="w-3.5 h-3.5 text-amber-600" />,
+    },
     FUNDS_LOCKED: {
       label: 'Funds Locked in Escrow',
       bg: 'bg-emerald-50',
@@ -42,6 +49,20 @@ export function StatusBadge({ status, size = 'md' }: StatusBadgeProps) {
       border: 'border-blue-200',
       icon: <Truck className="w-3.5 h-3.5 text-blue-600" />,
     },
+    RELEASING: {
+      label: 'Settlement in Progress',
+      bg: 'bg-indigo-50',
+      text: 'text-indigo-800',
+      border: 'border-indigo-200',
+      icon: <Clock className="w-3.5 h-3.5 text-indigo-600" />,
+    },
+    VENDOR_PAID: {
+      label: 'Vendor Paid',
+      bg: 'bg-emerald-50',
+      text: 'text-emerald-800',
+      border: 'border-emerald-200',
+      icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />,
+    },
     RELEASED: {
       label: 'Funds Released to Vendor',
       bg: 'bg-teal-50',
@@ -55,6 +76,13 @@ export function StatusBadge({ status, size = 'md' }: StatusBadgeProps) {
       text: 'text-rose-800',
       border: 'border-rose-300',
       icon: <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />,
+    },
+    REFUNDED: {
+      label: 'Refunded to Buyer',
+      bg: 'bg-slate-50',
+      text: 'text-slate-800',
+      border: 'border-slate-300',
+      icon: <CheckCircle2 className="w-3.5 h-3.5 text-slate-600" />,
     },
   };
 

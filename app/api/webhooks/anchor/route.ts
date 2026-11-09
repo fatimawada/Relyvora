@@ -88,15 +88,17 @@ export async function POST(request: NextRequest) {
 
     const attributes = payload?.data?.attributes || payload?.attributes || {};
     const accountNumber = attributes?.accountNumber || attributes?.destinationAccountNumber;
-    const metadataTxId = attributes?.metadata?.transactionId || payload?.metadata?.transactionId || null;
+    const rawMetadataTxId = attributes?.metadata?.transactionId || payload?.metadata?.transactionId || null;
+    const isValidUuid = typeof rawMetadataTxId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawMetadataTxId);
+    const metadataTxId = isValidUuid ? rawMetadataTxId : null;
     const amountKobo = Number(attributes?.amount) || 0;
     const amountNaira = amountKobo / 100;
 
     const supabase = getServiceSupabase();
 
     // 2. Execute DB-first idempotency & atomic deposit processing via Postgres RPC
-    // rpc_process_webhook_deposit inserts into webhook_events first with unique event_id,
-    // locks transaction row with SELECT ... FOR UPDATE, and records ledger entry
+    // rpc_process_webhook_deposit inserts into webhook_events first,
+    // tracks deposit in deposits table, checks partial/full funding, and updates ledger
     const { data: rpcResult, error: rpcError } = await supabase.rpc('rpc_process_webhook_deposit', {
       p_event_id: eventId,
       p_event_type: eventType,
@@ -116,33 +118,72 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, message: 'Webhook event already processed (idempotent)' }, { status: 200 });
     }
 
-    // Check underpayment
-    if (rpcResult?.error === 'UNDERPAYMENT') {
+    // Handle Unmatched Deposit
+    if (rpcResult?.status === 'UNMATCHED') {
       sendSystemAlert({
-        type: 'STUCK_FUNDS',
+        type: 'WEBHOOK_FAILURE',
         severity: 'CRITICAL',
-        title: 'Partial Escrow Underpayment Detected',
-        transactionId: metadataTxId,
+        title: 'Unmatched Deposit Webhook Received (No Transaction Linked)',
         details: {
-          receivedNaira: amountNaira,
-          expectedNaira: rpcResult.amount_expected,
+          accountNumber,
+          amountNaira,
           eventId,
         },
       }).catch(() => {});
 
       return NextResponse.json(
-        { success: false, error: 'Underpayment received; funds not locked in escrow' },
+        { success: false, status: 'UNMATCHED', error: 'No matching transaction found. Recorded as UNMATCHED for reconciliation.' },
         { status: 422 }
       );
+    }
+
+    // Handle Underpayment (Cumulative deposits < total_amount)
+    if (rpcResult?.status === 'PARTIALLY_FUNDED') {
+      sendSystemAlert({
+        type: 'STUCK_FUNDS',
+        severity: 'CRITICAL',
+        title: 'Partial Escrow Underpayment Received (Status: PARTIALLY_FUNDED)',
+        transactionId: rpcResult.transaction_id,
+        details: {
+          receivedNaira: amountNaira,
+          totalDeposited: rpcResult.total_deposited,
+          totalDue: rpcResult.total_due,
+          remainingDue: rpcResult.total_due - rpcResult.total_deposited,
+          eventId,
+        },
+      }).catch(() => {});
+
+      return NextResponse.json({
+        success: true,
+        status: 'PARTIALLY_FUNDED',
+        transactionId: rpcResult.transaction_id,
+        totalDeposited: rpcResult.total_deposited,
+        totalDue: rpcResult.total_due,
+      }, { status: 200 });
     }
 
     if (!rpcResult?.success) {
       return NextResponse.json({ success: false, error: rpcResult?.error || 'Deposit handling failed' }, { status: 400 });
     }
 
-    // 3. Generate cryptographic release code & HMAC-SHA256 for the funded order
+    // Handle Overpayment Alert
+    if (rpcResult.excess_amount > 0) {
+      sendSystemAlert({
+        type: 'STUCK_FUNDS',
+        severity: 'WARNING',
+        title: 'Escrow Overpayment Detected (Excess Held)',
+        transactionId: rpcResult.transaction_id,
+        details: {
+          excessAmountNaira: rpcResult.excess_amount,
+          amountPaidNaira: rpcResult.amount_paid,
+          eventId,
+        },
+      }).catch(() => {});
+    }
+
+    // 3. Issue Cryptographic Release Code if needed
     const txId = rpcResult.transaction_id;
-    if (txId) {
+    if (txId && rpcResult.needs_code_issue) {
       const rawCode = generateCryptographicReleaseCode();
       const hmacHash = computeReleaseCodeHmac(txId, rawCode);
 
@@ -150,15 +191,14 @@ export async function POST(request: NextRequest) {
         .from('transactions')
         .update({
           release_code_hash: hmacHash,
-          // Plaintext code is NEVER persisted to DB in live mode
         })
         .eq('id', txId);
 
       // In production live mode, dispatch the code directly to buyer's phone/email via SMS
-      console.log(`Successfully locked escrow funds for transaction ${txId} via verified Anchor webhook.`);
+      console.log(`Generated release code hash for funded transaction ${txId}.`);
     }
 
-    return NextResponse.json({ success: true, transactionId: txId }, { status: 200 });
+    return NextResponse.json({ success: true, transactionId: txId, status: rpcResult.status }, { status: 200 });
   } catch (err: any) {
     console.error('Unhandled error in Anchor webhook route:', err);
     return NextResponse.json({ success: false, error: err.message || 'Internal Server Error' }, { status: 500 });

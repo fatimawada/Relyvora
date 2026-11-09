@@ -37,8 +37,7 @@ export async function GET(
         virtual_account_name,
         code_locked,
         failed_code_attempts,
-        code_expires_at,
-        release_code
+        code_expires_at
       `)
       .eq('id', id)
       .maybeSingle();
@@ -48,7 +47,6 @@ export async function GET(
     }
 
     // In live mode, NEVER return the plaintext release code or sensitive cryptographic salts/hashes
-    const isSandbox = isSandboxMode();
     const sanitizedTransaction = {
       id: tx.id,
       created_at: tx.created_at,
@@ -70,8 +68,8 @@ export async function GET(
       code_locked: Boolean(tx.code_locked),
       failed_code_attempts: tx.failed_code_attempts || 0,
       code_expires_at: tx.code_expires_at,
-      // Release code is ONLY present in sandbox mode for developer UI testing
-      release_code: isSandbox ? tx.release_code : null,
+      // Plaintext code column is dropped in Phase G1.5; codes are delivered out-of-band (SMS/email)
+      release_code: null,
     };
 
     return NextResponse.json({ success: true, transaction: sanitizedTransaction });
