@@ -9,6 +9,29 @@ export type TransactionStatus =
   | 'DISPUTED'
   | 'REFUNDED';
 
+export type VendorKycStatus = 'pending' | 'submitted' | 'verified' | 'rejected';
+
+export interface Vendor {
+  id: string;
+  user_id?: string | null;
+  store_name: string;
+  legal_first_name?: string | null;
+  legal_last_name?: string | null;
+  email: string;
+  phone_number?: string | null;
+  anchor_customer_id?: string | null;
+  anchor_deposit_account_id?: string | null;
+  kyc_status: VendorKycStatus;
+  is_allowlisted: boolean;
+  daily_volume_ngn: number;
+  daily_volume_reset_at?: string;
+  settlement_bank_code?: string | null;
+  settlement_account_number?: string | null;
+  settlement_account_name?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Transaction {
   id: string;
   vendor_id?: string | null;
@@ -16,6 +39,7 @@ export interface Transaction {
   updated_at: string;
   item_name: string;
   item_price: number;
+  delivery_fee?: number;
   protection_fee: number;
   total_amount: number;
   amount_paid?: number;

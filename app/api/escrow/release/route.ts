@@ -90,7 +90,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Transaction is now safely locked in 'RELEASING' state!
-    const itemPriceNaira = Number(rpcResult.item_price) || 0;
+    // Vendor payout amount is computed strictly in the database: total_amount - protection_fee
+    const vendorPayoutAmountNaira = Number(rpcResult.vendor_payout_amount) || (Number(rpcResult.total_amount) - Number(rpcResult.protection_fee));
     const protectionFeeNaira = Number(rpcResult.protection_fee) || 500;
 
     // 5. Execution: Sandbox vs Live Split Transfers
@@ -145,7 +146,7 @@ export async function POST(request: NextRequest) {
       const vendorTransfer = await executeAnchorBookTransfer({
         sourceAccountId: RELYVORA_FBO_ACCOUNT_ID,
         destinationAccountId: vendorAnchorAccountId,
-        amount: Math.round(itemPriceNaira * 100), // Kobo
+        amount: Math.round(vendorPayoutAmountNaira * 100), // Kobo: vendor share = total_amount - protection_fee
         reason: `Relyvora Escrow Payout: ${rpcResult.vendor_handle} (${transactionId.slice(0, 8)})`,
         reference: leg1IdempotencyKey,
       });
@@ -169,7 +170,7 @@ export async function POST(request: NextRequest) {
         vendorHandle: rpcResult.vendor_handle,
         details: {
           errorMessage: leg1Error.message,
-          amountNaira: itemPriceNaira,
+          amountNaira: vendorPayoutAmountNaira,
           idempotencyKey: leg1IdempotencyKey,
         },
       }).catch(() => {});

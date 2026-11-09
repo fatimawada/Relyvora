@@ -90,6 +90,7 @@ export async function POST(request: NextRequest) {
           vendor_id: safetyCheck.vendor?.id || null,
           item_name: itemName.trim(),
           item_price: priceNum,
+          delivery_fee: deliveryNum,
           protection_fee: pricing.protectionFee,
           total_amount: pricing.totalAmount,
           amount_paid: 0,
