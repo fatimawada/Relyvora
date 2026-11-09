@@ -162,6 +162,33 @@ export async function POST(request: NextRequest) {
       }, { status: 200 });
     }
 
+    // Handle Late or Excess Deposit received while transaction is not in AWAITING_PAYMENT or PARTIALLY_FUNDED
+    if (rpcResult?.late_or_excess) {
+      sendSystemAlert({
+        type: 'STUCK_FUNDS',
+        severity: 'CRITICAL',
+        title: `Late / Excess Deposit Received on Escrow (Status: ${rpcResult.current_status})`,
+        transactionId: rpcResult.transaction_id,
+        details: {
+          currentStatus: rpcResult.current_status,
+          depositStatus: rpcResult.deposit_status,
+          receivedNaira: amountNaira,
+          totalDeposited: rpcResult.total_deposited,
+          excessAmount: rpcResult.excess_amount,
+          eventId,
+        },
+      }).catch(() => {});
+
+      return NextResponse.json({
+        success: true,
+        message: 'Deposit recorded as excess/late; transaction status preserved.',
+        status: rpcResult.status,
+        depositStatus: rpcResult.deposit_status,
+        transactionId: rpcResult.transaction_id,
+        excessAmount: rpcResult.excess_amount,
+      }, { status: 200 });
+    }
+
     if (!rpcResult?.success) {
       return NextResponse.json({ success: false, error: rpcResult?.error || 'Deposit handling failed' }, { status: 400 });
     }
