@@ -99,47 +99,39 @@ export async function getTransactionById(id: string): Promise<{ data: Transactio
  * Create a new escrow transaction.
  */
 export async function createTransaction(payload: Omit<Transaction, 'id' | 'created_at' | 'updated_at'>): Promise<{ data: Transaction | null; error?: string }> {
-  const newId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `tx-${Date.now()}`;
-  const now = new Date().toISOString();
-
-  const fullTx: Transaction = {
-    id: newId,
-    created_at: now,
-    updated_at: now,
-    ...payload,
-  };
-
   try {
-    const { data, error } = await supabase
-      .from('transactions')
-      .insert([
-        {
-          id: fullTx.id,
-          item_name: fullTx.item_name,
-          item_price: fullTx.item_price,
-          protection_fee: fullTx.protection_fee,
-          total_amount: fullTx.total_amount,
-          vendor_handle: fullTx.vendor_handle,
-          buyer_phone: fullTx.buyer_phone || null,
-          buyer_notes: fullTx.buyer_notes || null,
-          status: fullTx.status,
-        }
-      ])
-      .select()
-      .single();
+    // Phase G1.5 Security: Traverse authenticated server route handler
+    const res = await fetch('/api/escrow/create-link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        itemName: payload.item_name,
+        itemPrice: payload.item_price,
+        deliveryFee: (payload as any).delivery_fee || 0,
+        vendorHandle: payload.vendor_handle,
+        buyerPhone: payload.buyer_phone,
+        buyerNotes: payload.buyer_notes,
+      }),
+    });
 
-    if (error) {
-      console.warn('Supabase insert failed, saving to local state:', error.message);
-      saveLocalTransaction(fullTx);
-      return { data: fullTx };
+    const json = await res.json();
+    if (json.success && json.transaction) {
+      saveLocalTransaction(json.transaction as Transaction);
+      return { data: json.transaction as Transaction };
     }
-
-    saveLocalTransaction(data as Transaction);
-    return { data: data as Transaction };
+    return { data: null, error: json.error || 'Failed to create escrow link' };
   } catch (err: any) {
-    console.warn('Network error on insert, saving locally:', err.message);
-    saveLocalTransaction(fullTx);
-    return { data: fullTx };
+    console.warn('Network error creating transaction via server route:', err.message);
+    const newId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `tx-${Date.now()}`;
+    const now = new Date().toISOString();
+    const fallbackTx: Transaction = {
+      id: newId,
+      created_at: now,
+      updated_at: now,
+      ...payload,
+    };
+    saveLocalTransaction(fallbackTx);
+    return { data: fallbackTx };
   }
 }
 

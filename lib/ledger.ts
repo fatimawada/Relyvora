@@ -44,9 +44,12 @@ export interface LedgerRecord {
 /**
  * Append an immutable entry to the transaction ledger.
  */
-export async function recordLedgerEntry(input: LedgerEntryInput): Promise<{ success: boolean; id?: string; error?: string }> {
+export async function recordLedgerEntry(
+  input: LedgerEntryInput,
+  supabaseOverride?: any
+): Promise<{ success: boolean; id?: string; error?: string }> {
   try {
-    const supabase = getServiceSupabase();
+    const supabase = supabaseOverride || getServiceSupabase();
     const idempotencyKey = input.idempotencyKey || `ledger_${input.transactionId}_${input.entryType}_${Date.now()}`;
 
     const payload = {

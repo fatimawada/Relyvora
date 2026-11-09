@@ -54,6 +54,7 @@ export default function AdminDisputesPage() {
   const [vendorPayoutAmount, setVendorPayoutAmount] = useState<number>(0);
   const [resolutionNotes, setResolutionNotes] = useState('');
   const [arbitratorName, setArbitratorName] = useState('Senior Arbitrator');
+  const [isConfirmed, setIsConfirmed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -97,6 +98,7 @@ export default function AdminDisputesPage() {
     setBuyerRefundAmount(total);
     setVendorPayoutAmount(0);
     setResolutionNotes(`Verified evidence for ${tx.item_name}. Binding arbitration decision.`);
+    setIsConfirmed(false);
   };
 
   // Change scenario and adjust amounts automatically
@@ -139,6 +141,11 @@ export default function AdminDisputesPage() {
     e.preventDefault();
     if (!selectedTx) return;
 
+    if ((resolutionAction === 'FULL_REFUND_BUYER' || resolutionAction === 'FULL_PAYOUT_VENDOR') && !isConfirmed) {
+      alert(`Executing ${resolutionAction} is irreversible and requires checking the authorization box.`);
+      return;
+    }
+
     setIsSubmitting(true);
     setSuccessMessage(null);
     try {
@@ -154,6 +161,8 @@ export default function AdminDisputesPage() {
           relyvoraFee: Number(selectedTx.protection_fee) || 500,
           resolutionNotes,
           resolvedBy: arbitratorName.trim() || 'Admin Arbitrator',
+          adminEmail: 'support@relyvora.com',
+          confirmed: isConfirmed,
         }),
       });
 
@@ -632,6 +641,20 @@ export default function AdminDisputesPage() {
                     className="w-full bg-white border border-slate-300 rounded-xl p-3 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500"
                   />
                 </div>
+              </div>
+
+              {/* Binding Confirmation Checkbox */}
+              <div className="p-4 bg-rose-50/80 border border-rose-200 rounded-2xl flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="confirm-arbitration"
+                  checked={isConfirmed}
+                  onChange={(e) => setIsConfirmed(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-rose-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                />
+                <label htmlFor="confirm-arbitration" className="text-xs text-rose-950 font-medium cursor-pointer leading-relaxed">
+                  <strong>Binding Arbitration Authorization:</strong> I verify that all evidence for Scenario {selectedScenario.id} ({selectedScenario.name}) has been evaluated under the Relyvora Dispute SLA policy, and I authorize this irreversible financial settlement.
+                </label>
               </div>
 
               {/* Footer Actions */}
