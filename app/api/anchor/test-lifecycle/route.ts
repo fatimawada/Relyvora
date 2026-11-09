@@ -12,6 +12,7 @@ import {
   RELYVORA_REVENUE_ACCOUNT_ID,
   RELYVORA_FBO_ACCOUNT_ID,
 } from '@/lib/anchor';
+import { assertTestRouteAccess } from '@/lib/adminAuth';
 
 export async function GET(request: NextRequest) {
   return handleLifecycleTest(request);
@@ -22,6 +23,12 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleLifecycleTest(request: NextRequest) {
+  // Phase G2.5: Block test/diagnostic routes in production unless allowlisted admin
+  const access = await assertTestRouteAccess(request);
+  if (!access.allowed && access.response) {
+    return access.response;
+  }
+
   const steps: Record<string, unknown> = {};
 
   try {

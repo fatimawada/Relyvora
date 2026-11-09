@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAnchorDepositAccount, AnchorApiError } from '@/lib/anchor';
+import { assertTestRouteAccess } from '@/lib/adminAuth';
 
 export async function POST(request: NextRequest) {
   try {
+    // Phase G2.5: Block test/diagnostic routes in production unless allowlisted admin
+    const access = await assertTestRouteAccess(request);
+    if (!access.allowed && access.response) {
+      return access.response;
+    }
+
     let body: any = {};
     try {
       body = await request.json();

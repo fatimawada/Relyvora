@@ -24,6 +24,7 @@ import { DISPUTE_SCENARIOS, DisputeScenario, calculateSlaCountdown } from '@/lib
 import { Transaction } from '@/lib/types';
 import { Logo } from '@/components/Logo';
 import { StatusBadge } from '@/components/StatusBadge';
+import { supabase } from '@/lib/supabase';
 
 interface DisputeResolution {
   id: string;
@@ -57,6 +58,7 @@ export default function AdminDisputesPage() {
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Live timer tick every second
   const [, setTick] = useState(0);
@@ -67,9 +69,21 @@ export default function AdminDisputesPage() {
 
   const loadData = async () => {
     setIsLoading(true);
+    setAuthError(null);
     try {
-      const res = await fetch('/api/admin/disputes/list');
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const res = await fetch('/api/admin/disputes/list', { headers });
       const json = await res.json();
+      if (res.status === 401 || res.status === 403) {
+        setAuthError(json.error || 'Administrator session required. Please sign in with an allowlisted account.');
+        return;
+      }
       if (json.success) {
         setDisputes(json.disputes || []);
         setResolutions(json.resolutions || []);
@@ -149,9 +163,16 @@ export default function AdminDisputesPage() {
     setIsSubmitting(true);
     setSuccessMessage(null);
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const res = await fetch('/api/admin/disputes/resolve', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           transactionId: selectedTx.id,
           scenarioNumber: selectedScenario.id,
@@ -161,7 +182,6 @@ export default function AdminDisputesPage() {
           relyvoraFee: Number(selectedTx.protection_fee) || 500,
           resolutionNotes,
           resolvedBy: arbitratorName.trim() || 'Admin Arbitrator',
-          adminEmail: 'support@relyvora.com',
           confirmed: isConfirmed,
         }),
       });
@@ -239,6 +259,18 @@ export default function AdminDisputesPage() {
           </Link>
         </div>
       </div>
+
+      {authError && (
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm font-semibold flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertOctagon className="w-5 h-5 text-rose-600 shrink-0" />
+            <span>{authError}</span>
+          </div>
+          <button onClick={() => setAuthError(null)} className="text-rose-700 hover:text-rose-900">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {successMessage && (
         <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm font-semibold flex items-center justify-between">

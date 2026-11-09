@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabaseServer';
+import { verifyAdminSession } from '@/lib/adminAuth';
 
 export async function GET(request: NextRequest) {
   try {
+    // Phase G2.5 Security: Verify Supabase Auth session & server-only ADMIN_EMAIL_ALLOWLIST
+    const auth = await verifyAdminSession(request);
+    if (!auth.authorized) {
+      return NextResponse.json(
+        { success: false, error: auth.error },
+        { status: auth.statusCode }
+      );
+    }
+
     const supabase = getServiceSupabase();
 
     // Fetch transactions in dispute or previously resolved
@@ -25,6 +35,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      authenticatedAdmin: auth.user?.email,
       disputes: disputes || [],
       resolutions: resolutions || [],
     });
