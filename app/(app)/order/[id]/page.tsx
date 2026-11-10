@@ -46,13 +46,41 @@ function EscrowTrackerContent() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [isDispatching, setIsDispatching] = useState(false);
 
-  // Buyer dispute modal
+  // Buyer dispute modal & OTP verification state (Addendum Item 7)
   const [isDisputeModalOpen, setIsDisputeModalOpen] = useState(false);
   const [disputeReason, setDisputeReason] = useState('');
+  const [disputeOtp, setDisputeOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [maskedPhone, setMaskedPhone] = useState<string | null>(null);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [disputeError, setDisputeError] = useState<string | null>(null);
   const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
+
+  // Buyer release code from localStorage (Owner Rule 3 Step B)
+  const [buyerReleaseCode, setBuyerReleaseCode] = useState<string | null>(null);
 
   // Copy code feedback
   const [copiedCode, setCopiedCode] = useState(false);
+
+  // Restore buyer release code from localStorage or query param
+  useEffect(() => {
+    const queryCode = searchParams?.get('code');
+    if (queryCode) {
+      setBuyerReleaseCode(queryCode);
+    } else if (typeof window !== 'undefined' && id) {
+      const cached = localStorage.getItem(`relyvora_buyer_escrow_${id}`);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed.releaseCode) {
+            setBuyerReleaseCode(parsed.releaseCode);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }, [id, searchParams]);
 
   const loadTransaction = async () => {
     if (!id) return;
@@ -83,9 +111,11 @@ function EscrowTrackerContent() {
     }
   }, [isNewPayment, transaction?.status]);
 
+  const activeReleaseCode = buyerReleaseCode || transaction?.release_code || null;
+
   const handleCopyCode = () => {
-    if (!transaction?.release_code) return;
-    navigator.clipboard.writeText(transaction.release_code);
+    if (!activeReleaseCode) return;
+    navigator.clipboard.writeText(activeReleaseCode);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2000);
   };
@@ -182,12 +212,56 @@ function EscrowTrackerContent() {
     }
   };
 
-  // Buyer Action: Freeze Escrow & Open Dispute
+  // Buyer Action: Send OTP to Phone (Addendum Item 7)
+  const handleSendDisputeOtp = async () => {
+    if (!transaction || !disputeReason.trim()) {
+      setDisputeError('Please describe the reason for your dispute first.');
+      return;
+    }
+
+    setIsSendingOtp(true);
+    setDisputeError(null);
+    try {
+      const res = await fetch('/api/escrow/dispute/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactionId: transaction.id }),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        setOtpSent(true);
+        setMaskedPhone(json.maskedPhone || 'your registered phone');
+        if (json.sandbox_otp) {
+          setDisputeOtp(json.sandbox_otp); // Auto-populate in sandbox
+        }
+      } else {
+        setDisputeError(json.error || 'Failed to send verification code.');
+      }
+    } catch (err: any) {
+      setDisputeError(`Network error sending code: ${err.message}`);
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  // Buyer Action: Freeze Escrow & Open Dispute with Verified OTP
   const handleOpenDispute = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!transaction || !disputeReason.trim()) return;
 
+    if (!otpSent) {
+      handleSendDisputeOtp();
+      return;
+    }
+
+    if (!disputeOtp || disputeOtp.trim().length !== 6) {
+      setDisputeError('Please enter the 6-digit verification code sent to your phone.');
+      return;
+    }
+
     setIsSubmittingDispute(true);
+    setDisputeError(null);
     try {
       const res = await fetch('/api/escrow/dispute', {
         method: 'POST',
@@ -195,6 +269,7 @@ function EscrowTrackerContent() {
         body: JSON.stringify({
           transactionId: transaction.id,
           disputeReason: disputeReason.trim(),
+          otp: disputeOtp.trim(),
         }),
       });
 
@@ -202,11 +277,16 @@ function EscrowTrackerContent() {
       if (json.success && json.transaction) {
         setTransaction(json.transaction);
         setIsDisputeModalOpen(false);
+        setOtpSent(false);
+        setDisputeOtp('');
       } else {
-        alert(`Dispute submission failed: ${json.error || 'Server error'}`);
+        setDisputeError(json.error || 'Dispute verification failed.');
+        if (json.requiresOtpRequest) {
+          setOtpSent(false);
+        }
       }
     } catch (err: any) {
-      alert(`Network error during dispute submission: ${err.message}`);
+      setDisputeError(`Network error during dispute submission: ${err.message}`);
     } finally {
       setIsSubmittingDispute(false);
     }
@@ -363,15 +443,15 @@ function EscrowTrackerContent() {
                     <div>
                       <h3 className="text-sm font-semibold text-slate-300">Your Secret Verification Code:</h3>
                       <div className="text-4xl sm:text-5xl font-mono font-black tracking-widest text-emerald-400 mt-1 select-all">
-                        {transaction.release_code || '------'}
+                        {activeReleaseCode || '------'}
                       </div>
                     </div>
 
-                    {transaction.release_code ? (
+                    {activeReleaseCode ? (
                       <button
                         type="button"
                         onClick={handleCopyCode}
-                        className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center justify-center gap-2 border border-white/20 transition-all self-center sm:self-auto"
+                        className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center justify-center gap-2 border border-white/20 transition-all self-center sm:self-auto cursor-pointer"
                       >
                         {copiedCode ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
                         <span>{copiedCode ? 'Copied to Clipboard' : 'Copy Code'}</span>
@@ -379,9 +459,9 @@ function EscrowTrackerContent() {
                     ) : null}
                   </div>
 
-                  {!transaction.release_code && (
+                  {!activeReleaseCode && (
                     <div className="bg-white/10 border border-white/20 rounded-xl p-3 text-xs text-slate-200">
-                      🔒 <strong>Live Security:</strong> Your 6-digit release code was dispatched via SMS to your registered phone number. Keep it secret until you inspect your item.
+                      🔒 <strong>Live Security:</strong> Your 6-digit release code was emailed to your address and sent via SMS to your phone. It is stored securely on your authorized device.
                     </div>
                   )}
 
@@ -591,8 +671,15 @@ function EscrowTrackerContent() {
 
             <form onSubmit={handleOpenDispute} className="p-5 sm:p-6 space-y-4">
               <p className="text-xs text-slate-600 leading-relaxed">
-                Freezing escrow immediately halts the transaction. The vendor cannot claim the funds until the issue is inspected and resolved.
+                Freezing escrow halts payout immediately. To prevent unauthorized freezes, a 6-digit verification code will be sent to your phone.
               </p>
+
+              {disputeError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+                  <span>{disputeError}</span>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
@@ -601,28 +688,74 @@ function EscrowTrackerContent() {
                 <textarea
                   required
                   rows={3}
-                  placeholder="e.g. Received synthetic hair instead of human hair / item arrived broken..."
+                  disabled={otpSent}
+                  placeholder="e.g. Received incorrect item / item arrived broken..."
                   value={disputeReason}
                   onChange={(e) => setDisputeReason(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white disabled:opacity-60"
                 />
               </div>
+
+              {otpSent && (
+                <div className="bg-rose-50/80 border border-rose-200 rounded-2xl p-4 space-y-3 animate-in fade-in">
+                  <div>
+                    <label className="block text-xs font-bold text-rose-900 uppercase tracking-wide mb-1">
+                      Enter 6-Digit Verification Code:
+                    </label>
+                    <p className="text-[11px] text-rose-700 mb-2">
+                      Code sent via SMS to {maskedPhone}.
+                    </p>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      placeholder="e.g. 583921"
+                      value={disputeOtp}
+                      onChange={(e) => setDisputeOtp(e.target.value.replace(/\D/g, ''))}
+                      className="w-full bg-white border border-rose-300 rounded-xl p-3 text-center text-xl font-mono font-bold tracking-widest text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSendDisputeOtp}
+                    disabled={isSendingOtp}
+                    className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 underline"
+                  >
+                    Resend verification code
+                  </button>
+                </div>
+              )}
 
               <div className="flex items-center gap-2 justify-end pt-2">
                 <button
                   type="button"
-                  onClick={() => setIsDisputeModalOpen(false)}
+                  onClick={() => {
+                    setIsDisputeModalOpen(false);
+                    setOtpSent(false);
+                    setDisputeError(null);
+                  }}
                   className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900"
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingDispute || !disputeReason.trim()}
-                  className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm disabled:opacity-50"
-                >
-                  {isSubmittingDispute ? 'Freezing Escrow...' : 'Confirm Freeze Escrow'}
-                </button>
+                
+                {!otpSent ? (
+                  <button
+                    type="button"
+                    onClick={handleSendDisputeOtp}
+                    disabled={isSendingOtp || !disputeReason.trim()}
+                    className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+                  >
+                    {isSendingOtp ? 'Sending Code...' : 'Send Phone Verification Code'}
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={isSubmittingDispute || disputeOtp.trim().length !== 6}
+                    className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+                  >
+                    {isSubmittingDispute ? 'Freezing Escrow...' : 'Verify & Freeze Escrow'}
+                  </button>
+                )}
               </div>
             </form>
           </div>

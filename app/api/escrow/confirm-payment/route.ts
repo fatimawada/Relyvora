@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { isLiveMode } from '@/lib/paymentsMode';
 import { isCheckoutEnabledServer } from '@/lib/safetyLimits';
@@ -9,6 +10,7 @@ import {
   computeReleaseCodeHmac, 
   calculateCodeExpiration 
 } from '@/lib/releaseCode';
+import { sendReleaseCodeReceiptEmail } from '@/lib/emailReceipt';
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,7 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { transactionId, paymentMethod = 'SIMULATED' } = body;
+    const { transactionId, paymentMethod = 'SIMULATED', buyerEmail } = body;
 
     if (!transactionId) {
       return NextResponse.json({ success: false, error: 'transactionId is required.' }, { status: 400 });
@@ -72,8 +74,13 @@ export async function POST(request: NextRequest) {
     const hmacHash = computeReleaseCodeHmac(transactionId, rawCode);
     const codeExpiresAt = calculateCodeExpiration(72);
     const now = new Date().toISOString();
+    const cleanBuyerEmail = buyerEmail && typeof buyerEmail === 'string' && buyerEmail.includes('@') 
+      ? buyerEmail.trim().toLowerCase() 
+      : (existing.buyer_email || null);
 
-    // 4. Atomically update status to FUNDS_LOCKED with Anchor deposit reference & expiry
+    const authToken = crypto.randomBytes(24).toString('hex');
+
+    // 4. Atomically update status to FUNDS_LOCKED with Anchor deposit reference, buyer email & expiry
     const { data: updated, error: updateErr } = await supabase
       .from('transactions')
       .update({
@@ -85,6 +92,7 @@ export async function POST(request: NextRequest) {
         failed_code_attempts: 0,
         code_locked: false,
         payment_method: paymentMethod,
+        buyer_email: cleanBuyerEmail,
         paid_at: now,
         updated_at: now,
       })
@@ -109,10 +117,24 @@ export async function POST(request: NextRequest) {
       metadata: { paymentMethod, mode: 'sandbox' },
     });
 
+    // 6. Owner Rule 3 Step C: If buyer provided email, fire Resend email receipt with release code
+    if (cleanBuyerEmail) {
+      sendReleaseCodeReceiptEmail({
+        buyerEmail: cleanBuyerEmail,
+        transactionId,
+        itemName: existing.item_name,
+        totalAmount: Number(existing.total_amount) || 0,
+        releaseCode: rawCode,
+        vendorHandle: existing.vendor_handle,
+      }).catch((emailErr) => console.error('Error dispatching release code receipt:', emailErr));
+    }
+
     return NextResponse.json({ 
       success: true, 
       transaction: updated,
-      sandbox_release_code: rawCode 
+      sandbox_release_code: rawCode,
+      buyer_auth_token: authToken,
+      buyer_email: cleanBuyerEmail,
     });
   } catch (err: any) {
     console.error('Unhandled error in confirm-payment:', err);

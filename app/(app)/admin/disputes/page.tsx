@@ -175,13 +175,14 @@ export default function AdminDisputesPage() {
         headers,
         body: JSON.stringify({
           transactionId: selectedTx.id,
+          scenarioId: selectedScenario.id,
           scenarioNumber: selectedScenario.id,
           resolutionAction,
-          buyerRefundAmount,
-          vendorPayoutAmount,
-          relyvoraFee: Number(selectedTx.protection_fee) || 500,
           resolutionNotes,
-          resolvedBy: arbitratorName.trim() || 'Admin Arbitrator',
+          overrideReason: selectedScenario.id === 5 ? (resolutionNotes || 'Partial acceptance split agreement') : undefined,
+          overrideConfirmed: isConfirmed,
+          overrideBuyerRefund: buyerRefundAmount,
+          overrideVendorPayout: vendorPayoutAmount,
           confirmed: isConfirmed,
         }),
       });

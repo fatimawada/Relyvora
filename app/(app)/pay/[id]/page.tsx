@@ -25,7 +25,8 @@ import {
   AlertCircle,
   Copy,
   Building2,
-  RefreshCw
+  RefreshCw,
+  Mail
 } from 'lucide-react';
 
 export default function BuyerCheckoutPage() {
@@ -39,8 +40,32 @@ export default function BuyerCheckoutPage() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [copiedAccount, setCopiedAccount] = useState(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const [buyerEmail, setBuyerEmail] = useState('');
+  const [storedReleaseCode, setStoredReleaseCode] = useState<string | null>(null);
+  const [storedAuthToken, setStoredAuthToken] = useState<string | null>(null);
 
   const liveMode = isLiveMode() || transaction?.payments_mode === 'live' || Boolean(transaction?.virtual_account_number);
+
+  // Restore buyer session and release code from localStorage (Owner Rule 3 Step B)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && id) {
+      const cached = localStorage.getItem(`relyvora_buyer_escrow_${id}`);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed.releaseCode) {
+            setStoredReleaseCode(parsed.releaseCode);
+            setStoredAuthToken(parsed.authToken || null);
+            if (parsed.buyerEmail) {
+              setBuyerEmail(parsed.buyerEmail);
+            }
+          }
+        } catch {
+          // ignore cache parse errors
+        }
+      }
+    }
+  }, [id]);
 
   useEffect(() => {
     async function load() {
@@ -84,14 +109,33 @@ export default function BuyerCheckoutPage() {
         body: JSON.stringify({
           transactionId: transaction.id,
           paymentMethod: method,
+          buyerEmail: buyerEmail.trim(),
         }),
       });
 
       const json = await res.json();
       if (json.success && json.transaction) {
+        const code = json.sandbox_release_code || '';
+        const token = json.buyer_auth_token || '';
+
+        // Owner Rule 3 Step B: Save in buyer localStorage
+        if (typeof window !== 'undefined' && code) {
+          localStorage.setItem(`relyvora_buyer_escrow_${transaction.id}`, JSON.stringify({
+            transactionId: transaction.id,
+            releaseCode: code,
+            authToken: token,
+            buyerEmail: buyerEmail.trim(),
+            timestamp: Date.now(),
+          }));
+        }
+
+        setStoredReleaseCode(code);
+        setStoredAuthToken(token);
         setTransaction(json.transaction);
         setIsPaymentModalOpen(false);
-        router.push(`/order/${transaction.id}?new_payment=true`);
+
+        // Redirect to order tracker with code param
+        router.push(`/order/${transaction.id}?new_payment=true&code=${code}`);
       } else {
         alert(`Payment error: ${json.error || 'Failed to process payment'}`);
       }
@@ -134,9 +178,9 @@ export default function BuyerCheckoutPage() {
 
   if (error || !transaction) {
     return (
-      <div className="max-w-md mx-auto my-12 p-6 bg-white rounded-3xl border border-slate-200 text-center space-y-4 shadow-xs">
-        <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto">
-          <AlertCircle className="w-6 h-6" />
+      <div className="max-w-md mx-auto my-12 p-6 bg-white rounded-3xl border border-slate-200 text-center space-y-4">
+        <div className="w-12 h-12 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mx-auto">
+          <ShieldAlert className="w-6 h-6" />
         </div>
         <h2 className="text-lg font-bold text-slate-900">Order Not Found</h2>
         <p className="text-xs text-slate-500">
@@ -238,6 +282,32 @@ export default function BuyerCheckoutPage() {
             </div>
           </div>
 
+          {/* Optional Buyer Email Field (Owner Rule 3) */}
+          {!isAlreadyPaid && (
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-2">
+              <div className="flex items-center justify-between">
+                <label htmlFor="buyerEmail" className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Buyer Email (Optional)</span>
+                </label>
+                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full">
+                  Code Backup Receipt
+                </span>
+              </div>
+              <input
+                type="email"
+                id="buyerEmail"
+                placeholder="e.g. buyer@gmail.com"
+                value={buyerEmail}
+                onChange={(e) => setBuyerEmail(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <p className="text-[11px] text-slate-500 leading-snug">
+                We will email your secret 6-digit delivery release code receipt so you can easily access it when your rider arrives.
+              </p>
+            </div>
+          )}
+
           {/* How You Are Protected (3-Step Visual Timeline) */}
           <div className="space-y-3">
             <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
@@ -253,7 +323,7 @@ export default function BuyerCheckoutPage() {
                 <div>
                   <h4 className="text-xs font-bold text-slate-900">1. Safe Escrow Lock</h4>
                   <p className="text-[11px] text-slate-600 leading-snug">
-                    Your money is safely locked with Relyvora. The vendor does <strong>NOT</strong> receive the payment until delivery is confirmed.
+                    Your money is safely locked with Relyvora. The vendor does <strong>NOT</strong> receive payment until you inspect and approve delivery.
                   </p>
                 </div>
               </div>
@@ -286,18 +356,48 @@ export default function BuyerCheckoutPage() {
 
           {/* Action Button or Already Paid Alert */}
           {isAlreadyPaid ? (
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center space-y-3">
-              <p className="text-xs font-medium text-slate-600">
-                This transaction has already been funded in safe escrow!
-              </p>
-              <Link
-                href={`/order/${transaction.id}`}
-                className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-sm"
-              >
-                <span>Go to Escrow Tracker & Release Code</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
+            storedReleaseCode ? (
+              /* Step B: Restored from Buyer localStorage */
+              <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-6 text-center space-y-4 animate-in fade-in">
+                <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-emerald-950">Payment Protected in Escrow</h3>
+                  <p className="text-xs text-emerald-800 mt-1">
+                    Your secret 6-digit release code has been restored from your device:
+                  </p>
+                </div>
+                <div className="bg-white border-2 border-dashed border-emerald-400 rounded-xl py-3 px-6 inline-block font-mono text-3xl font-black tracking-widest text-emerald-700 select-all">
+                  {storedReleaseCode}
+                </div>
+                <p className="text-[11px] text-emerald-700 font-medium">
+                  🔒 Keep this code confidential. Only give it to the dispatch rider AFTER inspecting goods.
+                </p>
+                <div>
+                  <Link
+                    href={`/order/${transaction.id}?code=${storedReleaseCode}`}
+                    className="inline-flex items-center gap-1.5 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors shadow-sm"
+                  >
+                    <span>Open Live Escrow Tracker</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center space-y-3">
+                <p className="text-xs font-medium text-slate-600">
+                  This transaction has already been funded in safe escrow!
+                </p>
+                <Link
+                  href={`/order/${transaction.id}`}
+                  className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-sm"
+                >
+                  <span>Go to Escrow Tracker</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </div>
+            )
           ) : !isCheckoutEnabled() ? (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-center space-y-2">
               <AlertCircle className="w-8 h-8 text-amber-600 mx-auto" />

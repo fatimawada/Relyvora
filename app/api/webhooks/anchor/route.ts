@@ -7,6 +7,7 @@ import {
   calculateCodeExpiration 
 } from '@/lib/releaseCode';
 import { sendSystemAlert } from '@/lib/alerts';
+import { sendReleaseCodeReceiptEmail } from '@/lib/emailReceipt';
 
 /**
  * Strict HMAC-SHA256 webhook signature verification.
@@ -214,14 +215,27 @@ export async function POST(request: NextRequest) {
       const rawCode = generateCryptographicReleaseCode();
       const hmacHash = computeReleaseCodeHmac(txId, rawCode);
 
-      await supabase
+      const { data: updatedTx } = await supabase
         .from('transactions')
         .update({
           release_code_hash: hmacHash,
         })
-        .eq('id', txId);
+        .eq('id', txId)
+        .select('item_name, total_amount, vendor_handle, buyer_email')
+        .single();
 
-      // In production live mode, dispatch the code directly to buyer's phone/email via SMS
+      // Owner Rule 3 Step C: If buyer provided email, fire Resend email receipt with release code
+      if (updatedTx?.buyer_email) {
+        sendReleaseCodeReceiptEmail({
+          buyerEmail: updatedTx.buyer_email,
+          transactionId: txId,
+          itemName: updatedTx.item_name,
+          totalAmount: Number(updatedTx.total_amount) || 0,
+          releaseCode: rawCode,
+          vendorHandle: updatedTx.vendor_handle,
+        }).catch(() => {});
+      }
+
       console.log(`Generated release code hash for funded transaction ${txId}.`);
     }
 

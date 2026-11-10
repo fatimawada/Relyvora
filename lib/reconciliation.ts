@@ -1,6 +1,6 @@
 /**
  * Daily Reconciliation Engine & Integrity Audit
- * Phase G2.5 Requirement 3
+ * Phase G2.5 Requirement 3 & G2.5 Addendum
  * 
  * Verifies consistency across Anchor banking records, transactions table,
  * and immutable transaction ledger:
@@ -10,12 +10,16 @@
  *    - matching DEPOSIT_LOCKED ledger entry exists
  * 
  * 2. RELEASED:
- *    - PAYOUT_VENDOR + FEE_REVENUE ledger entries equal total_amount
+ *    - PAYOUT_VENDOR + SPLIT_VENDOR + SPLIT_BUYER + FEE_REVENUE ledger entries equal total_amount
  *    - Both Anchor transfer IDs are recorded
  * 
  * 3. STUCK SETTLEMENTS:
- *    - Any transaction in RELEASING or VENDOR_PAID for > 15 minutes
+ *    - Any transaction in RELEASING, RESOLVING, or VENDOR_PAID for > 15 minutes
  *    - Flagged as STUCK_SETTLEMENT and triggers Resend alert (RECONCILIATION_MISMATCH)
+ * 
+ * 4. ANCHOR FBO BALANCE CHECK:
+ *    - Evaluated via Anchor API: GET /accounts/{accountId}
+ *    - If API call fails, reports FAILED_TO_VERIFY with CRITICAL alert (NEVER a pass)
  */
 
 import { getServiceSupabase } from './supabaseServer';
@@ -27,7 +31,9 @@ export type ReconciliationIssueType =
   | 'UNDERPAID_ESCROW'
   | 'UNBALANCED_RELEASE_LEDGER'
   | 'MISSING_ANCHOR_TRANSFER_ID'
-  | 'STUCK_SETTLEMENT';
+  | 'STUCK_SETTLEMENT'
+  | 'FAILED_TO_VERIFY'
+  | 'FBO_BALANCE_MISMATCH';
 
 export interface TransactionReconciliationIssue {
   transactionId: string;
@@ -59,6 +65,8 @@ export interface DailyReconciliationResult {
     expectedEscrowBalance: number;
     variance: number;
     isBalanced: boolean;
+    status: 'BALANCED' | 'MISMATCH' | 'FAILED_TO_VERIFY';
+    error?: string;
   } | null;
   isClean: boolean;
 }
@@ -80,7 +88,7 @@ export async function runDailyReconciliation(
   // 1. Fetch all transactions
   const { data: transactions, error: txError } = await supabase
     .from('transactions')
-    .select('id, status, amount_paid, total_amount, item_price, protection_fee, anchor_deposit_id, created_at, updated_at, vendor_handle, payments_mode');
+    .select('id, status, amount_paid, total_amount, item_price, protection_fee, anchor_deposit_id, created_at, updated_at, resolving_at, vendor_handle, payments_mode');
 
   if (txError || !transactions) {
     throw new Error(`Failed to query transactions for reconciliation: ${txError?.message}`);
@@ -165,16 +173,18 @@ export async function runDailyReconciliation(
       }
     }
 
-    // CHECK B: RELEASED
+    // CHECK B: RELEASED (Accounts for standard releases and dispute-split releases)
     if (status === 'RELEASED') {
       const payoutEntries = txLedger.filter(l => l.entry_type === 'PAYOUT_VENDOR' || l.entry_type === 'SPLIT_VENDOR');
+      const splitBuyerEntries = txLedger.filter(l => l.entry_type === 'SPLIT_BUYER');
       const feeEntries = txLedger.filter(l => l.entry_type === 'FEE_REVENUE');
 
       const sumPayout = payoutEntries.reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
+      const sumSplitBuyer = splitBuyerEntries.reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
       const sumFee = feeEntries.reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
-      const sumTotalSettled = sumPayout + sumFee;
+      const sumTotalSettled = sumPayout + sumSplitBuyer + sumFee;
 
-      // PAYOUT_VENDOR + FEE_REVENUE ledger entries must equal total_amount (within ₦1 tolerance for rounding)
+      // Settled ledger entries must equal total_amount (within ₦1 tolerance for rounding)
       if (Math.abs(sumTotalSettled - totalAmount) > 1) {
         issues.push({
           transactionId: tx.id,
@@ -182,12 +192,12 @@ export async function runDailyReconciliation(
           severity: 'CRITICAL',
           status,
           vendorHandle: tx.vendor_handle,
-          message: `Transaction ${tx.id} in 'RELEASED' status has settled ledger entries (₦${sumTotalSettled}) != total_amount (₦${totalAmount}).`,
-          details: { sumPayout, sumFee, sumTotalSettled, totalAmount, discrepancy: sumTotalSettled - totalAmount },
+          message: `Transaction ${tx.id} in 'RELEASED' status has settled ledger entries (₦${sumTotalSettled}: payout ₦${sumPayout}, split buyer ₦${sumSplitBuyer}, fee ₦${sumFee}) != total_amount (₦${totalAmount}).`,
+          details: { sumPayout, sumSplitBuyer, sumFee, sumTotalSettled, totalAmount, discrepancy: sumTotalSettled - totalAmount },
         });
       }
 
-      // Both Anchor transfer IDs must be present in live payments mode
+      // In live payments mode, transfer IDs must be present
       const isLive = tx.payments_mode === 'live' || process.env.PAYMENTS_MODE === 'live';
       if (isLive) {
         const hasPayoutTransferId = payoutEntries.some(e => Boolean(e.anchor_transfer_id));
@@ -199,43 +209,44 @@ export async function runDailyReconciliation(
             severity: 'CRITICAL',
             status,
             vendorHandle: tx.vendor_handle,
-            message: `Live transaction ${tx.id} in 'RELEASED' status is missing banking Anchor transfer IDs in ledger records.`,
+            message: `Transaction ${tx.id} in 'RELEASED' status is missing Anchor transfer IDs in ledger.`,
             details: { hasPayoutTransferId, hasFeeTransferId },
           });
         }
       }
     }
 
-    // CHECK C: STUCK IN RELEASING OR VENDOR_PAID FOR > 15 MINUTES
-    if (status === 'RELEASING' || status === 'VENDOR_PAID') {
-      const updatedAtMs = new Date(tx.updated_at || tx.created_at).getTime();
-      const elapsedMinutes = (now.getTime() - updatedAtMs) / (1000 * 60);
+    // CHECK C: STUCK SETTLEMENTS (> 15 minutes in RELEASING, RESOLVING, or VENDOR_PAID)
+    if (status === 'RELEASING' || status === 'RESOLVING' || status === 'VENDOR_PAID') {
+      const referenceTime = tx.resolving_at || tx.updated_at || tx.created_at;
+      const stuckDurationMs = now.getTime() - new Date(referenceTime).getTime();
+      const fifteenMinutesMs = 15 * 60 * 1000;
 
-      if (elapsedMinutes > 15) {
+      if (stuckDurationMs > fifteenMinutesMs) {
+        const minutesStuck = Math.round(stuckDurationMs / (60 * 1000));
         const stuckIssue: TransactionReconciliationIssue = {
           transactionId: tx.id,
           type: 'STUCK_SETTLEMENT',
           severity: 'CRITICAL',
           status,
           vendorHandle: tx.vendor_handle,
-          message: `CRITICAL: Transaction ${tx.id} has been stuck in '${status}' state for ${Math.round(elapsedMinutes)} minutes (> 15m threshold).`,
+          message: `STUCK SETTLEMENT: Transaction ${tx.id} has been in '${status}' state for ${minutesStuck} minutes (exceeds 15-minute threshold).`,
           details: {
             status,
+            minutesStuck,
             updatedAt: tx.updated_at,
-            elapsedMinutes: Math.round(elapsedMinutes),
-            totalAmount,
-            amountPaid,
+            resolvingAt: tx.resolving_at,
+            amount: totalAmount,
           },
         };
-
         issues.push(stuckIssue);
 
-        // Immediately trigger critical Resend alert
+        // Immediate high-priority Resend alert
         if (options.sendAlerts) {
           sendSystemAlert({
-            type: 'RECONCILIATION_MISMATCH',
+            type: 'STUCK_FUNDS',
             severity: 'CRITICAL',
-            title: `STUCK_SETTLEMENT: Transaction stuck in ${status} for >15m`,
+            title: `STUCK SETTLEMENT DETECTED: Transaction ${tx.id} (${status} for ${minutesStuck}m)`,
             transactionId: tx.id,
             vendorHandle: tx.vendor_handle,
             details: stuckIssue.details,
@@ -245,7 +256,7 @@ export async function runDailyReconciliation(
     }
   }
 
-  // 4. Anchor Account Balance Variance Check
+  // 4. ANCHOR FBO BALANCE VERIFICATION (Anchor API: GET /accounts/{accountId})
   const expectedEscrowBalance = totalDeposited - totalPaidToVendors - totalPlatformFees - totalRefundedToBuyers;
   let anchorBalance: DailyReconciliationResult['anchorBalance'] = null;
 
@@ -254,28 +265,83 @@ export async function runDailyReconciliation(
     if (anchorData?.availableBalance !== undefined) {
       const availableBalanceNaira = anchorData.availableBalance / 100;
       const variance = Math.abs(expectedEscrowBalance - availableBalanceNaira);
+      const isBalanced = variance < 1;
       anchorBalance = {
         availableBalanceNaira,
         expectedEscrowBalance,
         variance,
-        isBalanced: variance < 1,
+        isBalanced,
+        status: isBalanced ? 'BALANCED' : 'MISMATCH',
       };
 
-      if (!anchorBalance.isBalanced && options.sendAlerts) {
-        sendSystemAlert({
-          type: 'RECONCILIATION_MISMATCH',
+      if (!isBalanced) {
+        issues.push({
+          transactionId: 'FBO_ESCROW_VAULT',
+          type: 'FBO_BALANCE_MISMATCH',
           severity: 'CRITICAL',
-          title: `FBO ESCROW BALANCE MISMATCH: Variance of ₦${variance.toLocaleString()}`,
+          status: 'MISMATCH',
+          message: `FBO ESCROW BALANCE MISMATCH: Variance of ₦${variance.toLocaleString()} between Anchor available balance and expected escrow balance.`,
           details: {
             expectedEscrowBalance,
             actualAnchorBalance: availableBalanceNaira,
             variance,
           },
-        }).catch(() => {});
+        });
+
+        if (options.sendAlerts) {
+          sendSystemAlert({
+            type: 'RECONCILIATION_MISMATCH',
+            severity: 'CRITICAL',
+            title: `FBO ESCROW BALANCE MISMATCH: Variance of ₦${variance.toLocaleString()}`,
+            details: {
+              api: `GET /accounts/${RELYVORA_FBO_ACCOUNT_ID}`,
+              expectedEscrowBalance,
+              actualAnchorBalance: availableBalanceNaira,
+              variance,
+            },
+          }).catch(() => {});
+        }
       }
+    } else {
+      throw new Error('Anchor balance payload missing availableBalance');
     }
-  } catch (err) {
-    console.warn('Anchor account balance check skipped (credentials or sandbox offline):', err);
+  } catch (err: any) {
+    // If Anchor API call fails: report FAILED_TO_VERIFY with CRITICAL alert, NEVER a pass
+    console.error(`Anchor FBO balance verification failed via GET /accounts/${RELYVORA_FBO_ACCOUNT_ID}:`, err.message);
+    anchorBalance = {
+      availableBalanceNaira: 0,
+      expectedEscrowBalance,
+      variance: expectedEscrowBalance,
+      isBalanced: false,
+      status: 'FAILED_TO_VERIFY',
+      error: err.message || 'Anchor API request failed',
+    };
+
+    issues.push({
+      transactionId: 'FBO_ESCROW_VAULT',
+      type: 'FAILED_TO_VERIFY',
+      severity: 'CRITICAL',
+      status: 'FAILED_TO_VERIFY',
+      message: `Anchor FBO balance verification failed via GET /accounts/${RELYVORA_FBO_ACCOUNT_ID}: ${err.message || 'API request failed'}. Escalated as CRITICAL audit failure.`,
+      details: {
+        api: `GET /accounts/${RELYVORA_FBO_ACCOUNT_ID}`,
+        error: err.message,
+        expectedEscrowBalance,
+      },
+    });
+
+    if (options.sendAlerts) {
+      sendSystemAlert({
+        type: 'RECONCILIATION_MISMATCH',
+        severity: 'CRITICAL',
+        title: 'CRITICAL: Anchor FBO Balance Audit FAILED_TO_VERIFY',
+        details: {
+          api: `GET /accounts/${RELYVORA_FBO_ACCOUNT_ID}`,
+          error: err.message || 'API request failed',
+          expectedEscrowBalance,
+        },
+      }).catch(() => {});
+    }
   }
 
   const criticalCount = issues.filter(i => i.severity === 'CRITICAL').length;
@@ -297,6 +363,7 @@ export async function runDailyReconciliation(
       expectedEscrowBalance,
     },
     anchorBalance,
-    isClean: issues.length === 0 && (!anchorBalance || anchorBalance.isBalanced),
+    // Strict Clean Guarantee: requires zero issues AND successfully balanced FBO check
+    isClean: issues.length === 0 && Boolean(anchorBalance?.isBalanced) && anchorBalance?.status === 'BALANCED',
   };
 }
