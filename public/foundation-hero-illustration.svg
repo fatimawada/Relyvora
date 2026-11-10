@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" fill="none">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#064e3b" />
+      <stop offset="50%" stop-color="#022c22" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="emeraldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+    <linearGradient id="tealGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22d3ee" />
+      <stop offset="100%" stop-color="#0891b2" />
+    </linearGradient>
+    <linearGradient id="glowGrad" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0.25" />
+      <stop offset="100%" stop-color="#064e3b" stop-opacity="0" />
+    </linearGradient>
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="60" result="blur" />
+    </filter>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="800" height="1000" rx="32" fill="url(#bgGrad)" />
+
+  <!-- Subtle Ambient Glow Orbs -->
+  <circle cx="400" cy="380" r="260" fill="url(#glowGrad)" filter="url(#softGlow)" />
+  <circle cx="650" cy="700" r="180" fill="#0891b2" fill-opacity="0.12" filter="url(#softGlow)" />
+  <circle cx="150" cy="780" r="200" fill="#059669" fill-opacity="0.15" filter="url(#softGlow)" />
+
+  <!-- Grid Accents (Subtle Architectural Lines) -->
+  <g stroke="#ffffff" stroke-opacity="0.04" stroke-width="1">
+    <line x1="100" y1="0" x2="100" y2="1000" />
+    <line x1="250" y1="0" x2="250" y2="1000" />
+    <line x1="400" y1="0" x2="400" y2="1000" />
+    <line x1="550" y1="0" x2="550" y2="1000" />
+    <line x1="700" y1="0" x2="700" y2="1000" />
+    <line x1="0" y1="200" x2="800" y2="200" />
+    <line x1="0" y1="400" x2="800" y2="400" />
+    <line x1="0" y1="600" x2="800" y2="600" />
+    <line x1="0" y1="800" x2="800" y2="800" />
+  </g>
+
+  <!-- Central Geometric Emblem (Derived from Relyvora R-Symbol Geometry) -->
+  <g transform="translate(180, 220) scale(3.8)">
+    <!-- Symbol Spine Blocks -->
+    <rect x="24" y="8" width="28" height="30" rx="4" fill="url(#emeraldGrad)" />
+    <rect x="24" y="42" width="28" height="30" rx="4" fill="url(#emeraldGrad)" />
+    <rect x="24" y="76" width="28" height="30" rx="4" fill="url(#emeraldGrad)" />
+
+    <!-- Symbol Upper Loop (Mid-Tone Green / Teal Curve) -->
+    <path d="M58 8L76 8C93 8 105 20 105 35C105 50 93 63 76 63L66 63C61 63 58 60 58 56L58 45L76 45C83 45 87 41 87 35C87 29 83 26 76 26L58 26Z" 
+          fill="url(#tealGrad)" />
+
+    <!-- Symbol Forward Dynamic Leg (Accent Polygon) -->
+    <path d="M58 56L80 56L106 106L84 106Z" 
+          fill="#34d399" />
+  </g>
+
+  <!-- Decorative Orbiting Rings & Dots -->
+  <circle cx="400" cy="450" r="320" stroke="#34d399" stroke-opacity="0.15" stroke-width="1.5" stroke-dasharray="8 8" />
+  <circle cx="400" cy="450" r="380" stroke="#22d3ee" stroke-opacity="0.1" stroke-width="1" />
+
+  <!-- Bottom Visual Anchor Card Graphic -->
+  <g transform="translate(100, 780)">
+    <rect width="600" height="140" rx="20" fill="#0f172a" fill-opacity="0.75" stroke="#ffffff" stroke-opacity="0.1" stroke-width="1" />
+    
+    <!-- Micro Icons & Typography Representation -->
+    <circle cx="48" cy="70" r="22" fill="#059669" fill-opacity="0.3" stroke="#34d399" stroke-width="1" />
+    <path d="M42 70L46 74L54 66" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+
+    <text x="88" y="62" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="700">
+      Relyvora Foundation
+    </text>
+    <text x="88" y="86" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="400">
+      Digital Skills &amp; Safer Payments for African Entrepreneurs
+    </text>
+
+    <!-- Planned Tag -->
+    <rect x="495" y="55" width="75" height="28" rx="14" fill="#064e3b" stroke="#10b981" stroke-width="1" />
+    <text x="532" y="73" fill="#6ee7b7" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" text-anchor="middle">
+      PLANNED
+    </text>
+  </g>
+</svg>
