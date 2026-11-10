@@ -19,6 +19,7 @@ const config: Config = {
         main: "var(--text)",
         muted: "var(--muted)",
         accent: "var(--accent)",
+        "accent-contrast": "var(--accent-contrast)",
         border: "var(--border)",
         navy: {
           800: "#1E293B",

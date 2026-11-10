@@ -2,11 +2,11 @@ import React from 'react';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Relyvora Foundation — Expanding Access to Opportunity in the Digital Economy',
-  description: 'An economic empowerment initiative by Relyvora Technologies equipping women and youth across Africa with digital entrepreneurship skills, financial literacy, and zero-trust escrow protection infrastructure.',
+  title: 'Relyvora Foundation — Digital Selling Skills & Safer Payments',
+  description: 'A planned initiative of Relyvora Technologies to combine practical digital selling skills with safer payments for women and young entrepreneurs in Africa.',
   openGraph: {
-    title: 'Relyvora Foundation — Digital Trade & Financial Inclusion for Women & Youth',
-    description: 'Bridging the trust deficit in African social commerce with capacity building and zero-fee escrow infrastructure.',
+    title: 'Relyvora Foundation — Digital Selling Skills & Safer Payments',
+    description: 'A planned initiative of Relyvora Technologies combining digital selling skills and safer payments for women and young entrepreneurs.',
     url: 'https://foundation.relyvora.com',
     siteName: 'Relyvora Foundation',
     images: [
@@ -22,8 +22,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Relyvora Foundation — Empowering African Digital Entrepreneurs',
-    description: 'Equipping women and youth with digital commerce skills, financial literacy, and zero-fee escrow protection.',
+    title: 'Relyvora Foundation — Digital Selling Skills & Safer Payments',
+    description: 'A planned initiative of Relyvora Technologies to support women and young entrepreneurs.',
     images: ['/relyvora-logo.png'],
   },
 };

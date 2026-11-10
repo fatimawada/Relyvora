@@ -22,7 +22,7 @@ export default function PrivacyPolicyPage() {
           <div>
             <Link
               href="/"
-              className="inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-accent hover:underline"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent hover:underline"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Return to Relyvora Home</span>
@@ -31,14 +31,14 @@ export default function PrivacyPolicyPage() {
 
           {/* Header Title Block */}
           <div className="space-y-4 border-b border-border pb-8">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 border border-accent/20 text-xs font-mono font-semibold text-accent">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 border border-accent/20 text-xs font-semibold text-accent">
               <Lock className="w-3.5 h-3.5 text-accent" />
               <span>DATA PROTECTION & PRIVACY</span>
             </div>
             <h1 className="text-3xl sm:text-5xl font-heading font-semibold text-main tracking-tight">
               Relyvora Privacy Policy
             </h1>
-            <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-muted">
+            <div className="flex flex-wrap items-center gap-4 text-xs text-muted">
               <span><strong>Last Updated:</strong> November 5, 2026</span>
               <span>•</span>
               <span>Nigeria Data Protection Act (NDPA) 2023 Compliant</span>
@@ -46,14 +46,14 @@ export default function PrivacyPolicyPage() {
           </div>
 
           {/* Legal Document Content */}
-          <article className="prose prose-slate dark:prose-invert max-w-none text-sm sm:text-base text-main/90 leading-relaxed space-y-8 font-sans">
+          <article className="max-w-none text-base text-main/90 leading-relaxed space-y-8 font-sans">
             
             {/* Section 1 */}
             <section className="space-y-3">
               <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 1. Introduction
               </h2>
-              <p>
+              <p className="text-sm sm:text-base text-main/80 dark:text-muted leading-relaxed">
                 Relyvora Technologies Limited (RC No: 9982218) (&quot;Relyvora&quot;, &quot;we&quot;, &quot;us&quot;, or &quot;our&quot;) respects your privacy and is committed to protecting your personal data in strict compliance with the <strong>Nigeria Data Protection Act (NDPA) 2023</strong>. This Privacy Policy explains what information we collect from Vendors and Buyers, how we use and safeguard it, and your statutory rights.
               </p>
             </section>
@@ -63,20 +63,20 @@ export default function PrivacyPolicyPage() {
               <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 2. Information We Collect
               </h2>
-              <p>
+              <p className="text-sm sm:text-base text-main/80 dark:text-muted leading-relaxed">
                 To maintain a secure escrow ecosystem while keeping checkout frictionless, we collect different tiers of data depending on your role:
               </p>
 
               <div className="space-y-4 pl-2">
                 {/* Subsection A */}
-                <div className="p-5 rounded-card bg-surface border border-border space-y-2">
+                <div className="p-5 rounded-card bg-surface border border-border space-y-2 transition-colors">
                   <h3 className="text-base font-heading font-semibold text-main">
                     A. Data Collected from Vendors (Merchants)
                   </h3>
                   <p className="text-xs sm:text-sm text-muted">
                     Because vendors receive financial payouts through regulated banking rails, Nigerian law requires mandatory identity verification (KYC):
                   </p>
-                  <ul className="list-disc pl-5 space-y-1.5 text-xs sm:text-sm">
+                  <ul className="list-disc pl-5 space-y-1.5 text-xs sm:text-sm text-main/80 dark:text-muted">
                     <li>
                       <strong>Identity &amp; KYC Data:</strong> Full legal name, Date of Birth, Gender, Residential/Business Address, 11-digit Bank Verification Number (BVN), and/or 11-digit National Identity Number (NIN).
                     </li>
@@ -90,14 +90,14 @@ export default function PrivacyPolicyPage() {
                 </div>
 
                 {/* Subsection B */}
-                <div className="p-5 rounded-card bg-surface border border-border space-y-2">
+                <div className="p-5 rounded-card bg-surface border border-border space-y-2 transition-colors">
                   <h3 className="text-base font-heading font-semibold text-main">
                     B. Data Collected from Buyers (Customers)
                   </h3>
                   <p className="text-xs sm:text-sm text-muted">
                     Buyers are <strong>never</strong> required to provide a BVN or NIN to make an escrow payment. From buyers, we only collect:
                   </p>
-                  <ul className="list-disc pl-5 space-y-1.5 text-xs sm:text-sm">
+                  <ul className="list-disc pl-5 space-y-1.5 text-xs sm:text-sm text-main/80 dark:text-muted">
                     <li>
                       <strong>Transaction &amp; Delivery Data:</strong> Name, phone number, email address (for sending receipts and the 6-digit release code), and delivery details.
                     </li>
@@ -108,7 +108,7 @@ export default function PrivacyPolicyPage() {
                 </div>
 
                 {/* Subsection C */}
-                <div className="p-5 rounded-card bg-surface border border-border space-y-2">
+                <div className="p-5 rounded-card bg-surface border border-border space-y-2 transition-colors">
                   <h3 className="text-base font-heading font-semibold text-main">
                     C. Dispute Resolution Data (Both Parties)
                   </h3>
@@ -124,10 +124,10 @@ export default function PrivacyPolicyPage() {
               <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 3. How We Use Your Data
               </h2>
-              <p>
+              <p className="text-sm sm:text-base text-main/80 dark:text-muted leading-relaxed">
                 We process your personal data strictly on lawful grounds under the NDPA to:
               </p>
-              <ol className="list-decimal pl-5 space-y-2">
+              <ol className="list-decimal pl-5 space-y-2 text-sm sm:text-base text-main/80 dark:text-muted">
                 <li>Generate escrow payment links, hold transaction statuses, and issue 6-digit delivery verification codes.</li>
                 <li>Verify vendor identities via NIBSS/banking databases to prevent impersonation, fraud, and Pay-on-Delivery scams.</li>
                 <li>Execute automated split payouts and refunds through our banking APIs.</li>
@@ -141,10 +141,10 @@ export default function PrivacyPolicyPage() {
               <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 4. Data Sharing &amp; Third-Party Disclosures
               </h2>
-              <p>
+              <p className="text-sm sm:text-base text-main/80 dark:text-muted leading-relaxed">
                 Relyvora <strong>never sells</strong> your personal data to advertisers or third parties. We only share data with essential operational and regulatory entities:
               </p>
-              <ul className="list-disc pl-5 space-y-2">
+              <ul className="list-disc pl-5 space-y-2 text-sm sm:text-base text-main/80 dark:text-muted">
                 <li>
                   <strong>Anchor Technologies Limited:</strong> Our regulated Banking-as-a-Service (BaaS) provider, to perform BVN/NIN name-enquiry checks, generate virtual escrow accounts, and settle payouts.
                 </li>
@@ -162,10 +162,10 @@ export default function PrivacyPolicyPage() {
               <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 5. Data Security &amp; Statutory Retention
               </h2>
-              <p>
+              <p className="text-sm sm:text-base text-main/80 dark:text-muted leading-relaxed">
                 We implement industry-standard encryption (TLS/SSL in transit and encryption at rest), strict role-based access controls, and row-level database security to protect your information.
               </p>
-              <p>
+              <p className="text-sm sm:text-base text-main/80 dark:text-muted leading-relaxed">
                 In accordance with Nigerian financial and anti-money laundering regulations, transaction records and vendor KYC logs are retained for a minimum statutory period of <strong>five (5) years</strong> following the completion of a transaction or closure of an account.
               </p>
             </section>
@@ -175,15 +175,15 @@ export default function PrivacyPolicyPage() {
               <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 6. Your Rights Under the NDPA 2023
               </h2>
-              <p>
+              <p className="text-sm sm:text-base text-main/80 dark:text-muted leading-relaxed">
                 Under the Nigeria Data Protection Act, you have the right to:
               </p>
-              <ul className="list-disc pl-5 space-y-2">
+              <ul className="list-disc pl-5 space-y-2 text-sm sm:text-base text-main/80 dark:text-muted">
                 <li>Request access to and obtain a copy of the personal data we hold about you.</li>
                 <li>Request correction of inaccurate or incomplete personal data.</li>
                 <li>Object to processing or request the deletion of your account (subject to our mandatory 5-year regulatory retention obligation for financial and KYC records).</li>
               </ul>
-              <div className="p-4 rounded-card bg-surface border border-border flex items-center gap-3 text-xs sm:text-sm mt-4">
+              <div className="p-4 rounded-card bg-surface border border-border flex items-center gap-3 text-xs sm:text-sm mt-4 transition-colors">
                 <Mail className="w-5 h-5 text-accent shrink-0" />
                 <span>
                   To exercise any of your privacy rights or contact our Data Protection Officer, please email{' '}
