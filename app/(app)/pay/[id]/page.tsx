@@ -8,7 +8,7 @@ import { isLiveMode } from '@/lib/paymentsMode';
 import { isCheckoutEnabled } from '@/lib/safetyLimits';
 import { Transaction } from '@/lib/types';
 import { formatNaira } from '@/lib/pricing';
-import { Logo } from '@/components/Logo';
+import { Logo } from '@/components/brand/Logo';
 import { StatusBadge } from '@/components/StatusBadge';
 import { SimulatedPaymentModal } from '@/components/SimulatedPaymentModal';
 import { 
@@ -26,7 +26,8 @@ import {
   Copy,
   Building2,
   RefreshCw,
-  Mail
+  Mail,
+  ArrowLeft
 } from 'lucide-react';
 
 export default function BuyerCheckoutPage() {
@@ -170,62 +171,65 @@ export default function BuyerCheckoutPage() {
   if (isLoading) {
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center p-4">
-        <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mb-3" />
-        <p className="text-sm font-medium text-slate-500">Loading secure checkout...</p>
+        <div className="w-8 h-8 border-3 border-accent border-t-transparent rounded-full animate-spin mb-3" />
+        <p className="text-sm font-medium text-muted">Loading secure checkout...</p>
       </div>
     );
   }
 
   if (error || !transaction) {
     return (
-      <div className="max-w-md mx-auto my-12 p-6 bg-white rounded-3xl border border-slate-200 text-center space-y-4">
-        <div className="w-12 h-12 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mx-auto">
+      <div className="max-w-md mx-auto my-12 p-6 bg-surface rounded-3xl border border-border text-center space-y-4 shadow-card">
+        <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto">
           <ShieldAlert className="w-6 h-6" />
         </div>
-        <h2 className="text-lg font-bold text-slate-900">Order Not Found</h2>
-        <p className="text-xs text-slate-500">
-          This payment link may be invalid or expired. Check the link with your vendor.
+        <h2 className="text-lg font-heading font-semibold text-main">Invalid Checkout Link</h2>
+        <p className="text-xs text-muted">
+          {error || 'This transaction could not be located in our escrow database.'}
         </p>
         <Link
           href="/vendor"
-          className="inline-block px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-xl hover:bg-slate-800 transition-colors"
+          className="inline-block px-4 py-2 bg-surface hover:bg-site text-main border border-border text-xs font-semibold rounded-xl transition-colors"
         >
-          Return to Dashboard
+          Return to Marketplace
         </Link>
       </div>
     );
   }
 
-  // If already paid, give immediate path to tracker
   const isAlreadyPaid = transaction.status !== 'AWAITING_PAYMENT';
 
   return (
     <div className="max-w-xl mx-auto px-4 py-6 sm:py-10 space-y-6 w-full">
-      {/* Checkout Header Branding */}
-      <div className="text-center space-y-2">
-        <div className="flex justify-center">
-          <Logo size="lg" withLink={false} />
-        </div>
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Buyer Protection Escrow Active</span>
+      {/* Top Brand Link */}
+      <div className="flex items-center justify-between">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted hover:text-main transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>Return to Relyvora</span>
+        </Link>
+
+        <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-accent bg-accent/10 border border-accent/20 px-2.5 py-0.5 rounded-full">
+          <ShieldCheck className="w-3.5 h-3.5 text-accent" />
+          <span>Buyer Escrow Protected</span>
         </div>
       </div>
 
       {/* Main Checkout Card */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-md overflow-hidden">
-        {/* Vendor Header Pill */}
-        <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
+      <div className="bg-surface rounded-3xl border border-border shadow-card overflow-hidden transition-colors">
+        {/* Card Header */}
+        <div className="p-6 border-b border-border bg-site/50 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-400 font-bold">
-              {transaction.vendor_handle.slice(1, 3).toUpperCase()}
-            </div>
+            <Logo variant="symbol" height={32} withLink={false} />
             <div>
-              <div className="text-xs text-slate-400 font-medium">Paying Verified Vendor:</div>
-              <div className="text-sm sm:text-base font-bold text-white flex items-center gap-1.5">
-                <span>{transaction.vendor_handle}</span>
-                <span className="text-emerald-400 text-xs">⭐</span>
-              </div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted block">
+                Relyvora Escrow
+              </span>
+              <span className="text-xs font-semibold text-main">
+                Vendor: {transaction.vendor_handle}
+              </span>
             </div>
           </div>
           <StatusBadge status={transaction.status} size="sm" />
@@ -234,49 +238,49 @@ export default function BuyerCheckoutPage() {
         <div className="p-6 sm:p-7 space-y-6">
           {/* Order Item & Price Summary */}
           <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted block mb-1">
               Purchase Details
             </span>
-            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
               {transaction.item_name}
             </h1>
             {transaction.buyer_notes && (
-              <p className="text-xs text-slate-500 mt-1 italic">
+              <p className="text-xs text-muted mt-1 italic">
                 Note: {transaction.buyer_notes}
               </p>
             )}
           </div>
 
           {/* Transparent Price Breakdown */}
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3">
-            <div className="flex items-center justify-between text-xs sm:text-sm text-slate-600">
+          <div className="bg-site border border-border rounded-2xl p-4 sm:p-5 space-y-3">
+            <div className="flex items-center justify-between text-xs sm:text-sm text-muted">
               <span>Item Agreed Price:</span>
-              <span className="font-semibold text-slate-900 font-mono">
+              <span className="font-semibold text-main">
                 {formatNaira(Number(transaction.item_price))}
               </span>
             </div>
 
-            <div className="flex items-center justify-between text-xs sm:text-sm text-slate-600">
+            <div className="flex items-center justify-between text-xs sm:text-sm text-muted">
               <div>
                 <span className="flex items-center gap-1 font-medium">
                   <span>Relyvora Protection Fee (3%):</span>
                   <span title="3% buyer protection fee (minimum ₦500)">
-                    <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
+                    <HelpCircle className="w-3.5 h-3.5 text-muted" />
                   </span>
                 </span>
-                <p className="text-[10px] text-slate-400">Guarantees delivery inspection before release</p>
+                <p className="text-[10px] text-muted">Guarantees delivery inspection before release</p>
               </div>
-              <span className="font-semibold text-emerald-700 font-mono">
+              <span className="font-semibold text-accent">
                 +{formatNaira(Number(transaction.protection_fee))}
               </span>
             </div>
 
-            <div className="pt-3 border-t border-slate-200 flex items-center justify-between">
+            <div className="pt-3 border-t border-border flex items-center justify-between">
               <div>
-                <span className="text-xs sm:text-sm font-bold text-slate-900">Total Payable in Escrow:</span>
-                <p className="text-[11px] text-emerald-600 font-medium">Funds held safely in custody</p>
+                <span className="text-xs sm:text-sm font-bold text-main">Total Payable in Escrow:</span>
+                <p className="text-[11px] text-accent font-medium">Funds held safely in custody</p>
               </div>
-              <span className="text-xl sm:text-2xl font-black text-slate-900 font-mono">
+              <span className="text-xl sm:text-2xl font-heading font-bold text-main">
                 {formatNaira(Number(transaction.total_amount))}
               </span>
             </div>
@@ -284,69 +288,69 @@ export default function BuyerCheckoutPage() {
 
           {/* Optional Buyer Email Field (Owner Rule 3) */}
           {!isAlreadyPaid && (
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-2">
+            <div className="bg-site border border-border rounded-2xl p-4 sm:p-5 space-y-2">
               <div className="flex items-center justify-between">
-                <label htmlFor="buyerEmail" className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
-                  <Mail className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Buyer Email (Optional)</span>
+                <label htmlFor="buyerEmail" className="text-xs font-bold text-main uppercase tracking-wide flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-accent" />
+                  <span>Email Address (for receipt)</span>
                 </label>
-                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full">
-                  Code Backup Receipt
+                <span className="text-[10px] font-semibold text-accent bg-accent/10 border border-accent/20 px-2 py-0.5 rounded-full">
+                  Optional Backup Receipt
                 </span>
               </div>
               <input
                 type="email"
                 id="buyerEmail"
-                placeholder="e.g. buyer@gmail.com"
+                placeholder="e.g. buyer@example.com"
                 value={buyerEmail}
                 onChange={(e) => setBuyerEmail(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full bg-surface border border-border rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-main placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
               />
-              <p className="text-[11px] text-slate-500 leading-snug">
-                We will email your secret 6-digit delivery release code receipt so you can easily access it when your rider arrives.
+              <p className="text-[11px] text-muted leading-snug">
+                We will email your official payment receipt and your secret 6-digit delivery release code so you have it ready on delivery day.
               </p>
             </div>
           )}
 
           {/* How You Are Protected (3-Step Visual Timeline) */}
           <div className="space-y-3">
-            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            <h3 className="text-xs font-bold text-muted uppercase tracking-wide flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-accent" />
               <span>How Relyvora Protects Your Money</span>
             </h3>
 
             <div className="grid grid-cols-1 gap-2.5">
-              <div className="flex items-start gap-3 p-3 bg-emerald-50/60 rounded-xl border border-emerald-100">
-                <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 font-bold text-xs mt-0.5">
+              <div className="flex items-start gap-3 p-3 bg-accent/5 rounded-xl border border-accent/20">
+                <div className="w-7 h-7 rounded-lg bg-accent/20 text-accent flex items-center justify-center shrink-0 font-bold text-xs mt-0.5">
                   1
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-slate-900">1. Safe Escrow Lock</h4>
-                  <p className="text-[11px] text-slate-600 leading-snug">
+                  <h4 className="text-xs font-bold text-main">1. Safe Escrow Lock</h4>
+                  <p className="text-[11px] text-muted leading-snug">
                     Your money is safely locked with Relyvora. The vendor does <strong>NOT</strong> receive payment until you inspect and approve delivery.
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3 p-3 bg-emerald-50/60 rounded-xl border border-emerald-100">
-                <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 font-bold text-xs mt-0.5">
+              <div className="flex items-start gap-3 p-3 bg-accent/5 rounded-xl border border-accent/20">
+                <div className="w-7 h-7 rounded-lg bg-accent/20 text-accent flex items-center justify-center shrink-0 font-bold text-xs mt-0.5">
                   2
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-slate-900">2. Inspect Item First</h4>
-                  <p className="text-[11px] text-slate-600 leading-snug">
+                  <h4 className="text-xs font-bold text-main">2. Inspect Item First</h4>
+                  <p className="text-[11px] text-muted leading-snug">
                     The vendor ships your package. When the dispatch rider arrives, unpack and inspect your purchase.
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3 p-3 bg-emerald-50/60 rounded-xl border border-emerald-100">
-                <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 font-bold text-xs mt-0.5">
+              <div className="flex items-start gap-3 p-3 bg-accent/5 rounded-xl border border-accent/20">
+                <div className="w-7 h-7 rounded-lg bg-accent/20 text-accent flex items-center justify-center shrink-0 font-bold text-xs mt-0.5">
                   3
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-slate-900">3. Release With 6-Digit Code</h4>
-                  <p className="text-[11px] text-slate-600 leading-snug">
+                  <h4 className="text-xs font-bold text-main">3. Release With 6-Digit Code</h4>
+                  <p className="text-[11px] text-muted leading-snug">
                     You receive a secret 6-digit release code. Only tell the rider your code when 100% satisfied. If anything is wrong, freeze the escrow with 1 click!
                   </p>
                 </div>
@@ -357,27 +361,37 @@ export default function BuyerCheckoutPage() {
           {/* Action Button or Already Paid Alert */}
           {isAlreadyPaid ? (
             storedReleaseCode ? (
-              /* Step B: Restored from Buyer localStorage */
-              <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-6 text-center space-y-4 animate-in fade-in">
-                <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+              /* Step B: Restored from Buyer localStorage - PROMINENT SUCCESS SCREEN */
+              <div className="bg-surface border-2 border-accent/40 rounded-2xl p-6 sm:p-7 text-center space-y-4 shadow-card transition-colors">
+                <div className="w-12 h-12 rounded-full bg-accent/15 text-accent flex items-center justify-center mx-auto border border-accent/30">
                   <CheckCircle2 className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-emerald-950">Payment Protected in Escrow</h3>
-                  <p className="text-xs text-emerald-800 mt-1">
-                    Your secret 6-digit release code has been restored from your device:
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-accent bg-accent/10 border border-accent/20 px-2.5 py-0.5 rounded-full">
+                    Payment Protected in Escrow
+                  </span>
+                  <h3 className="text-lg sm:text-xl font-heading font-bold text-main mt-2">
+                    Your Secret 6-Digit Delivery Release Code
+                  </h3>
+                  <p className="text-xs text-muted mt-1 max-w-sm mx-auto">
+                    Give this 6-digit code to the dispatch rider upon delivery <strong>only AFTER inspecting your items</strong>.
                   </p>
                 </div>
-                <div className="bg-white border-2 border-dashed border-emerald-400 rounded-xl py-3 px-6 inline-block font-mono text-3xl font-black tracking-widest text-emerald-700 select-all">
-                  {storedReleaseCode}
+                <div className="py-1">
+                  <div className="bg-site border-2 border-dashed border-accent rounded-xl py-3 px-6 inline-block font-mono text-3xl font-black tracking-widest text-accent select-all shadow-inner">
+                    {storedReleaseCode}
+                  </div>
                 </div>
-                <p className="text-[11px] text-emerald-700 font-medium">
-                  🔒 Keep this code confidential. Only give it to the dispatch rider AFTER inspecting goods.
-                </p>
-                <div>
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-left flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300 max-w-md mx-auto">
+                  <Lock className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                  <span>
+                    Keep this code confidential. Do not share this code over the phone or before inspecting the delivery.
+                  </span>
+                </div>
+                <div className="pt-1">
                   <Link
                     href={`/order/${transaction.id}?code=${storedReleaseCode}`}
-                    className="inline-flex items-center gap-1.5 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors shadow-sm"
+                    className="inline-flex items-center gap-1.5 px-6 py-3 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-xs sm:text-sm transition-colors shadow-card"
                   >
                     <span>Open Live Escrow Tracker</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -385,13 +399,13 @@ export default function BuyerCheckoutPage() {
                 </div>
               </div>
             ) : (
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center space-y-3">
-                <p className="text-xs font-medium text-slate-600">
+              <div className="bg-site border border-border rounded-2xl p-4 text-center space-y-3">
+                <p className="text-xs font-medium text-main">
                   This transaction has already been funded in safe escrow!
                 </p>
                 <Link
                   href={`/order/${transaction.id}`}
-                  className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-sm"
+                  className="w-full py-3.5 px-4 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-card"
                 >
                   <span>Go to Escrow Tracker</span>
                   <ArrowRight className="w-4 h-4" />
@@ -399,26 +413,26 @@ export default function BuyerCheckoutPage() {
               </div>
             )
           ) : !isCheckoutEnabled() ? (
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-center space-y-2">
-              <AlertCircle className="w-8 h-8 text-amber-600 mx-auto" />
-              <h3 className="text-sm font-bold text-amber-900">Checkout Temporarily Suspended</h3>
-              <p className="text-xs text-amber-700">
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 text-center space-y-2">
+              <AlertCircle className="w-8 h-8 text-amber-600 dark:text-amber-400 mx-auto" />
+              <h3 className="text-sm font-heading font-semibold text-main">Checkout Temporarily Suspended</h3>
+              <p className="text-xs text-muted">
                 Payment collection is temporarily paused for scheduled maintenance. Please try again shortly or contact your vendor.
               </p>
             </div>
           ) : liveMode && transaction.virtual_account_number ? (
             /* Live Mode: Dedicated Virtual NUBAN Bank Transfer Details */
             <div className="space-y-4 pt-2">
-              <div className="bg-slate-900 text-white rounded-2xl p-5 space-y-4 border border-slate-800 shadow-md">
+              <div className="bg-navy-950 text-white rounded-2xl p-5 space-y-4 border border-border shadow-md">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Building2 className="w-5 h-5 text-emerald-400" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                    <Building2 className="w-5 h-5 text-accent" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-accent">
                       Providus Bank Escrow NUBAN
                     </span>
                   </div>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-accent/20 text-accent border border-accent/30">
+                    <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
                     <span>Awaiting Transfer</span>
                   </span>
                 </div>
@@ -439,14 +453,14 @@ export default function BuyerCheckoutPage() {
                   <div className="pt-2 border-t border-white/10 flex items-center justify-between">
                     <div>
                       <span className="text-[11px] text-slate-400 font-medium block">Account Number:</span>
-                      <span className="text-2xl font-black font-mono tracking-widest text-emerald-400 select-all">
+                      <span className="text-2xl font-black font-mono tracking-widest text-accent select-all">
                         {transaction.virtual_account_number}
                       </span>
                     </div>
                     <button
                       type="button"
                       onClick={handleCopyAccount}
-                      className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                      className="px-3.5 py-2 bg-accent hover:opacity-90 text-[#071229] text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
                     >
                       {copiedAccount ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                       <span>{copiedAccount ? 'Copied' : 'Copy'}</span>
@@ -455,7 +469,7 @@ export default function BuyerCheckoutPage() {
 
                   <div className="pt-2 border-t border-white/10 flex items-center justify-between">
                     <span className="text-xs text-slate-400 font-medium">Exact Amount to Transfer:</span>
-                    <span className="text-base font-bold font-mono text-emerald-400">
+                    <span className="text-base font-bold font-heading text-accent">
                       {formatNaira(Number(transaction.total_amount))}
                     </span>
                   </div>
@@ -471,14 +485,14 @@ export default function BuyerCheckoutPage() {
                   disabled={isCheckingStatus}
                   className="w-full py-3 px-4 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center justify-center gap-2 border border-white/20 transition-all cursor-pointer disabled:opacity-50"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isCheckingStatus ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-3.5 h-3.5 text-accent ${isCheckingStatus ? 'animate-spin' : ''}`} />
                   <span>{isCheckingStatus ? 'Checking Escrow Balance...' : "I've Sent the Transfer • Check Status"}</span>
                 </button>
               </div>
 
-              <div className="flex items-center justify-center gap-4 text-[11px] text-slate-500 text-center">
+              <div className="flex items-center justify-center gap-4 text-[11px] text-muted text-center">
                 <span className="flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <ShieldCheck className="w-3.5 h-3.5 text-accent" />
                   NDIC Protected Escrow
                 </span>
                 <span>•</span>
@@ -492,15 +506,15 @@ export default function BuyerCheckoutPage() {
               <button
                 type="button"
                 onClick={() => setIsPaymentModalOpen(true)}
-                className="w-full py-4 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base sm:text-lg flex items-center justify-center gap-2 shadow-xl shadow-emerald-600/30 transition-all transform active:scale-[0.99] cursor-pointer"
+                className="w-full py-4 px-5 rounded-2xl bg-accent hover:opacity-90 text-[#071229] font-bold text-base sm:text-lg flex items-center justify-center gap-2 shadow-card transition-all transform active:scale-[0.99] cursor-pointer"
               >
-                <Lock className="w-5 h-5 text-emerald-200" />
+                <Lock className="w-5 h-5 text-[#071229]" />
                 <span>Lock {formatNaira(Number(transaction.total_amount))} in Safe Escrow</span>
               </button>
 
-              <div className="flex items-center justify-center gap-4 text-[11px] text-slate-500 text-center">
+              <div className="flex items-center justify-center gap-4 text-[11px] text-muted text-center">
                 <span className="flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <ShieldCheck className="w-3.5 h-3.5 text-accent" />
                   Simulated Gateway
                 </span>
                 <span>•</span>

@@ -27,7 +27,9 @@ import {
   RefreshCw,
   Info,
   Clock,
-  Database
+  Database,
+  Star,
+  Lightbulb
 } from 'lucide-react';
 
 export default function VendorDashboardPage() {
@@ -173,11 +175,11 @@ export default function VendorDashboardPage() {
   const generateWhatsAppMessage = (tx: Transaction) => {
     const link = getPayUrl(tx.id);
     return `Hello! Here is your secure Relyvora Escrow payment link for ${tx.item_name}:\n\n` +
-      `📦 Item: ${tx.item_name}\n` +
-      `💰 Agreed Price: ${formatNaira(Number(tx.item_price))}\n` +
-      `🛡️ 3% Protection Fee: ${formatNaira(Number(tx.protection_fee))}\n` +
-      `💳 Total Payable: ${formatNaira(Number(tx.total_amount))}\n\n` +
-      `🔒 Pay safely here: ${link}\n\n` +
+      `Item: ${tx.item_name}\n` +
+      `Agreed Price: ${formatNaira(Number(tx.item_price))}\n` +
+      `3% Protection Fee: ${formatNaira(Number(tx.protection_fee))}\n` +
+      `Total Payable: ${formatNaira(Number(tx.total_amount))}\n\n` +
+      `Pay safely here: ${link}\n\n` +
       `Your money is safely locked in escrow until you inspect the delivery!`;
   };
 
@@ -187,22 +189,23 @@ export default function VendorDashboardPage() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 sm:py-8 space-y-6 sm:space-y-8 w-full">
       {/* Header & Vendor Profile Badge */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/90 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-surface p-5 sm:p-6 rounded-3xl border border-border shadow-xs transition-colors">
         <div className="flex items-center gap-3.5">
-          <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center font-bold text-xl shadow-md shadow-emerald-500/20">
+          <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-accent text-[#071229] flex items-center justify-center font-bold text-xl shadow-md">
             {avatarInitials}
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
                 {displayHandle}
               </h1>
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <Sparkles className="w-3 h-3 text-emerald-500" />
-                <span>Simulated Verified Vendor ⭐</span>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-accent/10 text-accent border border-accent/20">
+                <Sparkles className="w-3 h-3 text-accent" />
+                <span>Simulated Verified Vendor</span>
+                <Star className="w-3 h-3 text-accent fill-accent ml-0.5" />
               </span>
             </div>
-            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+            <p className="text-xs sm:text-sm text-muted mt-0.5">
               {liveMode ? 'Social Commerce Escrow Dashboard • Live Anchor BaaS Settlement' : 'Social Commerce Escrow Dashboard • Real-time settlement simulation'}
             </p>
           </div>
@@ -212,109 +215,106 @@ export default function VendorDashboardPage() {
           <button
             onClick={loadTransactions}
             disabled={isLoading}
-            className="p-2 sm:px-3 sm:py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all flex items-center gap-1.5"
+            className="p-2 sm:px-3 sm:py-2 text-xs font-semibold text-main bg-site hover:bg-border/60 rounded-xl transition-all flex items-center gap-1.5 border border-border"
             title="Refresh database"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-emerald-600' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-accent' : ''}`} />
             <span className="hidden sm:inline">Refresh Data</span>
           </button>
         </div>
       </div>
 
       {/* KYC / Regulated Settlement Activation Banner */}
-      <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-900 text-white p-5 sm:p-6 rounded-3xl border border-emerald-500/30 shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="bg-navy-900 text-white p-5 sm:p-6 rounded-3xl border border-accent/30 shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-start gap-3.5">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center shrink-0 text-emerald-400">
+          <div className="w-10 h-10 rounded-xl bg-accent/20 border border-accent/30 flex items-center justify-center shrink-0 text-accent">
             <ShieldCheck className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base sm:text-lg font-bold text-white">Activate Instant Regulated Payouts</h2>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-400/30">Action Required</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-base sm:text-lg font-heading font-semibold text-white tracking-tight">
+                {liveMode ? 'Live Anchor BaaS Payout Rails Activated' : 'Activate Live Regulated Settlement'}
+              </h2>
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-accent text-[#071229]">
+                {liveMode ? 'PROV-LIVE' : 'ACTION REQUIRED'}
+              </span>
             </div>
-            <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl">
-              Complete Tier 1 BVN/NIN verification and link your settlement bank account to receive automatic, instant payouts powered by Anchor Technologies.
+            <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl leading-relaxed">
+              {liveMode
+                ? 'Your account is connected to Anchor virtual NUBAN accounts for live collection and automated NIP settlement.'
+                : 'To receive automated Nigerian Inter-Bank Settlement System (NIP) payouts to your commercial bank account, complete 2-minute KYC verification (BVN/NIN name enquiry).'}
             </p>
           </div>
         </div>
+
         <Link
           href="/vendor/onboarding"
-          className="shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm transition-all shadow-md shadow-emerald-600/30 hover:scale-[1.02] active:scale-[0.98]"
+          className="shrink-0 px-4 py-2.5 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-xs sm:text-sm flex items-center gap-2 shadow-xs transition-colors self-end md:self-auto"
         >
-          <span>Complete KYC Onboarding</span>
+          <span>{liveMode ? 'View KYC Profile' : 'Complete Verification'}</span>
           <ArrowUpRight className="w-4 h-4" />
         </Link>
       </div>
 
-      {/* Supabase status notice if local fallback is active */}
-      {isUsingFallback && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
-          <Database className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-          <div className="text-xs sm:text-sm text-amber-900">
-            <strong>Supabase Setup Note:</strong> The app is connected to your Supabase project, but the <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">transactions</code> table needs to be created. Please run the SQL script in <code className="bg-amber-100 px-1 py-0.5 rounded font-mono">supabase/schema.sql</code> inside your Supabase SQL editor. Transactions are safely stored locally in the meantime.
-          </div>
-        </div>
-      )}
-
-      {/* Dynamic Metrics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+      {/* Quick Metrics Bar */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Locked in Escrow */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs relative overflow-hidden">
+        <div className="bg-surface p-5 rounded-2xl border border-border shadow-xs relative overflow-hidden transition-colors">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Locked in Escrow (Simulated)
+            <span className="text-xs font-bold text-muted uppercase tracking-wider">
+              Locked in Escrow
             </span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-accent/10 text-accent flex items-center justify-center">
               <Lock className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+            <div className="text-2xl sm:text-3xl font-heading font-bold text-main tracking-tight">
               {formatNaira(metrics.lockedInEscrow)}
             </div>
-            <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+            <p className="text-xs text-muted mt-1 flex items-center gap-1">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent"></span>
               Secured across active shipments
             </p>
           </div>
         </div>
 
         {/* Available for Payout */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs relative overflow-hidden">
+        <div className="bg-surface p-5 rounded-2xl border border-border shadow-xs relative overflow-hidden transition-colors">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+            <span className="text-xs font-bold text-muted uppercase tracking-wider">
               Available for Payout
             </span>
-            <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center">
               <Wallet className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-black text-emerald-700 tracking-tight">
+            <div className="text-2xl sm:text-3xl font-heading font-bold text-accent tracking-tight">
               {formatNaira(metrics.availablePayout)}
             </div>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-muted mt-1">
               Released upon delivery release codes
             </p>
           </div>
         </div>
 
         {/* Active Orders */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs relative overflow-hidden">
+        <div className="bg-surface p-5 rounded-2xl border border-border shadow-xs relative overflow-hidden transition-colors">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+            <span className="text-xs font-bold text-muted uppercase tracking-wider">
               Active Orders
             </span>
-            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
               <Package className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+            <div className="text-2xl sm:text-3xl font-heading font-bold text-main tracking-tight">
               {metrics.activeOrders}
             </div>
-            <p className="text-xs text-slate-500 mt-1">
-              {metrics.totalCompleted} orders successfully released
+            <p className="text-xs text-muted mt-1">
+              {metrics.totalCompleted} {metrics.totalCompleted === 1 ? 'order' : 'orders'} successfully released
             </p>
           </div>
         </div>
@@ -323,106 +323,120 @@ export default function VendorDashboardPage() {
       {/* Main Grid: Generator & Details */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start">
         {/* Left Column: The Link Generator Form */}
-        <div className="lg:col-span-7 bg-white p-6 sm:p-7 rounded-3xl border border-slate-200 shadow-xs space-y-6">
+        <div className="lg:col-span-7 bg-surface p-6 sm:p-7 rounded-3xl border border-border shadow-xs space-y-6 transition-colors">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-50 text-emerald-800 mb-2">
-              <Link2 className="w-3.5 h-3.5 text-emerald-600" />
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-accent/10 text-accent mb-2">
+              <Link2 className="w-3.5 h-3.5 text-accent" />
               <span>Instant Escrow Link Creator</span>
             </div>
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+            <h2 className="text-xl font-heading font-semibold text-main tracking-tight">
               Create Protected Order Link
             </h2>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            <p className="text-xs sm:text-sm text-muted mt-1">
               Generate a high-trust payment link to paste in WhatsApp chats, Instagram DMs, or bios.
             </p>
           </div>
 
           <form onSubmit={handleGenerateLink} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
-                Item Description / Name *
+              <label className="block text-xs font-bold text-main uppercase tracking-wide mb-1.5">
+                Your Brand / Store Handle:
               </label>
               <input
                 type="text"
-                required
-                placeholder="e.g. Bone Straight 30 Inch Wig + Closure"
-                value={itemName}
-                onChange={(e) => setItemName(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-medium"
+                value={vendorHandle}
+                onChange={(e) => setVendorHandle(e.target.value)}
+                placeholder="@LagosHairPlug or Store Name"
+                className="w-full bg-site border border-border rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-main placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
-                Agreed Item Price (₦) *
+              <label className="block text-xs font-bold text-main uppercase tracking-wide mb-1.5">
+                Item Name / Description: <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={itemName}
+                onChange={(e) => setItemName(e.target.value)}
+                placeholder="e.g. Bone Straight Human Hair 30 inches (Grade 12A)"
+                className="w-full bg-site border border-border rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-main placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-main uppercase tracking-wide mb-1.5">
+                Agreed Item Price (₦): <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
-                <span className="absolute left-4 top-3 text-slate-400 font-bold text-base">₦</span>
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted font-bold text-sm">₦</span>
                 <input
                   type="number"
-                  required
                   min="500"
                   step="100"
-                  placeholder="e.g. 75000"
+                  required
                   value={itemPriceInput}
                   onChange={(e) => setItemPriceInput(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-8 pr-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-semibold font-mono"
+                  placeholder="e.g. 45000"
+                  className="w-full bg-site border border-border rounded-xl pl-8 pr-3.5 py-2.5 text-xs sm:text-sm font-semibold text-main placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Buyer WhatsApp / Phone (Optional)
+                <label className="block text-xs font-bold text-main uppercase tracking-wide mb-1.5">
+                  Buyer WhatsApp Phone:
                 </label>
                 <input
-                  type="text"
-                  placeholder="080 1234 5678"
+                  type="tel"
                   value={buyerPhone}
                   onChange={(e) => setBuyerPhone(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all"
+                  placeholder="e.g. 08012345678"
+                  className="w-full bg-site border border-border rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-main placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
                 />
               </div>
+
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Vendor Handle
+                <label className="block text-xs font-bold text-main uppercase tracking-wide mb-1.5">
+                  Delivery Notes / Size:
                 </label>
                 <input
                   type="text"
-                  placeholder="@LagosHairPlug"
-                  value={vendorHandle}
-                  onChange={(e) => setVendorHandle(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all"
+                  value={buyerNotes}
+                  onChange={(e) => setBuyerNotes(e.target.value)}
+                  placeholder="e.g. Lekki Phase 1 delivery, Size 42"
+                  className="w-full bg-site border border-border rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-main placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
                 />
               </div>
             </div>
 
-            {/* Live Fee Preview Box */}
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2.5">
-              <div className="flex items-center justify-between text-xs text-slate-600">
-                <span>Vendor Item Price:</span>
-                <span className="font-semibold text-slate-900 font-mono">
+            {/* Live Fee Breakdown */}
+            <div className="bg-site border border-border rounded-2xl p-4 space-y-2.5">
+              <div className="flex items-center justify-between text-xs text-muted">
+                <span>Agreed Item Price:</span>
+                <span className="font-semibold text-main">
                   {formatNaira(pricing.itemPrice)}
                 </span>
               </div>
-              <div className="flex items-center justify-between text-xs text-slate-600">
+              <div className="flex items-center justify-between text-xs text-muted">
                 <span className="flex items-center gap-1">
-                  <span>3% buyer protection fee (minimum ₦500):</span>
-                  <span title="Calculated as Math.max(500, Math.round(itemPrice * 0.03))">
-                    <Info className="w-3.5 h-3.5 text-slate-400 cursor-help" />
+                  <span>Relyvora Escrow Protection Fee (3%):</span>
+                  <span title={`Minimum fee is ${formatNaira(MINIMUM_PROTECTION_FEE)}`}>
+                    <Info className="w-3.5 h-3.5 text-muted" />
                   </span>
                 </span>
-                <span className="font-semibold text-emerald-700 font-mono">
+                <span className="font-semibold text-accent">
                   +{formatNaira(pricing.protectionFee)}
                 </span>
               </div>
-              <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+              <div className="pt-2 border-t border-border flex items-center justify-between">
                 <div>
-                  <span className="text-xs font-bold text-slate-900">Total Buyer Payable:</span>
-                  <p className="text-[10px] text-slate-400">Locked safely until delivery inspection</p>
+                  <span className="text-xs font-bold text-main">Total Buyer Payable:</span>
+                  <p className="text-[10px] text-muted">Locked safely until delivery inspection</p>
                 </div>
-                <span className="text-lg font-black text-slate-900 font-mono">
+                <span className="text-lg font-heading font-bold text-main">
                   {formatNaira(pricing.totalAmount)}
                 </span>
               </div>
@@ -431,16 +445,16 @@ export default function VendorDashboardPage() {
             <button
               type="submit"
               disabled={isSubmitting || pricing.itemPrice <= 0}
-              className="w-full py-4 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all transform active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full py-4 px-5 rounded-2xl bg-accent hover:opacity-90 text-[#071229] font-bold text-sm sm:text-base flex items-center justify-center gap-2 shadow-card transition-all transform active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
             >
               {isSubmitting ? (
                 <>
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="w-5 h-5 border-2 border-[#071229] border-t-transparent rounded-full animate-spin" />
                   <span>Generating Secure Link in Supabase...</span>
                 </>
               ) : (
                 <>
-                  <ShieldCheck className="w-5 h-5 text-emerald-200" />
+                  <ShieldCheck className="w-5 h-5 text-[#071229]" />
                   <span>Generate Secure Escrow Link</span>
                 </>
               )}
@@ -449,17 +463,17 @@ export default function VendorDashboardPage() {
 
           {/* Generated Link Drawer Box */}
           {generatedTx && (
-            <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-5 space-y-4 animate-in fade-in duration-300">
+            <div className="bg-accent/10 border border-accent/30 rounded-2xl p-5 space-y-4 animate-in fade-in duration-300">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs font-bold text-emerald-800 uppercase tracking-wide">
-                  <Check className="w-4 h-4 text-emerald-600" />
+                <div className="flex items-center gap-2 text-xs font-bold text-accent uppercase tracking-wide">
+                  <Check className="w-4 h-4 text-accent" />
                   <span>Link Created Successfully!</span>
                 </div>
                 <StatusBadge status={generatedTx.status} size="sm" />
               </div>
 
               <div>
-                <span className="text-xs text-slate-600 font-medium block mb-1">
+                <span className="text-xs text-muted font-medium block mb-1">
                   Shareable Buyer Checkout Link:
                 </span>
                 <div className="flex items-center gap-2">
@@ -467,12 +481,12 @@ export default function VendorDashboardPage() {
                     type="text"
                     readOnly
                     value={getPayUrl(generatedTx.id)}
-                    className="flex-1 bg-white border border-emerald-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-800 select-all"
+                    className="flex-1 bg-surface border border-border rounded-xl px-3 py-2 text-xs text-main select-all"
                   />
                   <button
                     type="button"
                     onClick={() => copyToClipboard(getPayUrl(generatedTx.id), 'link')}
-                    className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors"
+                    className="px-3 py-2 bg-accent hover:opacity-90 text-[#071229] text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
                     {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                     <span>{copiedLink ? 'Copied' : 'Copy'}</span>
@@ -485,19 +499,19 @@ export default function VendorDashboardPage() {
                 <button
                   type="button"
                   onClick={() => copyToClipboard(generateWhatsAppMessage(generatedTx), 'whatsapp')}
-                  className="w-full py-2.5 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-xs"
+                  className="w-full py-2.5 px-3 rounded-xl bg-accent/20 hover:bg-accent/30 text-accent text-xs font-bold flex items-center justify-center gap-2 transition-colors border border-accent/30 cursor-pointer"
                 >
-                  <MessageCircle className="w-4 h-4 text-emerald-200" />
+                  <MessageCircle className="w-4 h-4 text-accent" />
                   <span>{copiedWhatsApp ? 'Copied to Clipboard!' : 'Copy WhatsApp Message'}</span>
                 </button>
 
                 <Link
                   href={`/pay/${generatedTx.id}`}
                   target="_blank"
-                  className="w-full py-2.5 px-3 rounded-xl bg-white hover:bg-slate-50 border border-emerald-300 text-slate-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                  className="w-full py-2.5 px-3 rounded-xl bg-surface hover:bg-site border border-border text-main text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
                 >
                   <span>Open Buyer Checkout</span>
-                  <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                  <ExternalLink className="w-3.5 h-3.5 text-muted" />
                 </Link>
               </div>
             </div>
@@ -506,34 +520,37 @@ export default function VendorDashboardPage() {
 
         {/* Right Column: Why Nigerian Vendors Trust Relyvora */}
         <div className="lg:col-span-5 space-y-4">
-          <div className="bg-slate-900 text-white p-6 rounded-3xl space-y-4 shadow-sm relative overflow-hidden">
+          <div className="bg-navy-950 text-white p-6 rounded-3xl space-y-4 shadow-sm relative overflow-hidden border border-border">
             <div className="relative z-10 space-y-3">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-950/60 border border-emerald-800/80 px-2.5 py-1 rounded-full">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-accent bg-accent/10 border border-accent/20 px-2.5 py-1 rounded-full">
                 Vendor Advantage
               </span>
-              <h3 className="text-lg font-bold text-white tracking-tight">
-                Eliminate "Payment on Delivery" Headaches
+              <h3 className="text-lg font-heading font-semibold text-white tracking-tight">
+                Eliminate &quot;Payment on Delivery&quot; Headaches
               </h3>
-              <p className="text-xs text-slate-300 leading-relaxed">
+              <p className="text-xs text-slate-300 leading-relaxed font-sans">
                 Nigerian buyers hesitate to pay before delivery, but delivery riders running away with cash or fake transfer alerts burn vendors.
               </p>
               <div className="pt-2 border-t border-slate-800 space-y-2 text-xs text-slate-300">
                 <div className="flex items-start gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                  <span><strong>100% Guaranteed Commitment:</strong> Buyer must lock full funds before dispatch.</span>
+                  <ShieldCheck className="w-4 h-4 text-accent shrink-0 mt-0.5" />
+                  <span><strong>Guaranteed Escrow Lock:</strong> Buyer must lock full funds before dispatch.</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <Lock className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <Lock className="w-4 h-4 text-accent shrink-0 mt-0.5" />
                   <span><strong>6-Digit Release Code:</strong> Rider collects the code at doorstep, instantly unlocking your payout.</span>
                 </div>
               </div>
             </div>
-            <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl" />
+            <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-accent/10 rounded-full blur-2xl" />
           </div>
 
           {/* Quick link to tracker demo */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 text-xs text-slate-600 space-y-2">
-            <span className="font-bold text-slate-900 block">💡 Testing Tip</span>
+          <div className="bg-surface p-5 rounded-2xl border border-border text-xs text-muted space-y-2 transition-colors">
+            <div className="flex items-center gap-1.5 font-bold text-main">
+              <Lightbulb className="w-4 h-4 text-amber-500 shrink-0" />
+              <span>Testing Tip</span>
+            </div>
             <p>
               After generating a link, open it in another tab or device. Simulate the payment, receive the 6-digit release code, and test entering it in the Vendor view to watch the funds unlock!
             </p>
@@ -542,19 +559,19 @@ export default function VendorDashboardPage() {
       </div>
 
       {/* Active Transactions Table */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-5 sm:p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="bg-surface rounded-3xl border border-border shadow-xs overflow-hidden transition-colors">
+        <div className="p-5 sm:p-6 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+            <h2 className="text-lg font-heading font-semibold text-main tracking-tight">
               Active Transactions ({transactions.length})
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-muted mt-0.5">
               Live orders synced directly with your Supabase database
             </p>
           </div>
           <button
             onClick={loadTransactions}
-            className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 self-start sm:self-auto"
+            className="text-xs font-semibold text-accent hover:opacity-80 flex items-center gap-1 self-start sm:self-auto cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Refresh Table</span>
@@ -562,49 +579,49 @@ export default function VendorDashboardPage() {
         </div>
 
         {isLoading ? (
-          <div className="p-12 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2">
-            <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+          <div className="p-12 text-center text-muted text-xs flex flex-col items-center justify-center gap-2">
+            <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
             <span>Fetching live escrow records from Supabase...</span>
           </div>
         ) : transactions.length === 0 ? (
           <div className="p-12 text-center space-y-2">
-            <Package className="w-10 h-10 text-slate-300 mx-auto" />
-            <h4 className="text-sm font-bold text-slate-700">No transactions recorded yet</h4>
-            <p className="text-xs text-slate-400 max-w-sm mx-auto">
+            <Package className="w-10 h-10 text-muted mx-auto" />
+            <h4 className="text-sm font-heading font-semibold text-main">No transactions recorded yet</h4>
+            <p className="text-xs text-muted max-w-sm mx-auto">
               Use the form above to generate your first Relyvora escrow link and start testing!
             </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs sm:text-sm">
-              <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 font-semibold uppercase text-[11px] tracking-wider">
+              <thead className="bg-site text-muted border-b border-border font-semibold uppercase text-[11px] tracking-wider">
                 <tr>
-                  <th className="py-3 px-4 sm:px-6">Item & Vendor</th>
+                  <th className="py-3 px-4 sm:px-6">Item &amp; Vendor</th>
                   <th className="py-3 px-4">Amount Breakdown</th>
                   <th className="py-3 px-4">Escrow Status</th>
                   <th className="py-3 px-4">Date</th>
                   <th className="py-3 px-4 sm:px-6 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+              <tbody className="divide-y divide-border font-medium text-main">
                 {transactions.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-slate-50/70 transition-colors">
+                  <tr key={tx.id} className="hover:bg-site/60 transition-colors">
                     <td className="py-3.5 px-4 sm:px-6">
-                      <div className="font-bold text-slate-900">{tx.item_name}</div>
-                      <div className="text-[11px] text-slate-400 font-mono mt-0.5">{tx.vendor_handle}</div>
+                      <div className="font-semibold text-main">{tx.item_name}</div>
+                      <div className="text-[11px] text-muted mt-0.5">{tx.vendor_handle}</div>
                     </td>
                     <td className="py-3.5 px-4">
-                      <div className="font-bold text-slate-900 font-mono">
+                      <div className="font-bold text-main">
                         {formatNaira(Number(tx.total_amount))}
                       </div>
-                      <div className="text-[11px] text-slate-400">
+                      <div className="text-[11px] text-muted">
                         Item: {formatNaira(Number(tx.item_price))} + Fee: {formatNaira(Number(tx.protection_fee))}
                       </div>
                     </td>
                     <td className="py-3.5 px-4">
                       <StatusBadge status={tx.status} size="sm" />
                     </td>
-                    <td className="py-3.5 px-4 text-xs text-slate-500 whitespace-nowrap">
+                    <td className="py-3.5 px-4 text-xs text-muted whitespace-nowrap">
                       {new Date(tx.created_at).toLocaleDateString('en-NG', {
                         month: 'short',
                         day: 'numeric',
@@ -617,7 +634,7 @@ export default function VendorDashboardPage() {
                         {tx.status === 'AWAITING_PAYMENT' ? (
                           <Link
                             href={`/pay/${tx.id}`}
-                            className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors flex items-center gap-1"
+                            className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors flex items-center gap-1"
                           >
                             <span>Pay</span>
                             <ArrowUpRight className="w-3.5 h-3.5" />
@@ -625,9 +642,9 @@ export default function VendorDashboardPage() {
                         ) : (
                           <Link
                             href={`/order/${tx.id}`}
-                            className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200 transition-colors flex items-center gap-1"
+                            className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-surface text-main border border-border hover:bg-site transition-colors flex items-center gap-1"
                           >
-                            <span>Track & Release</span>
+                            <span>Track &amp; Release</span>
                             <ArrowUpRight className="w-3.5 h-3.5" />
                           </Link>
                         )}

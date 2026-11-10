@@ -27,7 +27,8 @@ import {
   Send,
   Sparkles,
   HelpCircle,
-  AlertOctagon
+  AlertOctagon,
+  XCircle
 } from 'lucide-react';
 
 function EscrowTrackerContent() {
@@ -295,19 +296,19 @@ function EscrowTrackerContent() {
   if (isLoading) {
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center p-4">
-        <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mb-3" />
-        <p className="text-sm font-medium text-slate-500">Loading escrow tracker...</p>
+        <div className="w-8 h-8 border-3 border-accent border-t-transparent rounded-full animate-spin mb-3" />
+        <p className="text-sm font-medium text-muted">Loading escrow tracker...</p>
       </div>
     );
   }
 
   if (!transaction) {
     return (
-      <div className="max-w-md mx-auto my-12 p-6 bg-white rounded-3xl border border-slate-200 text-center space-y-4">
-        <h2 className="text-lg font-bold text-slate-900">Order Not Found</h2>
+      <div className="max-w-md mx-auto my-12 p-6 bg-surface rounded-3xl border border-border text-center space-y-4 shadow-card">
+        <h2 className="text-lg font-heading font-semibold text-main">Order Not Found</h2>
         <Link
           href="/vendor"
-          className="inline-block px-4 py-2 bg-slate-900 text-white text-xs font-semibold rounded-xl"
+          className="inline-block px-4 py-2 bg-surface hover:bg-site border border-border text-main text-xs font-semibold rounded-xl transition-colors"
         >
           Return to Dashboard
         </Link>
@@ -326,55 +327,55 @@ function EscrowTrackerContent() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <Link
           href="/vendor"
-          className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 transition-colors"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted hover:text-main transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Vendor Dashboard</span>
         </Link>
 
         {/* Dual-Perspective Toggle */}
-        <div className="bg-slate-200/80 p-1 rounded-2xl flex items-center self-start sm:self-auto border border-slate-300/80 shadow-xs">
+        <div className="bg-site p-1 rounded-2xl flex items-center self-start sm:self-auto border border-border shadow-xs">
           <button
             type="button"
             onClick={() => setPerspective('buyer')}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+            className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
               perspective === 'buyer'
-                ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-surface text-main shadow-xs border border-border'
+                : 'text-muted hover:text-main'
             }`}
           >
-            <User className="w-3.5 h-3.5 text-emerald-600" />
+            <User className="w-3.5 h-3.5 text-accent" />
             <span>Buyer Perspective</span>
           </button>
           <button
             type="button"
             onClick={() => setPerspective('vendor')}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+            className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
               perspective === 'vendor'
-                ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-surface text-main shadow-xs border border-border'
+                : 'text-muted hover:text-main'
             }`}
           >
-            <Store className="w-3.5 h-3.5 text-emerald-600" />
+            <Store className="w-3.5 h-3.5 text-accent" />
             <span>Vendor Perspective</span>
           </button>
         </div>
       </div>
 
       {/* Perspective Info Pill */}
-      <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl p-3 flex items-center justify-between text-xs text-emerald-900">
+      <div className="bg-accent/10 border border-accent/20 rounded-2xl p-3 flex items-center justify-between text-xs text-main">
         <div className="flex items-center gap-2">
-          <Eye className="w-4 h-4 text-emerald-600" />
+          <Eye className="w-4 h-4 text-accent" />
           <span>
             Viewing as: <strong>{perspective === 'buyer' ? 'Customer / Buyer' : 'Seller / Vendor'}</strong> (Toggle above to test both sides)
           </span>
         </div>
         <button
           onClick={loadTransaction}
-          className="p-1 hover:bg-emerald-100 rounded-lg transition-colors"
+          className="p-1 hover:bg-accent/15 rounded-lg transition-colors cursor-pointer"
           title="Refresh transaction state"
         >
-          <RefreshCw className="w-3.5 h-3.5 text-emerald-700" />
+          <RefreshCw className="w-3.5 h-3.5 text-accent" />
         </button>
       </div>
 
@@ -382,23 +383,23 @@ function EscrowTrackerContent() {
       <EscrowStepper status={transaction.status} />
 
       {/* Order Overview Card */}
-      <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+      <div className="bg-surface rounded-3xl border border-border p-5 sm:p-6 shadow-xs space-y-4 transition-colors">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
           <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted block">
               Order Reference
             </span>
-            <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+            <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
               {transaction.item_name}
             </h2>
-            <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 font-mono">
+            <div className="flex items-center gap-2 mt-1 text-xs text-muted">
               <span>ID: {transaction.id.slice(0, 8)}...</span>
               <span>•</span>
               <span>Vendor: {transaction.vendor_handle}</span>
             </div>
           </div>
           <div className="self-start sm:self-auto flex flex-col sm:items-end">
-            <span className="text-xl sm:text-2xl font-black text-slate-900 font-mono">
+            <span className="text-xl sm:text-2xl font-heading font-bold text-main">
               {formatNaira(Number(transaction.total_amount))}
             </span>
             <div className="mt-1">
@@ -409,8 +410,8 @@ function EscrowTrackerContent() {
 
         {/* If awaiting payment */}
         {isAwaitingPayment && (
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center space-y-2">
-            <p className="text-xs text-amber-900 font-medium">
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 text-center space-y-2">
+            <p className="text-xs text-amber-800 dark:text-amber-300 font-medium">
               This order has not been paid yet. The buyer must first lock the funds in escrow.
             </p>
             <Link
@@ -425,13 +426,13 @@ function EscrowTrackerContent() {
         {/* PERSPECTIVE 1: BUYER VIEW */}
         {perspective === 'buyer' && !isAwaitingPayment && (
           <div className="space-y-6 pt-2">
-            {/* The 6-Digit Release Code Section */}
+            {/* The 6-Digit Release Code Section (Prominent Post-Payment Display) */}
             {!isReleased && !isDisputed && (
-              <div className="bg-gradient-to-br from-slate-900 to-slate-950 text-white rounded-3xl p-6 sm:p-7 shadow-xl relative overflow-hidden">
+              <div className="bg-navy-950 text-white rounded-3xl p-6 sm:p-7 shadow-xl relative overflow-hidden border border-border">
                 <div className="relative z-10 space-y-4 text-center sm:text-left">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-400/30 self-center sm:self-auto">
-                      <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-accent/20 text-accent border border-accent/30 self-center sm:self-auto">
+                      <KeyRound className="w-3.5 h-3.5 text-accent" />
                       <span>Delivery Release Code</span>
                     </div>
                     <span className="text-xs text-slate-400">
@@ -442,7 +443,7 @@ function EscrowTrackerContent() {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
                     <div>
                       <h3 className="text-sm font-semibold text-slate-300">Your Secret Verification Code:</h3>
-                      <div className="text-4xl sm:text-5xl font-mono font-black tracking-widest text-emerald-400 mt-1 select-all">
+                      <div className="text-4xl sm:text-5xl font-mono font-black tracking-widest text-accent mt-1 select-all">
                         {activeReleaseCode || '------'}
                       </div>
                     </div>
@@ -453,59 +454,70 @@ function EscrowTrackerContent() {
                         onClick={handleCopyCode}
                         className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center justify-center gap-2 border border-white/20 transition-all self-center sm:self-auto cursor-pointer"
                       >
-                        {copiedCode ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                        {copiedCode ? <Check className="w-4 h-4 text-accent" /> : <Copy className="w-4 h-4" />}
                         <span>{copiedCode ? 'Copied to Clipboard' : 'Copy Code'}</span>
                       </button>
                     ) : null}
                   </div>
 
                   {!activeReleaseCode && (
-                    <div className="bg-white/10 border border-white/20 rounded-xl p-3 text-xs text-slate-200">
-                      🔒 <strong>Live Security:</strong> Your 6-digit release code was emailed to your address and sent via SMS to your phone. It is stored securely on your authorized device.
+                    <div className="bg-white/10 border border-white/20 rounded-xl p-3 text-xs text-slate-200 flex items-start gap-2">
+                      <Lock className="w-4 h-4 text-accent shrink-0 mt-0.5" />
+                      <div>
+                        <strong>Live Security:</strong> Your 6-digit release code was emailed to your address and sent via SMS to your phone. It is stored securely on your authorized device.
+                      </div>
                     </div>
                   )}
 
                   {isCodeLocked && (
-                    <div className="bg-rose-500/20 border border-rose-400/40 rounded-xl p-3 text-xs text-rose-200">
-                      ⚠️ <strong>Security Notice:</strong> Escrow release has been temporarily locked due to 5 incorrect code attempts by the vendor/rider. Your funds remain 100% protected in escrow.
+                    <div className="bg-rose-500/20 border border-rose-400/40 rounded-xl p-3 text-xs text-rose-200 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                      <div>
+                        <strong>Security Notice:</strong> Escrow release has been temporarily locked due to 5 incorrect code attempts by the vendor/rider. Your funds remain 100% protected in escrow.
+                      </div>
                     </div>
                   )}
 
-                  {/* Warning Notice */}
-                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3.5 text-left flex items-start gap-3">
+                  {/* Warning Notice with Clear Handover Instruction */}
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 text-left flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-                    <p className="text-xs text-amber-200 leading-relaxed">
-                      <strong>CRITICAL SAFETY RULE:</strong> Do <strong>NOT</strong> share this 6-digit code with the dispatch rider or vendor until you have opened the package and inspected the item! Entering this code releases the escrow funds immediately.
-                    </p>
+                    <div className="space-y-1">
+                      <p className="text-xs text-amber-200 leading-relaxed font-semibold">
+                        CRITICAL SAFETY RULE:
+                      </p>
+                      <p className="text-xs text-amber-200/90 leading-relaxed">
+                        Give this 6-digit release code to the dispatch rider <strong>upon delivery only AFTER you have opened the package and inspected the items</strong>. Entering this code releases the escrow funds to the vendor immediately.
+                      </p>
+                    </div>
                   </div>
                 </div>
 
-                <div className="absolute -right-12 -bottom-12 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+                <div className="absolute -right-12 -bottom-12 w-48 h-48 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
               </div>
             )}
 
             {/* If Released */}
             {isReleased && (
-              <div className="bg-teal-50 border border-teal-200 rounded-2xl p-5 text-center space-y-2">
-                <CheckCircle2 className="w-10 h-10 text-teal-600 mx-auto" />
-                <h3 className="text-base font-bold text-teal-900">Order Completed & Funds Released</h3>
-                <p className="text-xs text-teal-700 max-w-md mx-auto">
-                  The delivery release code was verified. Funds of {formatNaira(Number(transaction.item_price))} have been moved to the vendor's payout balance. Thank you for protecting your shopping with Relyvora!
+              <div className="bg-accent/10 border border-accent/30 rounded-2xl p-5 text-center space-y-2">
+                <CheckCircle2 className="w-10 h-10 text-accent mx-auto" />
+                <h3 className="text-base font-heading font-semibold text-main">Order Completed &amp; Funds Released</h3>
+                <p className="text-xs text-muted max-w-md mx-auto">
+                  The delivery release code was verified. Funds of {formatNaira(Number(transaction.item_price))} have been moved to the vendor&apos;s payout balance. Thank you for protecting your shopping with Relyvora!
                 </p>
               </div>
             )}
 
             {/* If Disputed */}
             {isDisputed && (
-              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 space-y-2">
-                <div className="flex items-center gap-2 text-rose-800 font-bold text-sm">
-                  <AlertOctagon className="w-5 h-5 text-rose-600" />
+              <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-5 space-y-2">
+                <div className="flex items-center gap-2 text-rose-700 dark:text-rose-400 font-bold text-sm">
+                  <AlertOctagon className="w-5 h-5 text-rose-600 dark:text-rose-400" />
                   <span>Dispute Opened — Reason Logged</span>
                 </div>
-                <p className="text-xs text-slate-700 bg-white p-3 rounded-xl border border-rose-200 font-medium">
-                  "{transaction.dispute_reason || 'Buyer reported item mismatch / damage.'}"
+                <p className="text-xs text-main bg-surface p-3 rounded-xl border border-rose-500/30 font-medium">
+                  &quot;{transaction.dispute_reason || 'Buyer reported item mismatch / damage.'}&quot;
                 </p>
-                <p className="text-[11px] text-rose-600">
+                <p className="text-[11px] text-rose-600 dark:text-rose-400">
                   A Relyvora dispute agent is reviewing this transaction. Release codes are frozen.
                 </p>
               </div>
@@ -513,17 +525,18 @@ function EscrowTrackerContent() {
 
             {/* Freeze Escrow & Open Dispute Button */}
             {!isReleased && !isDisputed && (
-              <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="text-xs text-slate-500 text-center sm:text-left">
+              <div className="pt-2 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="text-xs text-muted text-center sm:text-left">
                   <span>Received something wrong or damaged?</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsDisputeModalOpen(true)}
-                  className="w-full sm:w-auto px-5 py-3 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  className="w-full sm:w-auto px-5 py-3 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-700 dark:text-rose-300 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
                 >
-                  <AlertTriangle className="w-4 h-4 text-rose-600" />
-                  <span>Wrong / Fake Item — Freeze Escrow & Open Dispute ❌</span>
+                  <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                  <span>Wrong / Fake Item — Freeze Escrow &amp; Open Dispute</span>
+                  <XCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 ml-0.5" />
                 </button>
               </div>
             )}
@@ -534,17 +547,17 @@ function EscrowTrackerContent() {
         {perspective === 'vendor' && !isAwaitingPayment && (
           <div className="space-y-6 pt-2">
             {/* Step: Mark as Dispatched */}
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
+            <div className="bg-site border border-border rounded-2xl p-5 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">1. Dispatch Shipment</h3>
-                  <p className="text-xs text-slate-500">
+                  <h3 className="text-sm font-heading font-semibold text-main">1. Dispatch Shipment</h3>
+                  <p className="text-xs text-muted">
                     Hand package to rider and notify the buyer.
                   </p>
                 </div>
                 {transaction.status === 'DISPATCHED' || isReleased ? (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
-                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-accent/10 text-accent border border-accent/20">
+                    <Check className="w-3.5 h-3.5 text-accent" />
                     <span>Dispatched</span>
                   </span>
                 ) : null}
@@ -555,54 +568,55 @@ function EscrowTrackerContent() {
                   type="button"
                   onClick={handleMarkDispatched}
                   disabled={isDispatching}
-                  className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors shadow-xs disabled:opacity-60"
+                  className="w-full py-3 px-4 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-card disabled:opacity-60 cursor-pointer"
                 >
-                  <Truck className="w-4 h-4 text-blue-200" />
-                  <span>{isDispatching ? 'Updating status...' : 'Mark as Dispatched / Rider En Route 🚚'}</span>
+                  <Truck className="w-4 h-4 text-[#071229]" />
+                  <span>{isDispatching ? 'Updating status...' : 'Mark as Dispatched / Rider En Route'}</span>
                 </button>
               )}
             </div>
 
             {/* Step: Code Verification Input */}
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+            <div className="bg-site border border-border rounded-2xl p-5 space-y-4">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">2. Unlock Escrow Payout</h3>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <h3 className="text-sm font-heading font-semibold text-main">2. Unlock Escrow Payout</h3>
+                <p className="text-xs text-muted mt-0.5">
                   Ask the buyer or your delivery rider for the 6-digit release code given upon inspection.
                 </p>
               </div>
 
               {isDisputed ? (
-                <div className="bg-rose-50 border border-rose-200 rounded-xl p-3.5 flex items-start gap-2.5 text-xs text-rose-800">
-                  <AlertOctagon className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-3.5 flex items-start gap-2.5 text-xs text-rose-700 dark:text-rose-300">
+                  <AlertOctagon className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
                   <div>
                     <strong>Code Entry Disabled:</strong> This transaction is in dispute. Escrow funds cannot be released until resolved.
                   </div>
                 </div>
               ) : isCodeLocked ? (
-                <div className="bg-rose-50 border-2 border-rose-300 rounded-2xl p-5 space-y-2">
-                  <div className="flex items-center gap-2 text-rose-900 font-bold text-sm">
-                    <AlertOctagon className="w-5 h-5 text-rose-600" />
+                <div className="bg-rose-500/10 border-2 border-rose-500/30 rounded-2xl p-5 space-y-2">
+                  <div className="flex items-center gap-2 text-rose-700 dark:text-rose-300 font-bold text-sm">
+                    <AlertOctagon className="w-5 h-5 text-rose-600 dark:text-rose-400" />
                     <span>SECURITY LOCKOUT ACTIVATED</span>
                   </div>
-                  <p className="text-xs text-rose-800 leading-relaxed">
+                  <p className="text-xs text-rose-700 dark:text-rose-300 leading-relaxed">
                     This escrow transaction has been locked after 5 consecutive incorrect code attempts to protect against brute-force attacks. Release is frozen. Please contact Relyvora Dispute Mediation.
                   </p>
                 </div>
               ) : isReleased ? (
-                <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 text-center space-y-1">
-                  <span className="text-xs font-bold text-teal-900">
-                    🎉 Payout Unlocked ({formatNaira(Number(transaction.item_price))})
-                  </span>
-                  <p className="text-[11px] text-teal-700">
+                <div className="bg-accent/10 border border-accent/20 rounded-xl p-4 text-center space-y-1">
+                  <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-accent">
+                    <span>Payout Unlocked ({formatNaira(Number(transaction.item_price))})</span>
+                    <Sparkles className="w-4 h-4 text-accent" />
+                  </div>
+                  <p className="text-[11px] text-muted">
                     Funds have been credited to your available payout balance.
                   </p>
                 </div>
               ) : (
                 <form onSubmit={handleVerifyCode} className="space-y-3">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
-                      Enter Buyer's 6-Digit Release Code:
+                    <label className="block text-xs font-bold text-main uppercase tracking-wide mb-1.5">
+                      Enter Buyer&apos;s 6-Digit Release Code:
                     </label>
                     <div className="flex gap-2">
                       <input
@@ -614,33 +628,33 @@ function EscrowTrackerContent() {
                           setEnteredCode(e.target.value.replace(/\D/g, ''));
                           setVerificationError(null);
                         }}
-                        className="flex-1 bg-white border border-slate-300 rounded-xl px-4 py-3 text-lg font-mono font-bold tracking-widest text-slate-900 text-center focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        className="flex-1 bg-surface border border-border rounded-xl px-4 py-3 text-lg font-mono font-bold tracking-widest text-main text-center focus:outline-none focus:ring-2 focus:ring-accent"
                       />
                       <button
                         type="submit"
                         disabled={isVerifying || enteredCode.trim().length !== 6}
-                        className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-600/20 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                        className="px-5 py-3 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-card disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                       >
                         {isVerifying ? (
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <div className="w-4 h-4 border-2 border-[#071229] border-t-transparent rounded-full animate-spin" />
                         ) : (
                           <CheckCircle2 className="w-4 h-4" />
                         )}
-                        <span>Verify & Release</span>
+                        <span>Verify &amp; Release</span>
                       </button>
                     </div>
                   </div>
 
                   {verificationError && (
-                    <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700 flex items-center gap-2 animate-in fade-in">
+                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-semibold text-rose-700 dark:text-rose-300 flex items-center gap-2 animate-in fade-in">
                       <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
                       <span>{verificationError}</span>
                     </div>
                   )}
 
-                  <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Instant automated verification via Relyvora security protocol</span>
+                  <div className="text-[11px] text-muted flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-accent" />
+                    <span>Verification via Relyvora security protocol</span>
                   </div>
                 </form>
               )}
@@ -651,38 +665,38 @@ function EscrowTrackerContent() {
 
       {/* Buyer Dispute Modal */}
       {isDisputeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/80 backdrop-blur-xs animate-in fade-in duration-200">
           <div 
-            className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200"
+            className="bg-surface rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-border"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="bg-rose-900 text-white p-5 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <AlertOctagon className="w-5 h-5 text-rose-400" />
-                <h3 className="font-bold text-base">Freeze Escrow & Dispute</h3>
+                <h3 className="font-heading font-semibold text-base">Freeze Escrow &amp; Dispute</h3>
               </div>
               <button 
                 onClick={() => setIsDisputeModalOpen(false)}
-                className="text-rose-300 hover:text-white"
+                className="text-rose-300 hover:text-white cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleOpenDispute} className="p-5 sm:p-6 space-y-4">
-              <p className="text-xs text-slate-600 leading-relaxed">
+              <p className="text-xs text-muted leading-relaxed">
                 Freezing escrow halts payout immediately. To prevent unauthorized freezes, a 6-digit verification code will be sent to your phone.
               </p>
 
               {disputeError && (
-                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700 flex items-center gap-2">
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-semibold text-rose-700 dark:text-rose-300 flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
                   <span>{disputeError}</span>
                 </div>
               )}
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
+                <label className="block text-xs font-bold text-main uppercase tracking-wide mb-1.5">
                   Reason for dispute:
                 </label>
                 <textarea
@@ -692,17 +706,17 @@ function EscrowTrackerContent() {
                   placeholder="e.g. Received incorrect item / item arrived broken..."
                   value={disputeReason}
                   onChange={(e) => setDisputeReason(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white disabled:opacity-60"
+                  className="w-full bg-site border border-border rounded-xl p-3 text-xs sm:text-sm text-main focus:outline-none focus:ring-2 focus:ring-rose-500 disabled:opacity-60"
                 />
               </div>
 
               {otpSent && (
-                <div className="bg-rose-50/80 border border-rose-200 rounded-2xl p-4 space-y-3 animate-in fade-in">
+                <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 space-y-3 animate-in fade-in">
                   <div>
-                    <label className="block text-xs font-bold text-rose-900 uppercase tracking-wide mb-1">
+                    <label className="block text-xs font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wide mb-1">
                       Enter 6-Digit Verification Code:
                     </label>
-                    <p className="text-[11px] text-rose-700 mb-2">
+                    <p className="text-[11px] text-muted mb-2">
                       Code sent via SMS to {maskedPhone}.
                     </p>
                     <input
@@ -711,14 +725,14 @@ function EscrowTrackerContent() {
                       placeholder="e.g. 583921"
                       value={disputeOtp}
                       onChange={(e) => setDisputeOtp(e.target.value.replace(/\D/g, ''))}
-                      className="w-full bg-white border border-rose-300 rounded-xl p-3 text-center text-xl font-mono font-bold tracking-widest text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                      className="w-full bg-surface border border-rose-500/40 rounded-xl p-3 text-center text-xl font-mono font-bold tracking-widest text-main focus:outline-none focus:ring-2 focus:ring-rose-500"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={handleSendDisputeOtp}
                     disabled={isSendingOtp}
-                    className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 underline"
+                    className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
                   >
                     Resend verification code
                   </button>
@@ -733,7 +747,7 @@ function EscrowTrackerContent() {
                     setOtpSent(false);
                     setDisputeError(null);
                   }}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900"
+                  className="px-4 py-2 text-xs font-semibold text-muted hover:text-main cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -770,8 +784,8 @@ export default function EscrowTrackerPage() {
     <Suspense
       fallback={
         <div className="min-h-[70vh] flex flex-col items-center justify-center p-4">
-          <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin mb-3" />
-          <p className="text-sm font-medium text-slate-500">Loading escrow tracker...</p>
+          <div className="w-8 h-8 border-3 border-accent border-t-transparent rounded-full animate-spin mb-3" />
+          <p className="text-sm font-medium text-muted">Loading escrow tracker...</p>
         </div>
       }
     >

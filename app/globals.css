@@ -9,6 +9,7 @@
   --text: #0A1B3D;
   --muted: #5A6880;
   --accent: #0B6E55;
+  --accent-contrast: #FFFFFF;
   --border: #E2E7EF;
 
   /* Logo Fills (Light) */
@@ -28,6 +29,7 @@
   --text: #F4F6F9;
   --muted: #B4C2DA;
   --accent: #5BE3AB;
+  --accent-contrast: #071229;
   --border: #1B315E;
 
   /* Logo Fills (Dark) */
