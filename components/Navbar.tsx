@@ -6,7 +6,7 @@ import { Logo } from '@/components/brand/Logo';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { FlagIcon } from '@/components/flags/FlagIcon';
 import { isLiveMode } from '@/lib/paymentsMode';
-import { Store, ArrowUpRight, ShieldCheck } from 'lucide-react';
+import { Store, ArrowUpRight } from 'lucide-react';
 
 export function Navbar() {
   const corporateUrl = process.env.NODE_ENV === 'production' 
@@ -22,7 +22,7 @@ export function Navbar() {
           <Link href="/" aria-label="Relyvora home">
             <Logo variant="full" height={30} withLink={false} />
           </Link>
-          <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/20 font-semibold">
+          <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-sans px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/20 font-semibold">
             <FlagIcon country="NG" size={15} />
             <span>Nigeria</span>
           </span>
@@ -37,13 +37,7 @@ export function Navbar() {
             <ArrowUpRight className="w-3.5 h-3.5" />
           </a>
 
-          <Link
-            href="/vendor/onboarding"
-            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-pill text-main hover:bg-surface border border-transparent hover:border-border transition-colors"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-accent" />
-            <span>KYC Verification</span>
-          </Link>
+          {/* Vendor verification is manual during invite-only launch; "Verify your account" link will go here once self-serve KYC ships */}
 
           <Link
             href="/vendor"

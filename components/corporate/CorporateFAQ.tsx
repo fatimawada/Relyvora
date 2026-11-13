@@ -2,10 +2,11 @@
 
 import React, { useState } from 'react';
 import { ChevronDown, HelpCircle } from 'lucide-react';
+import { AnchorBrandText } from '@/components/common/AnchorBrandText';
 
 interface FAQItem {
   question: string;
-  answer: string;
+  answer: React.ReactNode;
 }
 
 const faqs: FAQItem[] = [
@@ -22,17 +23,25 @@ const faqs: FAQItem[] = [
   {
     question: 'What happens if the delivery rider loses the 6-digit code?',
     answer:
-      'The 6-digit code is sent securely to the buyer. If the rider loses it, the buyer can simply read it out from their email or WhatsApp receipt at the point of delivery. Both the vendor and the rider have dashboard access to input the code.',
+      'The 6-digit code is sent to the buyer on WhatsApp. If the buyer cannot find the message, they can request a new code on their order page at delivery.',
   },
   {
     question: 'How long does a dispute take to resolve?',
-    answer:
-      'We enforce strict timelines. Buyers must provide evidence within 2 hours of flagging a dispute. Vendors are given 6 to 12 hours to respond depending on the scenario. Most disputes are resolved manually by our team within 24 to 48 hours, and funds remain frozen in the Anchor escrow vault until a ruling is made.',
+    answer: (
+      <>
+        We enforce strict timelines. Buyers must provide evidence within 2 hours of flagging a dispute. Vendors are given 6 to 12 hours to respond depending on the scenario. Most disputes are resolved manually by our team within 24 to 48 hours, and funds remain frozen in the{' '}
+        <AnchorBrandText>Anchor</AnchorBrandText> escrow vault until a ruling is made.
+      </>
+    ),
   },
   {
     question: 'How does the 6-digit release code work?',
-    answer:
-      'When a buyer pays for an order through a Relyvora escrow link, the money is safely locked in an Anchor-powered escrow ledger and a private 6-digit release code is generated exclusively for the buyer. When the package is delivered, the buyer unboxes and inspects the item to confirm quality and specifications. Once satisfied, the buyer shares the 6-digit code with the dispatch rider or vendor. Entering the code immediately releases the payout directly to the vendor\'s bank account.',
+    answer: (
+      <>
+        When a buyer pays for an order through a Relyvora escrow link, the money is safely held in an{' '}
+        <AnchorBrandText>Anchor-powered</AnchorBrandText> escrow ledger and a private 6-digit release code is sent exclusively to the buyer. When the package is delivered, the buyer unboxes and inspects the item to confirm quality and specifications. Once satisfied, the buyer shares the 6-digit code with the dispatch rider or vendor to release the payout directly to the vendor&apos;s bank account.
+      </>
+    ),
   },
   {
     question: 'Do buyers or vendors need to download a mobile app?',
@@ -52,7 +61,7 @@ export function CorporateFAQ() {
     <section id="faq" className="py-20 sm:py-28 px-4 sm:px-6 border-b border-[#E7E4DC] bg-[#FAF8F5]">
       <div className="max-w-4xl mx-auto space-y-12">
         <div className="space-y-3 max-w-2xl">
-          <div className="inline-flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-wider text-[#64748B]">
+          <div className="inline-flex items-center gap-2 font-sans text-xs font-semibold uppercase tracking-wider text-[#64748B]">
             <HelpCircle className="w-3.5 h-3.5 text-[#047857]" />
             <span>Frequently Asked Questions</span>
           </div>

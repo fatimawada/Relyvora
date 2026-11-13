@@ -24,6 +24,7 @@ import {
   Loader2,
   ExternalLink
 } from 'lucide-react';
+import { AnchorBrandText } from '@/components/common/AnchorBrandText';
 
 // List of major Nigerian commercial banks & digital BaaS institutions
 export const NIGERIAN_BANKS = [
@@ -204,15 +205,16 @@ export function VendorOnboardingFlow() {
     <div className="w-full max-w-xl mx-auto px-4 py-8 sm:py-12">
       {/* Brand & BaaS Trust Header */}
       <div className="text-center space-y-3 mb-8">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200/80 text-xs font-mono font-semibold text-emerald-800 shadow-2xs">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200/80 text-xs font-sans font-semibold text-emerald-800 shadow-2xs">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Anchor BaaS Regulated Onboarding</span>
+          <AnchorBrandText>Anchor BaaS Regulated Onboarding</AnchorBrandText>
         </div>
-        <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-          Vendor Onboarding &amp; KYC
+        <h1 className="text-2xl sm:text-3xl font-heading font-bold text-slate-900 tracking-tight">
+          Vendor Onboarding &amp; Verification
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto">
-          Create your Relyvora seller profile and activate instant bank payouts powered by Anchor Technologies.
+          Create your Relyvora seller profile and activate bank payouts{' '}
+          <AnchorBrandText>powered by Anchor Technologies</AnchorBrandText>.
         </p>
       </div>
 
@@ -269,18 +271,21 @@ export function VendorOnboardingFlow() {
               KYC Verified &amp; Account Activated!
             </h2>
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-sm mx-auto">
-              Your store <strong>{step1Data?.storeName}</strong> has been registered. Your Anchor-powered escrow settlement wallet is live and ready to receive buyer payments.
+              Your store <strong>{step1Data?.storeName}</strong> has been registered. Your{' '}
+              <AnchorBrandText>Anchor-powered</AnchorBrandText> escrow settlement wallet is active and ready to receive buyer payments.
             </p>
           </div>
 
           <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 text-left space-y-2 text-xs font-sans">
             <div className="flex items-center justify-between text-slate-700">
               <span className="text-slate-500">BaaS Ledger:</span>
-              <span className="font-mono font-semibold text-emerald-700">Anchor Technologies (CBN Regulated)</span>
+              <span className="font-sans font-semibold text-emerald-700">
+                <AnchorBrandText>Anchor Technologies (CBN Regulated)</AnchorBrandText>
+              </span>
             </div>
             <div className="flex items-center justify-between text-slate-700">
               <span className="text-slate-500">Settlement Account:</span>
-              <span className="font-mono font-semibold text-slate-900">Verified NUBAN</span>
+              <span className="font-heading tabular-nums font-semibold text-slate-900">Verified NUBAN</span>
             </div>
             <div className="flex items-center justify-between text-slate-700">
               <span className="text-slate-500">Instant Release:</span>
@@ -671,7 +676,7 @@ export function VendorOnboardingFlow() {
                     maxLength={11}
                     {...registerStep2('idNumber')}
                     placeholder="22222222222"
-                    className={`w-full px-3.5 py-3 rounded-xl border font-mono text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 transition-colors ${
+                    className={`w-full px-3.5 py-3 rounded-xl border font-heading tabular-nums text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 transition-colors ${
                       errorsStep2.idNumber
                         ? 'border-rose-500 focus:ring-rose-400/20 bg-rose-50/20'
                         : 'border-slate-300 focus:border-emerald-500 focus:ring-emerald-500/20'
@@ -728,7 +733,7 @@ export function VendorOnboardingFlow() {
                       maxLength={10}
                       {...registerStep2('accountNumber')}
                       placeholder="0123456789"
-                      className={`w-full pl-10 pr-4 py-3 rounded-xl border font-mono text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 transition-colors ${
+                      className={`w-full pl-10 pr-4 py-3 rounded-xl border font-heading tabular-nums text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 transition-colors ${
                         errorsStep2.accountNumber
                           ? 'border-rose-500 focus:ring-rose-400/20 bg-rose-50/20'
                           : 'border-slate-300 focus:border-emerald-500 focus:ring-emerald-500/20'
@@ -763,7 +768,9 @@ export function VendorOnboardingFlow() {
                   {isSubmitting ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Verifying with Anchor BaaS...</span>
+                      <span>
+                        Verifying with <AnchorBrandText>Anchor BaaS</AnchorBrandText>...
+                      </span>
                     </>
                   ) : (
                     <>
@@ -776,7 +783,7 @@ export function VendorOnboardingFlow() {
 
               {/* Regulatory Footer Pill */}
               <div className="pt-3 text-center border-t border-slate-100">
-                <p className="text-[11px] text-slate-400 font-mono">
+                <p className="text-[11px] text-slate-400 font-sans">
                   Encrypted TLS 1.3 • Data processed in compliance with NDPA 2023 &amp; CBN AML Regulations
                 </p>
               </div>

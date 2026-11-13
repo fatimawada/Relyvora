@@ -1,10 +1,13 @@
 import React from 'react';
 import type { Metadata } from 'next';
 import { VendorOnboardingFlow } from '@/components/vendor/VendorOnboardingFlow';
+import { isAnchorBrandApproved } from '@/lib/anchorBrand';
 
 export const metadata: Metadata = {
   title: 'Vendor Onboarding & KYC — Relyvora Nigeria',
-  description: 'Complete mandatory KYC and activate your Anchor-powered escrow vendor account for instant settlements.',
+  description: isAnchorBrandApproved()
+    ? 'Complete mandatory KYC and activate your Anchor-powered escrow vendor account for payouts.'
+    : 'Complete verification and activate your Relyvora escrow vendor account for bank payouts.',
 };
 
 export default function VendorOnboardingPage() {

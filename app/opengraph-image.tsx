@@ -1,4 +1,5 @@
 import { ImageResponse } from 'next/og';
+import { isAnchorBrandApproved } from '@/lib/anchorBrand';
 
 export const runtime = 'edge';
 export const alt = 'Relyvora: Safe payments for WhatsApp and Instagram commerce';
@@ -9,6 +10,7 @@ export const size = {
 export const contentType = 'image/png';
 
 export default async function Image() {
+  const anchorApproved = isAnchorBrandApproved();
   return new ImageResponse(
     (
       <div
@@ -85,7 +87,15 @@ export default async function Image() {
           }}
         >
           <div>relyvora.com</div>
-          <div style={{ color: '#5BE3AB' }}>Payments powered by Anchor</div>
+          <div
+            style={
+              anchorApproved
+                ? { color: '#5BE3AB' }
+                : { color: '#94A3B8', opacity: 0.4, filter: 'blur(3px)' }
+            }
+          >
+            Payments powered by Anchor
+          </div>
         </div>
       </div>
     ),

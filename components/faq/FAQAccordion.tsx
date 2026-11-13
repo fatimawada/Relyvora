@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { ChevronDown, ArrowUpRight } from 'lucide-react';
+import { AnchorBrandText } from '@/components/common/AnchorBrandText';
 
 interface FAQItem {
   question: string;
@@ -33,8 +34,13 @@ export const FAQ_ITEMS: FAQItem[] = [
   },
   {
     question: 'Where is the money held?',
-    answer:
-      'Payments are powered by our regulated Banking\u2011as\u2011a\u2011Service partner, Anchor Technologies Limited, in partnership with CBN\u2011licensed financial institutions.',
+    answer: (
+      <>
+        Payments are powered by our regulated Banking<span className="nowrap">-as-a-</span>Service partner,{' '}
+        <AnchorBrandText>Anchor Technologies Limited</AnchorBrandText>, in partnership with{' '}
+        <span className="nowrap">CBN-licensed</span> financial institutions.
+      </>
+    ),
   },
   {
     question: 'What happens if an order goes wrong or there is a dispute?',
@@ -75,8 +81,12 @@ export const FAQ_ITEMS: FAQItem[] = [
   },
   {
     question: 'Which payment methods are supported in Nigeria?',
-    answer:
-      'Payments are made via instant bank transfer and dedicated virtual accounts powered by Anchor.',
+    answer: (
+      <>
+        Payments are made via instant bank transfer and dedicated virtual accounts{' '}
+        <AnchorBrandText>powered by Anchor</AnchorBrandText>.
+      </>
+    ),
   },
   {
     question: 'How quickly does the seller receive their payout after the code is confirmed?',

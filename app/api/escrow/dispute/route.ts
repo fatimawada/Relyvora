@@ -4,6 +4,7 @@ import { getServiceSupabase } from '@/lib/supabaseServer';
 import { recordLedgerEntry } from '@/lib/ledger';
 import { sendSystemAlert } from '@/lib/alerts';
 import { getClientIp, checkRateLimit } from '@/lib/rateLimit';
+import { SAFE_TRANSACTION_PUBLIC_COLUMNS } from '@/lib/transactionSelect';
 
 export async function POST(request: NextRequest) {
   try {
@@ -163,7 +164,7 @@ export async function POST(request: NextRequest) {
         updated_at: now,
       })
       .eq('id', transactionId)
-      .select()
+      .select(SAFE_TRANSACTION_PUBLIC_COLUMNS)
       .single();
 
     if (updateErr) {

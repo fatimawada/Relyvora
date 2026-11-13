@@ -28,7 +28,7 @@
  * 6. Dispute Creation with OTP:
  *    - Buyer phone OTP required to freeze escrow; prevents link strangers from disputing
  * 7. Release Code Delivery (Owner Rule 3):
- *    - Optional email stored, localStorage restore on revisit, vendor never sees code
+ *    - Delivered once to buyer WhatsApp number, localStorage restore in sandbox, vendor never sees code
  */
 
 import { NextRequest } from 'next/server';
@@ -104,7 +104,7 @@ async function runPhaseG25v2Tests() {
               data: {
                 user: {
                   id: 'usr_vendor_999',
-                  email: 'vendor@gmail.com',
+                  email: 'vendor@merchant.ng',
                   email_confirmed_at: '2026-01-01T00:00:00Z',
                   app_metadata: { role: 'vendor', aal: 'aal2' },
                   user_metadata: {},

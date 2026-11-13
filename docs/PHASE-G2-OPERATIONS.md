@@ -13,16 +13,16 @@ Safety limits support instant hot overrides from the `public.system_settings` da
 | Setting Key | Default Launch Value | Environment Variable | Database Override (`system_settings`) |
 | :--- | :--- | :--- | :--- |
 | **Checkout Kill Switch** | `true` (Enabled) | `CHECKOUT_ENABLED` (`true`/`false`) | `key: 'checkout_enabled', value: 'false'` |
-| **Maximum Order Cap** | `₦50,000` | `MAX_ORDER_NGN` (Integer NGN) | `key: 'max_order_ngn', value: '50000'` |
-| **Daily Volume Cap** | `₦200,000` | `MAX_DAILY_VENDOR_VOLUME_NGN` | `key: 'max_daily_vendor_volume_ngn', value: '200000'` |
+| **Maximum Order Cap** | `null` (No cap) | `MAX_ORDER_NGN` (Integer NGN or `null`) | `key: 'max_order_ngn', value: 'null'` |
+| **Daily Volume Cap** | `null` (No cap) | `MAX_DAILY_VENDOR_VOLUME_NGN` (Integer NGN or `null`) | `key: 'max_daily_vendor_volume_ngn', value: 'null'` |
 | **Vendor Allowlist Mode**| `true` (Invite-Only) | `VENDOR_ALLOWLIST` (Comma list) | `key: 'vendor_allowlist_mode', value: 'true'` |
 
 ### 2.2 Order Creation Safety Pipeline
 Before any escrow payment link or Providus Virtual NUBAN is provisioned:
 1. `validateOrderCreationServer` verifies `isCheckoutEnabledServer()`. If disabled, immediately returns HTTP 503 (`CHECKOUT_DISABLED`).
-2. Order total is compared against `getMaxOrderNgnServer()`. Orders exceeding ₦50,000 return HTTP 403 (`AMOUNT_EXCEEDED`).
+2. Order total is compared against `getMaxOrderNgnServer()`. If `null` (default), no cap is enforced; if set to a numeric override, orders exceeding that limit return HTTP 403 (`AMOUNT_EXCEEDED`).
 3. Vendor KYC and allowlist status are validated. Unallowlisted vendors are rejected with HTTP 403 (`VENDOR_NOT_ALLOWLISTED`).
-4. 24-hour cumulative order volume is tracked against `max_daily_vendor_volume_ngn`.
+4. If `max_daily_vendor_volume_ngn` is set to a numeric override (non-`null`), 24-hour cumulative order volume is enforced against it.
 
 ---
 

@@ -4,8 +4,8 @@ import { Navbar } from '@/components/Navbar';
 import { ProductFooter } from '@/components/ProductFooter';
 
 export const metadata = {
-  title: 'Relyvora Nigeria — Social Commerce Escrow & Buyer Protection',
-  description: 'Sell and buy on Instagram, WhatsApp, TikTok, and Facebook with 100% escrow protection. 6-digit release code doorstep settlement.',
+  title: 'Relyvora Nigeria — Safe Payments for Social Commerce',
+  description: 'Safe payments for WhatsApp and Instagram orders in Nigeria. Funds are held in escrow until your order arrives and you confirm with a six-digit release code.',
 };
 
 export default function AppLayout({

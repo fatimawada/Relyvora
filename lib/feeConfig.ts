@@ -3,7 +3,10 @@
  * All pricing displays, calculators, and marketing examples MUST derive from this configuration.
  */
 
-export const LAUNCH_STATUS = 'launching' as const; // 'launching' | 'live'
+export const LAUNCH_STATUS: 'launching' | 'live' =
+  (process.env.LAUNCH_STATUS ?? process.env.NEXT_PUBLIC_LAUNCH_STATUS)?.toLowerCase().trim() === 'live'
+    ? 'live'
+    : 'launching';
 
 export const FEE_CONFIG = {
   RATE: 0.03, // 3%

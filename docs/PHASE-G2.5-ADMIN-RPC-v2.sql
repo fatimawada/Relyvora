@@ -12,12 +12,20 @@ BEGIN;
 
 -- 1.1 Transactions Schema Alignment
 ALTER TABLE public.transactions
+    DROP COLUMN IF EXISTS buyer_email;
+
+ALTER TABLE public.transactions
     ADD COLUMN IF NOT EXISTS dispute_scenario INT,
     ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS resolving_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS resolution_action TEXT,
     ADD COLUMN IF NOT EXISTS resolution_notes TEXT,
-    ADD COLUMN IF NOT EXISTS buyer_email TEXT,
+    ADD COLUMN IF NOT EXISTS buyer_whatsapp_consent BOOLEAN DEFAULT FALSE NOT NULL,
+    ADD COLUMN IF NOT EXISTS buyer_phone_verified BOOLEAN DEFAULT FALSE NOT NULL,
+    ADD COLUMN IF NOT EXISTS buyer_phone_verified_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS whatsapp_message_id TEXT,
+    ADD COLUMN IF NOT EXISTS whatsapp_delivery_status TEXT DEFAULT 'not_sent' NOT NULL,
+    ADD COLUMN IF NOT EXISTS whatsapp_blocked BOOLEAN DEFAULT FALSE NOT NULL,
     ADD COLUMN IF NOT EXISTS refund_transfer_id TEXT,
     ADD COLUMN IF NOT EXISTS payout_transfer_id TEXT,
     ADD COLUMN IF NOT EXISTS refund_destination_account TEXT,
@@ -30,6 +38,11 @@ ALTER TABLE public.transactions
     ADD COLUMN IF NOT EXISTS dispute_otp_hash TEXT,
     ADD COLUMN IF NOT EXISTS dispute_otp_expires_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS dispute_otp_attempts INT DEFAULT 0;
+
+ALTER TABLE public.transactions DROP CONSTRAINT IF EXISTS transactions_whatsapp_delivery_status_check;
+ALTER TABLE public.transactions ADD CONSTRAINT transactions_whatsapp_delivery_status_check CHECK (
+    whatsapp_delivery_status IN ('not_sent', 'queued', 'sent', 'delivered', 'read', 'failed')
+);
 
 -- 1.2 Update Transaction Status CHECK Constraint to include 'RESOLVING'
 ALTER TABLE public.transactions DROP CONSTRAINT IF EXISTS transactions_status_check;
@@ -76,6 +89,91 @@ ALTER TABLE public.deposits
     ADD COLUMN IF NOT EXISTS sender_account_number TEXT,
     ADD COLUMN IF NOT EXISTS sender_bank_code TEXT,
     ADD COLUMN IF NOT EXISTS sender_name TEXT;
+
+-- 1.5 WhatsApp Opt-Out / Do-Not-Contact Registry (HMAC-hashed phone, never plaintext phone)
+CREATE TABLE IF NOT EXISTS public.whatsapp_do_not_contact (
+    phone_hash TEXT PRIMARY KEY,
+    masked_phone TEXT NOT NULL,
+    reason TEXT NOT NULL CHECK (reason IN ('NOT_ME', 'STOP_REPLY', 'MANUAL')),
+    source_transaction_id UUID REFERENCES public.transactions(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 1.6 WhatsApp Outbound Message Audit Log (NO release codes, NO full phone numbers)
+CREATE TABLE IF NOT EXISTS public.whatsapp_message_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    message_id TEXT UNIQUE,
+    transaction_id UUID REFERENCES public.transactions(id) ON DELETE SET NULL,
+    vendor_id UUID REFERENCES public.vendors(id) ON DELETE SET NULL,
+    vendor_handle TEXT,
+    recipient_phone_hash TEXT NOT NULL,
+    masked_number TEXT NOT NULL,
+    template_name TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('queued', 'sent', 'delivered', 'read', 'failed', 'blocked')),
+    error_code TEXT,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_whatsapp_log_vendor_created ON public.whatsapp_message_log (vendor_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_whatsapp_log_phone_created ON public.whatsapp_message_log (recipient_phone_hash, created_at DESC);
+
+-- 1.7 Inbound WhatsApp Webhook Replay Protection
+CREATE TABLE IF NOT EXISTS public.whatsapp_webhook_events (
+    event_key TEXT PRIMARY KEY,
+    event_type TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Strict RLS & Zero Public Privilege Lockdown on all WhatsApp tables
+ALTER TABLE public.whatsapp_do_not_contact ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.whatsapp_do_not_contact FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.whatsapp_message_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.whatsapp_message_log FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.whatsapp_webhook_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.whatsapp_webhook_events FORCE ROW LEVEL SECURITY;
+
+REVOKE ALL ON TABLE public.whatsapp_do_not_contact FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.whatsapp_message_log FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.whatsapp_webhook_events FROM PUBLIC, anon, authenticated;
+
+DROP POLICY IF EXISTS "Strict Restrictive Deny All on whatsapp_do_not_contact" ON public.whatsapp_do_not_contact;
+CREATE POLICY "Strict Restrictive Deny All on whatsapp_do_not_contact"
+    ON public.whatsapp_do_not_contact
+    AS RESTRICTIVE
+    FOR ALL
+    TO anon, authenticated
+    USING (false)
+    WITH CHECK (false);
+
+DROP POLICY IF EXISTS "Strict Restrictive Deny All on whatsapp_message_log" ON public.whatsapp_message_log;
+CREATE POLICY "Strict Restrictive Deny All on whatsapp_message_log"
+    ON public.whatsapp_message_log
+    AS RESTRICTIVE
+    FOR ALL
+    TO anon, authenticated
+    USING (false)
+    WITH CHECK (false);
+
+DROP POLICY IF EXISTS "Strict Restrictive Deny All on whatsapp_webhook_events" ON public.whatsapp_webhook_events;
+CREATE POLICY "Strict Restrictive Deny All on whatsapp_webhook_events"
+    ON public.whatsapp_webhook_events
+    AS RESTRICTIVE
+    FOR ALL
+    TO anon, authenticated
+    USING (false)
+    WITH CHECK (false);
+
+GRANT ALL ON TABLE public.whatsapp_do_not_contact TO service_role, postgres;
+GRANT ALL ON TABLE public.whatsapp_message_log TO service_role, postgres;
+GRANT ALL ON TABLE public.whatsapp_webhook_events TO service_role, postgres;
+
+-- 1.8 Seed WhatsApp Daily Abuse Limits in system_settings (non-destructive if already overridden)
+INSERT INTO public.system_settings (key, value, description, updated_by)
+VALUES
+    ('max_daily_vendor_whatsapp_messages', '50'::jsonb, 'Maximum outbound WhatsApp messages a single vendor can trigger per UTC day.', 'system'),
+    ('max_daily_buyer_whatsapp_messages', '5'::jsonb, 'Maximum outbound WhatsApp messages sent to a single buyer phone number per UTC day.', 'system')
+ON CONFLICT (key) DO NOTHING;
 
 
 -- -------------------------------------------------------------------------
@@ -669,23 +767,46 @@ BEGIN
         RETURN jsonb_build_object('success', true, 'replayed', true, 'message', 'Webhook event already processed');
     END IF;
 
-    -- 3. Match Transaction
-    IF p_metadata_tx_id IS NOT NULL THEN
+    -- 3. Match Transaction with Strict Cross-Validation
+    IF p_metadata_tx_id IS NOT NULL AND (p_account_number IS NOT NULL AND TRIM(p_account_number) <> '') THEN
         SELECT * INTO v_tx FROM public.transactions WHERE id = p_metadata_tx_id FOR UPDATE;
-    ELSE
+        IF NOT FOUND OR v_tx.virtual_account_number IS NULL OR v_tx.virtual_account_number <> p_account_number THEN
+            UPDATE public.webhook_events
+            SET status = 'UNMATCHED',
+                error_message = 'Cross-validation mismatch: metadata transactionId (' || p_metadata_tx_id::text || ') does not match virtual account (' || p_account_number || ')'
+            WHERE event_id = p_event_id;
+            RETURN jsonb_build_object(
+                'success', false,
+                'status', 'UNMATCHED',
+                'error', 'Cross-validation failure: metadata transactionId and account number do not match the same transaction.',
+                'event_id', p_event_id
+            );
+        END IF;
+    ELSIF p_metadata_tx_id IS NOT NULL THEN
+        SELECT * INTO v_tx FROM public.transactions WHERE id = p_metadata_tx_id FOR UPDATE;
+    ELSIF p_account_number IS NOT NULL AND TRIM(p_account_number) <> '' THEN
         SELECT * INTO v_tx FROM public.transactions WHERE virtual_account_number = p_account_number FOR UPDATE;
     END IF;
 
-    IF NOT FOUND THEN
-        UPDATE public.webhook_events SET status = 'UNMATCHED', error_message = 'No matching transaction found' WHERE event_id = p_event_id;
-        RETURN jsonb_build_object('success', false, 'status', 'UNMATCHED', 'error', 'No transaction found for virtual account ' || p_account_number);
+    IF v_tx.id IS NULL THEN
+        UPDATE public.webhook_events
+        SET status = 'UNMATCHED',
+            error_message = 'No matching transaction found for account ' || COALESCE(p_account_number, 'NULL')
+        WHERE event_id = p_event_id;
+        RETURN jsonb_build_object(
+            'success', false,
+            'status', 'UNMATCHED',
+            'error', 'No transaction found for virtual account ' || COALESCE(p_account_number, 'NULL'),
+            'event_id', p_event_id
+        );
     END IF;
 
-    -- 4. Status Check: Only AWAITING_PAYMENT or PARTIALLY_FUNDED can advance to FUNDS_LOCKED
+    -- 4. Restricted State Machine: Only AWAITING_PAYMENT or PARTIALLY_FUNDED can advance to FUNDS_LOCKED.
+    -- Deposits after RELEASED/REFUNDED/DISPUTED/FUNDS_LOCKED etc. MUST preserve transaction status.
     IF v_tx.status NOT IN ('AWAITING_PAYMENT', 'PARTIALLY_FUNDED') THEN
-        v_deposit_status := CASE 
-            WHEN v_tx.status IN ('RELEASED', 'REFUNDED') THEN 'LATE'
-            ELSE 'EXCESS'
+        v_deposit_status := CASE
+            WHEN v_tx.status IN ('RELEASED', 'REFUNDED') THEN 'LATE_DEPOSIT'
+            ELSE 'EXCESS_DEPOSIT'
         END;
 
         -- Record deposit with verified sender details
@@ -697,29 +818,40 @@ BEGIN
             v_sender_account, v_sender_bank, v_sender_name
         );
 
+        -- Update cumulative amount_paid and excess_amount WITHOUT altering transaction status
+        UPDATE public.transactions
+        SET
+            amount_paid = COALESCE(amount_paid, 0) + p_amount_naira,
+            excess_amount = COALESCE(excess_amount, 0) + p_amount_naira,
+            updated_at = v_now
+        WHERE id = v_tx.id;
+
         -- Record in ledger
         INSERT INTO public.transaction_ledger (
             transaction_id, entry_type, amount, currency, from_account, to_account,
-            idempotency_key, metadata, created_at
+            anchor_transfer_id, idempotency_key, metadata, created_at
         ) VALUES (
-            v_tx.id, 'DEPOSIT_LOCKED', p_amount_naira, 'NGN',
+            v_tx.id, v_deposit_status, p_amount_naira, 'NGN',
             'Buyer Verified Account (' || COALESCE(v_sender_account, p_account_number) || ')',
             'Relyvora Excess Escrow Vault',
-            'ledger_deposit_' || p_event_id,
+            p_event_id,
+            v_tx.id::text || '_' || v_deposit_status || '_' || p_event_id,
             jsonb_build_object('event_id', p_event_id, 'deposit_status', v_deposit_status, 'current_status', v_tx.status),
             v_now
         ) ON CONFLICT (idempotency_key) DO NOTHING;
 
-        UPDATE public.webhook_events SET status = 'PROCESSED' WHERE event_id = p_event_id;
+        UPDATE public.webhook_events SET status = 'PROCESSED', processed_at = v_now WHERE event_id = p_event_id;
 
         RETURN jsonb_build_object(
             'success', true,
+            'status', v_tx.status,
             'late_or_excess', true,
             'deposit_status', v_deposit_status,
             'current_status', v_tx.status,
             'transaction_id', v_tx.id,
             'amount_naira', p_amount_naira,
-            'excess_amount', p_amount_naira
+            'total_deposited', COALESCE(v_tx.amount_paid, 0) + p_amount_naira,
+            'excess_amount', COALESCE(v_tx.excess_amount, 0) + p_amount_naira
         );
     END IF;
 
@@ -732,25 +864,36 @@ BEGIN
         v_sender_account, v_sender_bank, v_sender_name
     );
 
-    SELECT COALESCE(SUM(amount), 0) INTO v_cumulative_deposited
-    FROM public.deposits
-    WHERE transaction_id = v_tx.id AND status = 'RECORDED';
-
+    v_cumulative_deposited := COALESCE(v_tx.amount_paid, 0) + p_amount_naira;
     v_total_due := COALESCE(v_tx.total_amount, 0);
 
     IF v_cumulative_deposited < v_total_due THEN
         v_new_status := 'PARTIALLY_FUNDED';
         UPDATE public.transactions
-        SET 
+        SET
             status = v_new_status,
             amount_paid = v_cumulative_deposited,
+            anchor_deposit_id = p_event_id,
             refund_destination_account = COALESCE(v_sender_account, refund_destination_account),
             refund_destination_bank = COALESCE(v_sender_bank, refund_destination_bank),
             refund_destination_name = COALESCE(v_sender_name, refund_destination_name),
             updated_at = v_now
         WHERE id = v_tx.id;
 
-        UPDATE public.webhook_events SET status = 'PARTIALLY_FUNDED' WHERE event_id = p_event_id;
+        UPDATE public.webhook_events SET status = 'PARTIALLY_FUNDED', processed_at = v_now WHERE event_id = p_event_id;
+
+        INSERT INTO public.transaction_ledger (
+            transaction_id, entry_type, amount, currency, from_account, to_account,
+            anchor_transfer_id, idempotency_key, metadata, created_at
+        ) VALUES (
+            v_tx.id, 'DEPOSIT_PARTIAL', p_amount_naira, 'NGN',
+            'Buyer Verified Account (' || COALESCE(v_sender_account, p_account_number) || ')',
+            'Relyvora Escrow FBO',
+            p_event_id,
+            v_tx.id::text || '_PARTIAL_' || p_event_id,
+            jsonb_build_object('cumulative_amount', v_cumulative_deposited, 'total_due', v_total_due),
+            v_now
+        ) ON CONFLICT (idempotency_key) DO NOTHING;
 
         RETURN jsonb_build_object(
             'success', true,
@@ -764,7 +907,7 @@ BEGIN
         v_excess_amount := v_cumulative_deposited - v_total_due;
 
         UPDATE public.transactions
-        SET 
+        SET
             status = v_new_status,
             amount_paid = v_cumulative_deposited,
             excess_amount = v_excess_amount,
@@ -772,29 +915,33 @@ BEGIN
             refund_destination_account = COALESCE(v_sender_account, refund_destination_account),
             refund_destination_bank = COALESCE(v_sender_bank, refund_destination_bank),
             refund_destination_name = COALESCE(v_sender_name, refund_destination_name),
-            paid_at = v_now,
+            paid_at = COALESCE(v_tx.paid_at, v_now),
+            code_expires_at = COALESCE(v_tx.code_expires_at, v_now + interval '72 hours'),
+            payment_method = 'VIRTUAL_NUBAN_TRANSFER',
             updated_at = v_now
         WHERE id = v_tx.id;
 
         -- Record ledger entry
         INSERT INTO public.transaction_ledger (
             transaction_id, entry_type, amount, currency, from_account, to_account,
-            idempotency_key, metadata, created_at
+            anchor_transfer_id, idempotency_key, metadata, created_at
         ) VALUES (
             v_tx.id, 'DEPOSIT_LOCKED', p_amount_naira, 'NGN',
             'Buyer Verified Account (' || COALESCE(v_sender_account, p_account_number) || ')',
             'Relyvora Escrow Vault',
-            'ledger_deposit_' || p_event_id,
+            p_event_id,
+            v_tx.id::text || '_DEPOSIT_' || p_event_id,
             jsonb_build_object('event_id', p_event_id, 'cumulative_deposited', v_cumulative_deposited, 'excess_amount', v_excess_amount),
             v_now
         ) ON CONFLICT (idempotency_key) DO NOTHING;
 
-        UPDATE public.webhook_events SET status = 'PROCESSED' WHERE event_id = p_event_id;
+        UPDATE public.webhook_events SET status = 'PROCESSED', processed_at = v_now WHERE event_id = p_event_id;
 
         RETURN jsonb_build_object(
             'success', true,
             'status', 'FUNDS_LOCKED',
             'transaction_id', v_tx.id,
+            'amount_paid', v_cumulative_deposited,
             'total_deposited', v_cumulative_deposited,
             'excess_amount', v_excess_amount,
             'needs_code_issue', (v_tx.release_code_hash IS NULL)

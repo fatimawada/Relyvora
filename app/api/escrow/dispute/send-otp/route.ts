@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { getClientIp, checkRateLimit } from '@/lib/rateLimit';
+import { sendBuyerOtpSms, maskPhoneNumber } from '@/lib/smsDelivery';
+import { isLiveMode } from '@/lib/paymentsMode';
 
 export async function POST(request: NextRequest) {
   try {
@@ -91,21 +93,23 @@ export async function POST(request: NextRequest) {
     }
 
     // 6. Mask Buyer Phone for User Display
-    const rawPhone = tx.buyer_phone.trim();
-    const maskedPhone = rawPhone.length > 5 
-      ? `${rawPhone.substring(0, 4)}••••${rawPhone.substring(rawPhone.length - 3)}`
-      : '••••';
+    const maskedPhone = maskPhoneNumber(tx.buyer_phone);
 
-    // 7. Dispatch SMS (or Log in Sandbox)
-    console.log(`[DISPUTE OTP DISPATCH] Sent OTP ${otp} to buyer phone ${rawPhone} for transaction ${transactionId}.`);
+    // 7. Dispatch SMS via Twilio / Out-of-band (NEVER log plaintext OTP)
+    await sendBuyerOtpSms({
+      transactionId,
+      buyerPhone: tx.buyer_phone,
+      otp,
+      purpose: 'dispute',
+    });
 
     return NextResponse.json({
       success: true,
       message: `A 6-digit verification code has been sent to ${maskedPhone}.`,
       maskedPhone,
       expiresInMinutes: 10,
-      // In sandbox mode, include otp for test harness
-      ...(process.env.PAYMENTS_MODE !== 'live' ? { sandbox_otp: otp } : {}),
+      // In sandbox mode only, include otp for test harness
+      ...(isLiveMode() ? {} : { sandbox_otp: otp }),
     });
   } catch (err: any) {
     console.error('Unhandled error in send dispute OTP route:', err);

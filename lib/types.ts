@@ -46,6 +46,14 @@ export interface Transaction {
   excess_amount?: number;
   vendor_handle: string;
   buyer_phone?: string | null;
+  buyer_phone_masked?: string | null;
+  has_buyer_phone?: boolean;
+  buyer_whatsapp_consent?: boolean;
+  buyer_phone_verified?: boolean;
+  buyer_phone_verified_at?: string | null;
+  whatsapp_message_id?: string | null;
+  whatsapp_delivery_status?: 'not_sent' | 'queued' | 'sent' | 'delivered' | 'read' | 'failed';
+  whatsapp_blocked?: boolean;
   buyer_notes?: string | null;
   status: TransactionStatus;
   release_code?: string | null; // Deprecated: dropped from DB in Phase G1.5

@@ -147,8 +147,7 @@ async function capture() {
         localStorage.setItem('relyvora_transactions_cache', JSON.stringify([${JSON.stringify(mockTx)}, ${JSON.stringify(mockPaidTx)}]));
         localStorage.setItem('relyvora_buyer_escrow_demo-reskin-tx-002', JSON.stringify({
           transactionId: 'demo-reskin-tx-002',
-          releaseCode: '849201',
-          buyerEmail: 'buyer@example.com'
+          releaseCode: '849201'
         }));
       `,
     });

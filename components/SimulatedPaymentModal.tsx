@@ -139,7 +139,7 @@ export function SimulatedPaymentModal({
                     type="text"
                     value={cardNumber}
                     onChange={(e) => setCardNumber(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-heading tabular-nums text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                   <div className="absolute right-3 top-3 text-[10px] font-bold px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded">
                     TEST CARD
@@ -156,7 +156,7 @@ export function SimulatedPaymentModal({
                     type="text"
                     value={expiry}
                     onChange={(e) => setExpiry(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-heading tabular-nums text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
                 <div>
@@ -167,7 +167,7 @@ export function SimulatedPaymentModal({
                     type="text"
                     value={cvv}
                     onChange={(e) => setCvv(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-heading tabular-nums text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
               </div>
@@ -187,7 +187,7 @@ export function SimulatedPaymentModal({
               <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
                 <div>
                   <span className="text-[11px] font-semibold text-slate-400 block uppercase">Dedicated Virtual Account</span>
-                  <span className="text-lg font-mono font-bold text-slate-900">0248819203</span>
+                  <span className="text-lg font-heading tabular-nums font-bold text-slate-900">0248819203</span>
                 </div>
                 <button
                   type="button"
@@ -207,7 +207,7 @@ export function SimulatedPaymentModal({
           {activeTab === 'ussd' && (
             <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2 text-center">
               <span className="text-xs font-medium text-slate-500">Dial on your phone:</span>
-              <div className="text-xl font-mono font-black text-slate-900 tracking-wider">
+              <div className="text-xl font-heading tabular-nums font-bold text-slate-900 tracking-wider">
                 *737*000*45000#
               </div>
               <p className="text-[11px] text-slate-500">

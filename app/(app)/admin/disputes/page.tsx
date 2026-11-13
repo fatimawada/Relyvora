@@ -228,7 +228,7 @@ export default function AdminDisputesPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-6">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-rose-100 text-rose-800 border border-rose-200 uppercase">
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-sans font-bold bg-rose-100 text-rose-800 border border-rose-200 uppercase">
               Admin Ops • Level 3 Access
             </span>
             <span className="text-xs text-slate-400">Strict Audit Protocol</span>
@@ -289,25 +289,25 @@ export default function AdminDisputesPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-1">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Active Disputes</span>
-          <div className="text-2xl font-black text-rose-600 font-mono">{activeDisputes.length}</div>
+          <div className="text-2xl font-black text-rose-600 font-heading tabular-nums">{activeDisputes.length}</div>
           <span className="text-[11px] text-slate-500">Funds frozen in custody</span>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-1">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Value at Risk</span>
-          <div className="text-2xl font-black text-slate-900 font-mono">{formatNaira(totalValueAtRisk)}</div>
+          <div className="text-2xl font-black text-slate-900 font-heading tabular-nums">{formatNaira(totalValueAtRisk)}</div>
           <span className="text-[11px] text-slate-500">Pending binding split/refund</span>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-1">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">SLA Enforcement</span>
-          <div className="text-2xl font-black text-amber-600 font-mono">3 Windows</div>
+          <div className="text-2xl font-black text-amber-600 font-heading tabular-nums">3 Windows</div>
           <span className="text-[11px] text-slate-500">2h • 6h • 12h countdowns</span>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-1">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Resolved Cases</span>
-          <div className="text-2xl font-black text-emerald-600 font-mono">{resolutions.length}</div>
+          <div className="text-2xl font-black text-emerald-600 font-heading tabular-nums">{resolutions.length}</div>
           <span className="text-[11px] text-slate-500">Immutable ledger signed</span>
         </div>
       </div>
@@ -382,7 +382,7 @@ export default function AdminDisputesPage() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-mono text-slate-400">REF: {tx.id.slice(0, 8)}...</span>
+                      <span className="text-[11px] font-sans tabular-nums text-slate-400">REF: {tx.id.slice(0, 8)}...</span>
                       <StatusBadge status={tx.status} size="sm" />
                       {tx.code_locked && (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
@@ -401,7 +401,7 @@ export default function AdminDisputesPage() {
                   </div>
 
                   <div className="text-left sm:text-right">
-                    <span className="text-2xl font-black text-slate-900 font-mono block">
+                    <span className="text-2xl font-black text-slate-900 font-heading tabular-nums block">
                       {formatNaira(Number(tx.total_amount))}
                     </span>
                     <span className="text-[11px] text-slate-400">
@@ -438,7 +438,7 @@ export default function AdminDisputesPage() {
                             <Clock className="w-3.5 h-3.5 text-amber-600" />
                             <span>2-Hour Window</span>
                           </span>
-                          <span className={`font-mono text-xs ${sla2h.isExpired ? 'text-slate-400' : 'text-amber-800'}`}>
+                          <span className={`font-heading tabular-nums text-xs ${sla2h.isExpired ? 'text-slate-400' : 'text-amber-800'}`}>
                             {sla2h.formattedRemaining}
                           </span>
                         </div>
@@ -454,7 +454,7 @@ export default function AdminDisputesPage() {
                             <Clock className="w-3.5 h-3.5 text-blue-600" />
                             <span>6-Hour Window</span>
                           </span>
-                          <span className={`font-mono text-xs ${sla6h.isExpired ? 'text-slate-400' : 'text-blue-800'}`}>
+                          <span className={`font-heading tabular-nums text-xs ${sla6h.isExpired ? 'text-slate-400' : 'text-blue-800'}`}>
                             {sla6h.formattedRemaining}
                           </span>
                         </div>
@@ -470,7 +470,7 @@ export default function AdminDisputesPage() {
                             <AlertOctagon className="w-3.5 h-3.5 text-rose-600" />
                             <span>12-Hour Ultimatum</span>
                           </span>
-                          <span className={`font-mono text-xs ${sla12h.isExpired ? 'text-slate-400' : 'text-rose-800'}`}>
+                          <span className={`font-heading tabular-nums text-xs ${sla12h.isExpired ? 'text-slate-400' : 'text-rose-800'}`}>
                             {sla12h.formattedRemaining}
                           </span>
                         </div>
@@ -522,7 +522,7 @@ export default function AdminDisputesPage() {
             {/* Modal Header */}
             <div className="bg-slate-900 text-white p-6 sticky top-0 z-10 flex items-center justify-between">
               <div>
-                <span className="text-[11px] font-mono font-bold text-rose-400 uppercase tracking-wider block">
+                <span className="text-[11px] font-sans font-bold text-rose-400 uppercase tracking-wider block">
                   Binding Arbitration Desk
                 </span>
                 <h3 className="text-lg font-black text-white">
@@ -542,7 +542,7 @@ export default function AdminDisputesPage() {
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                 <div>
                   <span className="text-slate-400 font-medium block">Order Reference:</span>
-                  <span className="font-bold text-slate-900 font-mono">{selectedTx.id}</span>
+                  <span className="font-bold text-slate-900 font-sans">{selectedTx.id}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 font-medium block">Vendor:</span>
@@ -550,7 +550,7 @@ export default function AdminDisputesPage() {
                 </div>
                 <div>
                   <span className="text-slate-400 font-medium block">Total Frozen:</span>
-                  <span className="text-base font-black text-slate-900 font-mono">
+                  <span className="text-base font-black text-slate-900 font-heading tabular-nums">
                     {formatNaira(Number(selectedTx.total_amount))}
                   </span>
                 </div>
@@ -575,7 +575,7 @@ export default function AdminDisputesPage() {
                         }`}
                       >
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-mono font-bold text-slate-500 uppercase">
+                          <span className="text-[10px] font-sans font-bold text-slate-500 uppercase">
                             Scenario {sc.id}
                           </span>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
@@ -600,7 +600,7 @@ export default function AdminDisputesPage() {
                   <span className="font-bold text-slate-900">
                     Scenario {selectedScenario.id} Policy Mandate:
                   </span>
-                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-bold">
+                  <span className="text-[11px] font-heading tabular-nums px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-bold">
                     {selectedScenario.slaLabel}
                   </span>
                 </div>
@@ -628,7 +628,7 @@ export default function AdminDisputesPage() {
                       min={0}
                       value={buyerRefundAmount}
                       onChange={(e) => setBuyerRefundAmount(Number(e.target.value) || 0)}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-3 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                      className="w-full bg-white border border-slate-300 rounded-xl p-3 text-sm font-heading tabular-nums font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500"
                     />
                   </div>
 
@@ -641,7 +641,7 @@ export default function AdminDisputesPage() {
                       min={0}
                       value={vendorPayoutAmount}
                       onChange={(e) => setVendorPayoutAmount(Number(e.target.value) || 0)}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-3 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                      className="w-full bg-white border border-slate-300 rounded-xl p-3 text-sm font-heading tabular-nums font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500"
                     />
                   </div>
                 </div>

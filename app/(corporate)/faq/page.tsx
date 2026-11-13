@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { ArrowRight } from 'lucide-react';
 import { FAQAccordion } from '@/components/faq/FAQAccordion';
 import { JsonLd } from '@/components/seo/JsonLd';
+import { isAnchorBrandApproved } from '@/lib/anchorBrand';
 
 export const metadata: Metadata = {
   title: 'Frequently Asked Questions | Relyvora',
@@ -43,7 +44,9 @@ export default function FAQPage() {
         name: 'Where is the money held?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'Payments are powered by our regulated Banking-as-a-Service partner, Anchor Technologies Limited, in partnership with CBN-licensed financial institutions.',
+          text: isAnchorBrandApproved()
+            ? 'Payments are powered by our regulated Banking-as-a-Service partner, Anchor Technologies Limited, in partnership with CBN-licensed financial institutions.'
+            : 'Payments are held by our regulated Banking-as-a-Service partner in partnership with CBN-licensed financial institutions.',
         },
       },
     ],

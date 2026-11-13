@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabaseServer';
+import { SAFE_TRANSACTION_PUBLIC_COLUMNS } from '@/lib/transactionSelect';
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
         updated_at: now,
       })
       .eq('id', transactionId)
-      .select()
+      .select(SAFE_TRANSACTION_PUBLIC_COLUMNS)
       .single();
 
     if (updateErr) {

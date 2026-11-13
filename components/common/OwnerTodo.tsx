@@ -22,7 +22,7 @@ export function OwnerTodo({ id, children }: OwnerTodoProps) {
   return (
     <span
       data-ownertodo={id}
-      className="inline-block px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-mono border border-amber-500/30"
+      className="inline-block px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-sans border border-amber-500/30"
     >
       [TODO: {id}] {children}
     </span>

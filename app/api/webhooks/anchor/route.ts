@@ -7,7 +7,7 @@ import {
   calculateCodeExpiration 
 } from '@/lib/releaseCode';
 import { sendSystemAlert } from '@/lib/alerts';
-import { sendReleaseCodeReceiptEmail } from '@/lib/emailReceipt';
+import { sendReleaseCodeSmsOrWhatsapp, maskPhoneNumber } from '@/lib/smsDelivery';
 
 /**
  * Strict HMAC-SHA256 webhook signature verification.
@@ -209,34 +209,57 @@ export async function POST(request: NextRequest) {
       }).catch(() => {});
     }
 
-    // 3. Issue Cryptographic Release Code if needed
+    // 3. Issue Cryptographic Release Code ONLY inside webhook funding flow (when funded)
     const txId = rpcResult.transaction_id;
     if (txId && rpcResult.needs_code_issue) {
       const rawCode = generateCryptographicReleaseCode();
       const hmacHash = computeReleaseCodeHmac(txId, rawCode);
+      const codeExpiresAt = calculateCodeExpiration(72);
 
       const { data: updatedTx } = await supabase
         .from('transactions')
         .update({
           release_code_hash: hmacHash,
+          code_expires_at: codeExpiresAt,
+          failed_code_attempts: 0,
+          code_locked: false,
+          updated_at: new Date().toISOString(),
         })
         .eq('id', txId)
-        .select('item_name, total_amount, vendor_handle, buyer_email')
+        .select('item_name, total_amount, vendor_handle, buyer_phone')
         .single();
 
-      // Owner Rule 3 Step C: If buyer provided email, fire Resend email receipt with release code
-      if (updatedTx?.buyer_email) {
-        sendReleaseCodeReceiptEmail({
-          buyerEmail: updatedTx.buyer_email,
-          transactionId: txId,
-          itemName: updatedTx.item_name,
-          totalAmount: Number(updatedTx.total_amount) || 0,
-          releaseCode: rawCode,
-          vendorHandle: updatedTx.vendor_handle,
-        }).catch(() => {});
-      }
+      // Deliver plaintext release code ONCE via WhatsApp to verified buyer phone
+      const smsDelivery = await sendReleaseCodeSmsOrWhatsapp({
+        transactionId: txId,
+        buyerPhone: updatedTx?.buyer_phone,
+        releaseCode: rawCode,
+        itemName: updatedTx?.item_name || 'Escrow Order',
+        totalAmount: Number(updatedTx?.total_amount) || 0,
+        vendorHandle: updatedTx?.vendor_handle || '',
+      }).catch((err) => {
+        console.warn('Release code WhatsApp delivery failed:', err?.message || err);
+        return { success: false, channel: 'whatsapp', maskedPhone: maskPhoneNumber(updatedTx?.buyer_phone) };
+      });
 
-      console.log(`Generated release code hash for funded transaction ${txId}.`);
+      // Write delivery audit marker without ever storing or logging the plaintext code
+      await supabase
+        .from('admin_audit_log')
+        .insert({
+          admin_email: 'system:anchor_webhook',
+          action: 'RELEASE_CODE_ISSUED',
+          target_type: 'transaction',
+          target_id: txId,
+          metadata: {
+            sms_channel: smsDelivery.channel,
+            buyer_phone_masked: smsDelivery.maskedPhone,
+          },
+        })
+        .then(() => {}, () => {});
+
+      console.log(
+        `Issued release code HMAC and delivered out-of-band for funded transaction ${txId} (to ${smsDelivery.maskedPhone}).`
+      );
     }
 
     return NextResponse.json({ success: true, transactionId: txId, status: rpcResult.status }, { status: 200 });

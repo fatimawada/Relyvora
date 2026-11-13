@@ -10,6 +10,7 @@ import { Transaction, VendorMetrics } from '@/lib/types';
 import { calculatePricing, formatNaira, MINIMUM_PROTECTION_FEE } from '@/lib/pricing';
 import { isLiveMode } from '@/lib/paymentsMode';
 import { StatusBadge } from '@/components/StatusBadge';
+import { AnchorBrandText } from '@/components/common/AnchorBrandText';
 import { 
   Store, 
   Sparkles, 
@@ -37,14 +38,15 @@ export default function VendorDashboardPage() {
   const [itemName, setItemName] = useState('');
   const [itemPriceInput, setItemPriceInput] = useState('');
   const [buyerPhone, setBuyerPhone] = useState('');
+  const [buyerWhatsappConsent, setBuyerWhatsappConsent] = useState(false);
   const [buyerNotes, setBuyerNotes] = useState('');
   
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [generatedTx, setGeneratedTx] = useState<Transaction | null>(null);
+  const [whatsappNotice, setWhatsappNotice] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
   const [isUsingFallback, setIsUsingFallback] = useState(false);
   const liveMode = isLiveMode();
 
@@ -100,6 +102,7 @@ export default function VendorDashboardPage() {
     if (!itemName.trim() || pricing.itemPrice <= 0) return;
 
     setIsSubmitting(true);
+    setWhatsappNotice(null);
     try {
       const activeVendorHandle = vendorHandle.trim() || '@LagosHairPlug';
 
@@ -114,6 +117,7 @@ export default function VendorDashboardPage() {
             deliveryFee: pricing.deliveryFee,
             vendorHandle: activeVendorHandle,
             buyerPhone: buyerPhone.trim() || null,
+            buyerWhatsappConsent,
             buyerNotes: buyerNotes.trim() || null,
           }),
         });
@@ -121,6 +125,10 @@ export default function VendorDashboardPage() {
         const json = await res.json();
         if (json.success && json.transaction) {
           setGeneratedTx(json.transaction);
+          setBuyerWhatsappConsent(false);
+          if (json.whatsapp_error) {
+            setWhatsappNotice(json.whatsapp_error);
+          }
           await loadTransactions();
           return;
         } else if (json.error) {
@@ -145,6 +153,7 @@ export default function VendorDashboardPage() {
 
       if (data) {
         setGeneratedTx(data);
+        setBuyerWhatsappConsent(false);
         await loadTransactions();
       } else if (error) {
         alert(`Could not create link: ${error}`);
@@ -161,26 +170,10 @@ export default function VendorDashboardPage() {
     return `/pay/${id}`;
   };
 
-  const copyToClipboard = (text: string, type: 'link' | 'whatsapp') => {
+  const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    if (type === 'link') {
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
-    } else {
-      setCopiedWhatsApp(true);
-      setTimeout(() => setCopiedWhatsApp(false), 2000);
-    }
-  };
-
-  const generateWhatsAppMessage = (tx: Transaction) => {
-    const link = getPayUrl(tx.id);
-    return `Hello! Here is your secure Relyvora Escrow payment link for ${tx.item_name}:\n\n` +
-      `Item: ${tx.item_name}\n` +
-      `Agreed Price: ${formatNaira(Number(tx.item_price))}\n` +
-      `3% Protection Fee: ${formatNaira(Number(tx.protection_fee))}\n` +
-      `Total Payable: ${formatNaira(Number(tx.total_amount))}\n\n` +
-      `Pay safely here: ${link}\n\n` +
-      `Your money is safely locked in escrow until you inspect the delivery!`;
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
   };
 
   const displayHandle = vendorHandle.trim() || '@LagosHairPlug';
@@ -201,12 +194,19 @@ export default function VendorDashboardPage() {
               </h1>
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-accent/10 text-accent border border-accent/20">
                 <Sparkles className="w-3 h-3 text-accent" />
-                <span>Simulated Verified Vendor</span>
+                <span>{liveMode ? 'Verified Vendor' : 'Simulated Verified Vendor'}</span>
                 <Star className="w-3 h-3 text-accent fill-accent ml-0.5" />
               </span>
             </div>
             <p className="text-xs sm:text-sm text-muted mt-0.5">
-              {liveMode ? 'Social Commerce Escrow Dashboard • Live Anchor BaaS Settlement' : 'Social Commerce Escrow Dashboard • Real-time settlement simulation'}
+              {liveMode ? (
+                <>
+                  Social Commerce Escrow Dashboard •{' '}
+                  <AnchorBrandText>Live Anchor BaaS Settlement</AnchorBrandText>
+                </>
+              ) : (
+                'Social Commerce Escrow Dashboard • Sandbox Mode'
+              )}
             </p>
           </div>
         </div>
@@ -224,7 +224,7 @@ export default function VendorDashboardPage() {
         </div>
       </div>
 
-      {/* KYC / Regulated Settlement Activation Banner */}
+      {/* Regulated Settlement Activation Banner */}
       <div className="bg-navy-900 text-white p-5 sm:p-6 rounded-3xl border border-accent/30 shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-start gap-3.5">
           <div className="w-10 h-10 rounded-xl bg-accent/20 border border-accent/30 flex items-center justify-center shrink-0 text-accent">
@@ -233,16 +233,25 @@ export default function VendorDashboardPage() {
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-base sm:text-lg font-heading font-semibold text-white tracking-tight">
-                {liveMode ? 'Live Anchor BaaS Payout Rails Activated' : 'Activate Live Regulated Settlement'}
+                {liveMode ? (
+                  <AnchorBrandText>Live Anchor BaaS Payout Rails Activated</AnchorBrandText>
+                ) : (
+                  'Activate Live Regulated Settlement'
+                )}
               </h2>
               <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-accent text-[#071229]">
-                {liveMode ? 'PROV-LIVE' : 'ACTION REQUIRED'}
+                {liveMode ? 'LIVE' : 'SANDBOX'}
               </span>
             </div>
             <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl leading-relaxed">
-              {liveMode
-                ? 'Your account is connected to Anchor virtual NUBAN accounts for live collection and automated NIP settlement.'
-                : 'To receive automated Nigerian Inter-Bank Settlement System (NIP) payouts to your commercial bank account, complete 2-minute KYC verification (BVN/NIN name enquiry).'}
+              {liveMode ? (
+                <>
+                  Your account is connected to{' '}
+                  <AnchorBrandText>Anchor virtual NUBAN accounts</AnchorBrandText> for live collection and automated NIP settlement.
+                </>
+              ) : (
+                'Sandbox environment active. Complete vendor verification during invite-only onboarding to activate live commercial bank payouts.'
+              )}
             </p>
           </div>
         </div>
@@ -387,7 +396,7 @@ export default function VendorDashboardPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-main uppercase tracking-wide mb-1.5">
-                  Buyer WhatsApp Phone:
+                  Buyer WhatsApp Number:
                 </label>
                 <input
                   type="tel"
@@ -410,6 +419,27 @@ export default function VendorDashboardPage() {
                   className="w-full bg-site border border-border rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-main placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
                 />
               </div>
+            </div>
+
+            <div className="bg-site border border-border rounded-2xl p-3.5">
+              <label htmlFor="buyerWhatsappConsent" className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  id="buyerWhatsappConsent"
+                  type="checkbox"
+                  checked={buyerWhatsappConsent}
+                  onChange={(e) => setBuyerWhatsappConsent(e.target.checked)}
+                  required={Boolean(buyerPhone.trim())}
+                  className="mt-0.5 h-4 w-4 rounded border-border text-accent focus:ring-accent cursor-pointer shrink-0"
+                />
+                <span className="text-xs text-main leading-snug">
+                  <span className="font-semibold">
+                    The buyer asked for this link and agrees to receive it on WhatsApp.
+                  </span>{' '}
+                  <span className="text-muted block mt-0.5 text-[11px]">
+                    Without a buyer WhatsApp number and this checkbox, no WhatsApp message is sent. You can always use Copy link below as a fallback.
+                  </span>
+                </span>
+              </label>
             </div>
 
             {/* Live Fee Breakdown */}
@@ -464,13 +494,37 @@ export default function VendorDashboardPage() {
           {/* Generated Link Drawer Box */}
           {generatedTx && (
             <div className="bg-accent/10 border border-accent/30 rounded-2xl p-5 space-y-4 animate-in fade-in duration-300">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2 text-xs font-bold text-accent uppercase tracking-wide">
                   <Check className="w-4 h-4 text-accent" />
                   <span>Link Created Successfully!</span>
                 </div>
-                <StatusBadge status={generatedTx.status} size="sm" />
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                      generatedTx.whatsapp_delivery_status === 'delivered' ||
+                      generatedTx.whatsapp_delivery_status === 'read'
+                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                        : generatedTx.whatsapp_delivery_status === 'sent' ||
+                            generatedTx.whatsapp_delivery_status === 'queued'
+                          ? 'bg-accent/15 text-accent border-accent/30'
+                          : generatedTx.whatsapp_delivery_status === 'failed'
+                            ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30'
+                            : 'bg-surface text-muted border-border'
+                    }`}
+                  >
+                    <MessageCircle className="w-3 h-3" />
+                    <span>WhatsApp: {generatedTx.whatsapp_delivery_status || 'not_sent'}</span>
+                  </span>
+                  <StatusBadge status={generatedTx.status} size="sm" />
+                </div>
               </div>
+
+              {whatsappNotice && (
+                <div className="text-xs text-rose-700 dark:text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-xl px-3 py-2">
+                  WhatsApp send notice: {whatsappNotice} You can share the payment link manually using Copy link below.
+                </div>
+              )}
 
               <div>
                 <span className="text-xs text-muted font-medium block mb-1">
@@ -485,26 +539,17 @@ export default function VendorDashboardPage() {
                   />
                   <button
                     type="button"
-                    onClick={() => copyToClipboard(getPayUrl(generatedTx.id), 'link')}
-                    className="px-3 py-2 bg-accent hover:opacity-90 text-[#071229] text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                    onClick={() => copyToClipboard(getPayUrl(generatedTx.id))}
+                    className="px-3.5 py-2 bg-accent hover:opacity-90 text-[#071229] text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
                   >
                     {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedLink ? 'Copied' : 'Copy'}</span>
+                    <span>{copiedLink ? 'Copied link' : 'Copy link'}</span>
                   </button>
                 </div>
               </div>
 
               {/* Action buttons */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                <button
-                  type="button"
-                  onClick={() => copyToClipboard(generateWhatsAppMessage(generatedTx), 'whatsapp')}
-                  className="w-full py-2.5 px-3 rounded-xl bg-accent/20 hover:bg-accent/30 text-accent text-xs font-bold flex items-center justify-center gap-2 transition-colors border border-accent/30 cursor-pointer"
-                >
-                  <MessageCircle className="w-4 h-4 text-accent" />
-                  <span>{copiedWhatsApp ? 'Copied to Clipboard!' : 'Copy WhatsApp Message'}</span>
-                </button>
-
+              <div className="pt-1">
                 <Link
                   href={`/pay/${generatedTx.id}`}
                   target="_blank"
@@ -534,27 +579,29 @@ export default function VendorDashboardPage() {
               <div className="pt-2 border-t border-slate-800 space-y-2 text-xs text-slate-300">
                 <div className="flex items-start gap-2">
                   <ShieldCheck className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-                  <span><strong>Guaranteed Escrow Lock:</strong> Buyer must lock full funds before dispatch.</span>
+                  <span><strong>Escrow Hold:</strong> Buyer pays into escrow before dispatch.</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <Lock className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-                  <span><strong>6-Digit Release Code:</strong> Rider collects the code at doorstep, instantly unlocking your payout.</span>
+                  <span><strong>6-Digit Release Code:</strong> Buyer gives the code after checking the items at delivery to unlock payout.</span>
                 </div>
               </div>
             </div>
             <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-accent/10 rounded-full blur-2xl" />
           </div>
 
-          {/* Quick link to tracker demo */}
-          <div className="bg-surface p-5 rounded-2xl border border-border text-xs text-muted space-y-2 transition-colors">
-            <div className="flex items-center gap-1.5 font-bold text-main">
-              <Lightbulb className="w-4 h-4 text-amber-500 shrink-0" />
-              <span>Testing Tip</span>
+          {/* Sandbox-only Quick link to tracker demo */}
+          {!liveMode && (
+            <div className="bg-surface p-5 rounded-2xl border border-border text-xs text-muted space-y-2 transition-colors">
+              <div className="flex items-center gap-1.5 font-bold text-main">
+                <Lightbulb className="w-4 h-4 text-amber-500 shrink-0" />
+                <span>Sandbox Testing Tip</span>
+              </div>
+              <p>
+                After generating a link, open it in another tab or device, simulate the payment, and test entering the 6-digit release code in the Vendor view.
+              </p>
             </div>
-            <p>
-              After generating a link, open it in another tab or device. Simulate the payment, receive the 6-digit release code, and test entering it in the Vendor view to watch the funds unlock!
-            </p>
-          </div>
+          )}
         </div>
       </div>
 
@@ -619,7 +666,22 @@ export default function VendorDashboardPage() {
                       </div>
                     </td>
                     <td className="py-3.5 px-4">
-                      <StatusBadge status={tx.status} size="sm" />
+                      <div className="flex flex-col items-start gap-1">
+                        <StatusBadge status={tx.status} size="sm" />
+                        {tx.whatsapp_blocked ? (
+                          <span className="text-[10px] font-semibold text-rose-600 dark:text-rose-400">
+                            WhatsApp: blocked (&quot;Not me&quot;)
+                          </span>
+                        ) : tx.buyer_phone_verified ? (
+                          <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                            WhatsApp: verified ({tx.whatsapp_delivery_status || 'delivered'})
+                          </span>
+                        ) : tx.whatsapp_delivery_status && tx.whatsapp_delivery_status !== 'not_sent' ? (
+                          <span className="text-[10px] font-medium text-muted">
+                            WhatsApp: {tx.whatsapp_delivery_status}
+                          </span>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="py-3.5 px-4 text-xs text-muted whitespace-nowrap">
                       {new Date(tx.created_at).toLocaleDateString('en-NG', {

@@ -6,12 +6,15 @@ import { FlagIcon } from '@/components/flags/FlagIcon';
 import { HeroStage } from '@/components/hero/HeroStage';
 import { PhoneCodeMock } from '@/components/how-it-works/PhoneCodeMock';
 import { LegacyHashRedirect } from '@/components/layout/LegacyHashRedirect';
+import { AnchorBrandText } from '@/components/common/AnchorBrandText';
+import { isAnchorBrandApproved } from '@/lib/anchorBrand';
 import { LAUNCH_STATUS, calculateFee } from '@/lib/feeConfig';
 
 export const metadata: Metadata = {
   title: 'Relyvora | Safe payments for WhatsApp and Instagram commerce',
-  description:
-    'Pay sellers on WhatsApp and Instagram without the fear. Your money is held until your order arrives and you confirm with a six\u2011digit code. Payments powered by Anchor.',
+  description: isAnchorBrandApproved()
+    ? 'Pay sellers on WhatsApp and Instagram without the fear. Your money is held until your order arrives and you confirm with a six\u2011digit code. Payments powered by Anchor.'
+    : 'Pay sellers on WhatsApp and Instagram without the fear. Your money is held until your order arrives and you confirm with a six\u2011digit code.',
   alternates: { canonical: '/' },
 };
 
@@ -114,7 +117,7 @@ export default function HomePage() {
 
             <p className="flex items-center gap-2 text-sm text-muted">
               <span className="w-1.5 h-1.5 rounded-full bg-muted/60" aria-hidden="true" />
-              <span>Payments powered by Anchor</span>
+              <AnchorBrandText>Payments powered by Anchor</AnchorBrandText>
             </p>
           </div>
 
@@ -350,8 +353,9 @@ export default function HomePage() {
           <div className="p-6 rounded-card border border-border bg-surface space-y-2">
             <h3 className="font-semibold text-main text-base">Where is the money held?</h3>
             <p className="text-muted text-sm leading-relaxed">
-              Payments are powered by our regulated Banking<span className="nowrap">-as-a-</span>Service partner, Anchor
-              Technologies Limited, in partnership with <span className="nowrap">CBN-licensed</span> financial institutions.
+              Payments are powered by our regulated Banking<span className="nowrap">-as-a-</span>Service partner,{' '}
+              <AnchorBrandText>Anchor Technologies Limited</AnchorBrandText>, in partnership with{' '}
+              <span className="nowrap">CBN-licensed</span> financial institutions.
             </p>
           </div>
         </div>

@@ -8,13 +8,38 @@
  * 4. Admin Dispute Console (The 8 policy scenarios, 2h/6h/12h SLA countdown timers, settlement distributions)
  */
 
-import { 
-  DEFAULT_MAX_ORDER_NGN, 
+import fs from 'fs';
+import path from 'path';
+import {
+  DEFAULT_MAX_ORDER_NGN,
   DEFAULT_MAX_DAILY_VENDOR_VOLUME_NGN,
-  validateOrderCreationServer, 
+  validateOrderCreationServer,
   isCheckoutEnabledServer,
-  getMaxOrderNgnServer
+  getMaxOrderNgnServer,
+  getMaxDailyVendorVolumeNgnServer,
+  clearSafetySettingsCache,
 } from '../lib/safetyLimits';
+import { getServiceSupabase } from '../lib/supabaseServer';
+
+function loadEnvLocalIfPresent() {
+  const envPath = path.resolve(process.cwd(), '.env.local');
+  if (!fs.existsSync(envPath)) return;
+  for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx <= 0) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    let val = trimmed.slice(eqIdx + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    if (process.env[key] === undefined) {
+      process.env[key] = val;
+    }
+  }
+}
+loadEnvLocalIfPresent();
 import { recordLedgerEntry, LedgerEntryInput } from '../lib/ledger';
 import { sendSystemAlert, SystemAlert } from '../lib/alerts';
 import { 
@@ -43,41 +68,93 @@ async function runPhaseG2Tests() {
   console.log('======================================================================\n');
 
   // =========================================================================
-  // TEST GROUP 1: KILL SWITCHES & CAPS (CHECKOUT_ENABLED, MAX_ORDER_NGN)
+  // TEST GROUP 1: KILL SWITCHES & UNCAPPED DEFAULTS (WITH INSTANT OVERRIDES)
   // =========================================================================
   console.log('--- TEST GROUP 1: KILL SWITCHES & ORDER CAPS ---');
 
-  // Test 1.1: Default MAX_ORDER_NGN is ₦50,000
-  assert(DEFAULT_MAX_ORDER_NGN === 50000, `Default MAX_ORDER_NGN is ₦50,000 (got: ₦${DEFAULT_MAX_ORDER_NGN})`);
+  // Test 1.1: Default MAX_ORDER_NGN and MAX_DAILY_VENDOR_VOLUME_NGN are null (no cap)
+  assert(
+    DEFAULT_MAX_ORDER_NGN === null && DEFAULT_MAX_DAILY_VENDOR_VOLUME_NGN === null,
+    `Defaults are uncapped (DEFAULT_MAX_ORDER_NGN=${DEFAULT_MAX_ORDER_NGN}, DEFAULT_MAX_DAILY_VENDOR_VOLUME_NGN=${DEFAULT_MAX_DAILY_VENDOR_VOLUME_NGN})`
+  );
 
-  // Test 1.2: Order exceeding MAX_ORDER_NGN is rejected
-  const overCapResult = await validateOrderCreationServer({
-    vendorHandle: '@LagosHairPlug',
-    totalAmount: 50001,
+  const originalMaxOrderEnv = process.env.MAX_ORDER_NGN;
+  const originalMaxDailyEnv = process.env.MAX_DAILY_VENDOR_VOLUME_NGN;
+  delete process.env.MAX_ORDER_NGN;
+  delete process.env.MAX_DAILY_VENDOR_VOLUME_NGN;
+  clearSafetySettingsCache();
+
+  // Test 1.2: With null defaults, high-value order for verified staging vendor is permitted
+  const serverMaxDefault = await getMaxOrderNgnServer();
+  const serverDailyDefault = await getMaxDailyVendorVolumeNgnServer();
+  assert(
+    serverMaxDefault === null && serverDailyDefault === null,
+    `Staging system_settings defaults resolve to null (max_order=${serverMaxDefault}, daily=${serverDailyDefault})`
+  );
+
+  const uncappedResult = await validateOrderCreationServer({
+    vendorHandle: '@StagingTestVendor',
+    totalAmount: 250000,
   });
-  assert(!overCapResult.allowed && overCapResult.code === 'AMOUNT_EXCEEDED', 
-    `Order exceeding cap (₦50,001) is strictly rejected: ${overCapResult.error}`);
+  assert(
+    uncappedResult.allowed === true,
+    `Uncapped ₦250,000 order is allowed when caps are null (allowed=${uncappedResult.allowed})`
+  );
 
-  // Test 1.3: Order within MAX_ORDER_NGN is allowed
-  const validCapResult = await validateOrderCreationServer({
-    vendorHandle: '@LagosHairPlug',
-    totalAmount: 49999,
-  });
-  assert(validCapResult.allowed === true, 
-    `Order within cap (₦49,999) is permitted: allowed=${validCapResult.allowed}`);
-
-  // Test 1.4: Kill switch simulation (CHECKOUT_ENABLED = false)
-  const originalCheckout = process.env.CHECKOUT_ENABLED;
+  // Test 1.3: Instant override via MAX_ORDER_NGN enforces cap dynamically
   try {
-    process.env.CHECKOUT_ENABLED = 'false';
+    process.env.MAX_ORDER_NGN = '50000';
+    clearSafetySettingsCache();
+
+    const overCapResult = await validateOrderCreationServer({
+      vendorHandle: '@StagingTestVendor',
+      totalAmount: 50001,
+    });
+    assert(
+      !overCapResult.allowed && overCapResult.code === 'AMOUNT_EXCEEDED',
+      `Instant cap override (₦50,000) rejects ₦50,001: ${overCapResult.error}`
+    );
+
+    const validCapResult = await validateOrderCreationServer({
+      vendorHandle: '@StagingTestVendor',
+      totalAmount: 49999,
+    });
+    assert(
+      validCapResult.allowed === true,
+      `Order within instant cap override (₦49,999) is permitted: allowed=${validCapResult.allowed}`
+    );
+  } finally {
+    if (originalMaxOrderEnv === undefined) delete process.env.MAX_ORDER_NGN;
+    else process.env.MAX_ORDER_NGN = originalMaxOrderEnv;
+    if (originalMaxDailyEnv === undefined) delete process.env.MAX_DAILY_VENDOR_VOLUME_NGN;
+    else process.env.MAX_DAILY_VENDOR_VOLUME_NGN = originalMaxDailyEnv;
+    clearSafetySettingsCache();
+  }
+
+  // Test 1.4: Kill switch simulation via staging system_settings override (CHECKOUT_ENABLED = false)
+  const supabase = getServiceSupabase();
+  try {
+    await supabase
+      .from('system_settings')
+      .update({ value: false, updated_by: 'test_suite' })
+      .eq('key', 'checkout_enabled');
+    clearSafetySettingsCache();
+
+    const enabledCheck = await isCheckoutEnabledServer();
     const disabledResult = await validateOrderCreationServer({
-      vendorHandle: '@LagosHairPlug',
+      vendorHandle: '@StagingTestVendor',
       totalAmount: 10000,
     });
-    assert(!disabledResult.allowed && disabledResult.code === 'CHECKOUT_DISABLED',
-      `Kill switch triggers when CHECKOUT_ENABLED=false: code=${disabledResult.code}`);
+    assert(
+      !enabledCheck && !disabledResult.allowed && disabledResult.code === 'CHECKOUT_DISABLED',
+      `Kill switch triggers when checkout_enabled=false: code=${disabledResult.code}`
+    );
   } finally {
-    process.env.CHECKOUT_ENABLED = originalCheckout || 'true';
+    await supabase
+      .from('system_settings')
+      .update({ value: true, updated_by: 'seed_staging_script' })
+      .eq('key', 'checkout_enabled');
+    clearSafetySettingsCache();
   }
 
   // =========================================================================

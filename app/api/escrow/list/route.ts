@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabaseServer';
+import {
+  applyWhatsappVerificationRedaction,
+  selectTransactionsListWithWhatsapp,
+} from '@/lib/whatsapp';
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,14 +12,16 @@ export async function GET(request: NextRequest) {
 
     const supabase = getServiceSupabase();
 
-    let query = supabase
-      .from('transactions')
-      .select(`
+    const { data, error } = await selectTransactionsListWithWhatsapp<any>(
+      supabase,
+      vendorHandle,
+      `
         id,
         created_at,
         updated_at,
         item_name,
         item_price,
+        delivery_fee,
         protection_fee,
         total_amount,
         vendor_handle,
@@ -30,21 +36,19 @@ export async function GET(request: NextRequest) {
         virtual_account_name,
         code_locked,
         failed_code_attempts
-      `)
-      .order('created_at', { ascending: false });
-
-    if (vendorHandle) {
-      query = query.eq('vendor_handle', vendorHandle.trim());
-    }
-
-    const { data, error } = await query;
+      `
+    );
 
     if (error) {
       console.warn('Failed to query transactions via service role:', error.message);
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, transactions: data || [] });
+    const safeTransactions = (data || []).map((row) =>
+      applyWhatsappVerificationRedaction(row)
+    );
+
+    return NextResponse.json({ success: true, transactions: safeTransactions });
   } catch (err: any) {
     console.error('Unhandled error in get-transactions list:', err);
     return NextResponse.json({ success: false, error: err.message || 'Internal Server Error' }, { status: 500 });

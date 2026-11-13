@@ -64,6 +64,8 @@ The page has been reset to an honest, qualitative statement of intent:
 | **"Flagship initiative"** | Pillar 3 Badge | **Self-aggrandizing framing.** Inappropriate for a planned concept. |
 | **"Ring-Fenced Programmatic Governance"** | Governance Pill & Footer | **Unsubstantiated legal claim.** Ring-fenced non-profit custody accounts do not exist; Foundation is not yet a separate legal trust. |
 | **"Independent audit" / "100% auditable"** | Grant section | **Premature audit claim.** No independent accounting firm has been retained to audit foundation accounts. |
+| **"Planned Non-Profit Initiative" / "non-profit"** | Hero badge (`app/foundation/page.tsx`) | **Unconfirmed legal registration status.** Replaced with `"Planned Initiative"` pending legal entity classification (CSR programme vs Incorporated Trustee). |
+| **"West Africa"** | Regional scope copy | **Overstated geographic scope.** Removed so copy does not imply active regional operations across West African jurisdictions. |
 
 ---
 

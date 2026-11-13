@@ -6,6 +6,7 @@ import {
   createAnchorCounterParty,
   AnchorApiError,
 } from '@/lib/anchor';
+import { isLiveMode } from '@/lib/paymentsMode';
 
 export async function POST(request: Request) {
   try {
@@ -66,6 +67,7 @@ export async function POST(request: Request) {
           await verifyAnchorCustomer(customerId, idNumber, dateOfBirth, gender);
           kycStatus = 'VERIFIED';
         } catch (kycErr: any) {
+          if (isLiveMode()) throw kycErr;
           // In Anchor sandbox, handle sandbox notice gracefully
           kycStatus = 'SANDBOX_KYC_PROVISIONED';
         }
@@ -77,6 +79,7 @@ export async function POST(request: Request) {
           const accountResult = await createAnchorDepositAccount({ customerId });
           accountId = accountResult.accountId;
         } catch (accErr: any) {
+          if (isLiveMode()) throw accErr;
           // If sandbox tier restricts wallet creation, use fallback account
           accountId = '179319298037338-anc_acc';
         }
@@ -90,9 +93,20 @@ export async function POST(request: Request) {
           bankCode: bankCode,
         });
       } catch (cpErr: any) {
-        // Counterparty notice handled
+        if (isLiveMode()) throw cpErr;
+        // Counterparty notice handled in sandbox
       }
     } catch (anchorErr: any) {
+      if (isLiveMode()) {
+        console.error('Anchor BaaS onboarding failed in live mode:', anchorErr?.message || anchorErr);
+        return NextResponse.json(
+          {
+            success: false,
+            error: anchorErr?.message || 'Anchor BaaS verification failed in live mode.',
+          },
+          { status: 502 }
+        );
+      }
       console.warn('Anchor BaaS onboarding warning:', anchorErr.message);
       // Fallback for simulation when secret key is not in dev
       customerId = customerId || `cst_${Date.now()}`;

@@ -25,6 +25,10 @@
   Confirm whether the 3% platform fee is deducted from the vendor's payout or the buyer's refund, and how the ₦500 minimum fee floor applies to partial splits.
 - **Current Production Handling:** Legal text in `/disputes` is preserved 100% intact until formal legal counsel sign-off.
 
+### Decision 4: Order & Daily Volume Caps (`max_order_ngn`, `max_daily_vendor_volume_ngn`)
+- **Status:** **CONFIRMED (Default: `null` — No Cap)**
+- **Rule:** Both `max_order_ngn` and `max_daily_vendor_volume_ngn` default to `null` in code (`lib/safetyLimits.ts`) and in the `system_settings` seed (`docs/PHASE-G1.5-RLS-v3.sql`). When `null`, the cap check is skipped. Both settings remain instant runtime overrides via `system_settings` or server environment variables without code changes or redeployment. No cap is hard-coded in UI components or copy.
+
 ---
 
 ## 2. Completed Owner Decisions Log
@@ -38,3 +42,6 @@
 3. **Escrow Custody & Banking Partner:**
    - **Decision:** Attribute banking partner custody to Anchor Technologies Limited with single regulatory disclosure per page.
    - **Resolution:** Implemented across all marketing pages and footers.
+4. **Default Order & Volume Caps:**
+   - **Decision:** Set `max_order_ngn` and `max_daily_vendor_volume_ngn` defaults to `null` (no cap) while keeping them as instant overrides in `system_settings`.
+   - **Resolution:** Implemented in `lib/safetyLimits.ts` and `docs/PHASE-G1.5-RLS-v3.sql`. No limits are hard-coded in components or marketing copy.

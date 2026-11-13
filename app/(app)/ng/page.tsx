@@ -2,32 +2,35 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { 
-  ShieldCheck, 
-  ArrowRight, 
-  Lock, 
-  Store, 
+import {
+  ShieldCheck,
+  ArrowRight,
+  Lock,
+  Store,
   MessageCircle,
-  KeyRound
+  KeyRound,
 } from 'lucide-react';
+import { isSandboxMode } from '@/lib/paymentsMode';
 
 export default function NigerianMarketPage() {
+  const sandbox = isSandboxMode();
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 sm:py-16 space-y-16 sm:space-y-24">
       {/* Hero Section */}
       <section className="text-center space-y-6 max-w-3xl mx-auto">
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-accent/10 text-accent border border-accent/20 shadow-xs">
           <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-          <span>Nigeria Marketplace • Instant Escrow Layer</span>
+          <span>{sandbox ? 'Nigeria • Sandbox Mode' : 'Nigeria • Invite-Only Launch'}</span>
         </div>
 
         <h1 className="text-3xl sm:text-5xl lg:text-6xl font-heading font-bold text-main tracking-tight leading-[1.15]">
-          Sell on Facebook, Instagram, TikTok & WhatsApp <br className="hidden sm:inline" />
-          <span className="text-accent">With 100% Escrow Protection.</span>
+          Safe payments for WhatsApp and <br className="hidden sm:inline" />
+          <span className="text-accent">Instagram orders in Nigeria.</span>
         </h1>
 
         <p className="text-base sm:text-lg text-muted max-w-2xl mx-auto leading-relaxed font-sans">
-          Relyvora eliminates &quot;Payment on Delivery&quot; headaches and &quot;What I Ordered vs What I Got&quot; dread. Nigerian buyers lock funds safely in escrow, and vendors unlock payout the moment the 6-digit delivery code is verified.
+          Your money is held safely until your order arrives at your doorstep. Open the package, check what you bought, and share your six-digit release code with the dispatch rider to pay the seller.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-2">
@@ -36,85 +39,89 @@ export default function NigerianMarketPage() {
             className="w-full sm:w-auto px-6 py-4 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-base flex items-center justify-center gap-2 shadow-card transition-all transform active:scale-[0.99]"
           >
             <Store className="w-5 h-5 text-[#071229]" />
-            <span>Open Vendor Dashboard</span>
+            <span>Open Vendor Portal</span>
             <ArrowRight className="w-4 h-4 ml-1" />
           </Link>
 
           <Link
-            href="/vendor"
+            href="#how-it-works"
             className="w-full sm:w-auto px-6 py-4 rounded-xl bg-surface hover:bg-site border border-border text-main font-bold text-base flex items-center justify-center gap-2 transition-colors shadow-xs"
           >
-            <span>Create Escrow Link</span>
+            <span>See How It Works</span>
           </Link>
         </div>
 
-        {/* Value metrics pill */}
+        {/* Key facts */}
         <div className="pt-6 grid grid-cols-3 gap-2 sm:gap-6 border-t border-border max-w-lg mx-auto text-center">
           <div>
-            <div className="text-xl sm:text-2xl font-bold text-main font-mono">3%</div>
-            <div className="text-[11px] sm:text-xs text-muted">Protection Fee (Min ₦500)</div>
+            <div className="text-xl sm:text-2xl font-bold text-main font-heading tabular-nums">3% Fee</div>
+            <div className="text-[11px] sm:text-xs text-muted">Minimum ₦500 per order</div>
           </div>
           <div>
-            <div className="text-xl sm:text-2xl font-bold text-main font-mono">6-Digit</div>
-            <div className="text-[11px] sm:text-xs text-muted">Release Code Protection</div>
+            <div className="text-xl sm:text-2xl font-bold text-main font-heading tabular-nums">6-Digit Code</div>
+            <div className="text-[11px] sm:text-xs text-muted">Shared after inspection</div>
           </div>
           <div>
-            <div className="text-xl sm:text-2xl font-bold text-accent font-mono">0% Risk</div>
-            <div className="text-[11px] sm:text-xs text-muted">Simulated Sandbox</div>
+            <div className="text-xl sm:text-2xl font-bold text-accent font-heading tabular-nums">
+              {sandbox ? 'Sandbox Mode' : 'Bank Transfer'}
+            </div>
+            <div className="text-[11px] sm:text-xs text-muted">
+              {sandbox ? 'Test environment active' : 'Virtual account per order'}
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Visual Product Showcase / How It Works */}
-      <section className="space-y-8">
+      {/* How It Works */}
+      <section id="how-it-works" className="space-y-8">
         <div className="text-center space-y-2">
           <h2 className="text-2xl sm:text-3xl font-heading font-bold text-main tracking-tight">
-            How The Relyvora Flow Works
+            How Relyvora Works
           </h2>
           <p className="text-sm text-muted">
-            A frictionless, high-trust sequence built specifically for Nigerian delivery dynamics.
+            Three clear steps for buyers and sellers on WhatsApp and Instagram.
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Card 1 */}
           <div className="bg-surface p-6 sm:p-7 rounded-card border border-border shadow-xs space-y-4 relative overflow-hidden transition-colors">
-            <div className="w-12 h-12 rounded-xl bg-accent/10 text-accent flex items-center justify-center font-bold text-xl border border-accent/20">
+            <div className="w-12 h-12 rounded-xl bg-accent/10 text-accent flex items-center justify-center font-heading tabular-nums font-bold text-xl border border-accent/20">
               1
             </div>
-            <h3 className="text-lg font-heading font-semibold text-main">Vendor Generates Link</h3>
+            <h3 className="text-lg font-heading font-semibold text-main">Seller creates a link</h3>
             <p className="text-xs sm:text-sm text-muted leading-relaxed">
-              Vendor enters item name and price (e.g. ₦45,000). Relyvora calculates the 3% buyer protection fee and provides a clean shareable link with pre-written WhatsApp message.
+              The seller enters the item name, price, and delivery fee in the vendor portal, then shares the checkout link in chat.
             </p>
             <div className="pt-2 text-xs font-semibold text-accent flex items-center gap-1">
               <MessageCircle className="w-4 h-4" />
-              <span>Direct WhatsApp sharing</span>
+              <span>Shareable on WhatsApp &amp; Instagram</span>
             </div>
           </div>
 
           {/* Card 2 */}
           <div className="bg-surface p-6 sm:p-7 rounded-card border border-border shadow-xs space-y-4 relative overflow-hidden transition-colors">
-            <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-xl border border-blue-500/20">
+            <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-heading tabular-nums font-bold text-xl border border-blue-500/20">
               2
             </div>
-            <h3 className="text-lg font-heading font-semibold text-main">Buyer Locks Escrow</h3>
+            <h3 className="text-lg font-heading font-semibold text-main">Buyer pays into escrow</h3>
             <p className="text-xs sm:text-sm text-muted leading-relaxed">
-              Buyer opens the link, reviews the item details, and locks funds in safe escrow via card, bank transfer, or USSD. The buyer instantly receives a secret 6-digit release code.
+              The buyer reviews the order total and transfers the exact amount to the dedicated virtual bank account. Funds stay held while the seller ships.
             </p>
             <div className="pt-2 text-xs font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1">
               <Lock className="w-4 h-4" />
-              <span>Funds held safely in escrow</span>
+              <span>Funds held until delivery</span>
             </div>
           </div>
 
           {/* Card 3 */}
           <div className="bg-surface p-6 sm:p-7 rounded-card border border-border shadow-xs space-y-4 relative overflow-hidden transition-colors">
-            <div className="w-12 h-12 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center font-bold text-xl border border-teal-500/20">
+            <div className="w-12 h-12 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center font-heading tabular-nums font-bold text-xl border border-teal-500/20">
               3
             </div>
-            <h3 className="text-lg font-heading font-semibold text-main">Inspect &amp; Release</h3>
+            <h3 className="text-lg font-heading font-semibold text-main">Inspect and share code</h3>
             <p className="text-xs sm:text-sm text-muted leading-relaxed">
-              Vendor dispatches order. Upon doorstep inspection, the buyer gives the 6-digit code to the rider. The vendor enters the code to instantly unlock payout.
+              Once paid, the buyer receives a six-digit release code. At delivery, the buyer opens the package, checks the items, and gives the code to the rider to release payment.
             </p>
             <div className="pt-2 text-xs font-semibold text-teal-600 dark:text-teal-400 flex items-center gap-1">
               <KeyRound className="w-4 h-4" />
@@ -131,17 +138,19 @@ export default function NigerianMarketPage() {
             <ShieldCheck className="w-6 h-6" />
           </div>
           <h2 className="text-2xl sm:text-3xl font-heading font-bold text-main tracking-tight">
-            Ready to test the Escrow Experience?
+            {sandbox ? 'Explore the Relyvora Sandbox' : 'Create or track an escrow order'}
           </h2>
           <p className="text-xs sm:text-sm text-muted">
-            Experience the complete vendor and buyer perspective in our interactive simulated sandbox.
+            {sandbox
+              ? 'Walk through the seller link generator, simulated payment flow, and six-digit code release in sandbox mode.'
+              : 'Open the vendor portal to create an escrow payment link or check an active order status.'}
           </p>
           <div className="pt-2">
             <Link
               href="/vendor"
               className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-sm shadow-card transition-all"
             >
-              <span>Go to Vendor Dashboard</span>
+              <span>Go to Vendor Portal</span>
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>

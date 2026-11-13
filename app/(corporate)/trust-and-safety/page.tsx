@@ -2,11 +2,14 @@ import React from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowUpRight, Building2, KeyRound, Scale, Mail, ArrowRight } from 'lucide-react';
+import { AnchorBrandText } from '@/components/common/AnchorBrandText';
+import { isAnchorBrandApproved } from '@/lib/anchorBrand';
 
 export const metadata: Metadata = {
   title: 'Trust & Safety | Relyvora Transaction Protection',
-  description:
-    'How Relyvora protects buyers and sellers with banking partner custody powered by Anchor, a six\u2011digit release code, and a clear dispute policy.',
+  description: isAnchorBrandApproved()
+    ? 'How Relyvora protects buyers and sellers with banking partner custody powered by Anchor, a six\u2011digit release code, and a clear dispute policy.'
+    : 'How Relyvora protects buyers and sellers with regulated banking partner custody, a six\u2011digit release code, and a clear dispute policy.',
   alternates: { canonical: '/trust-and-safety' },
 };
 
@@ -30,9 +33,9 @@ export default function TrustAndSafetyPage() {
           </div>
           <h2 className="text-xl font-semibold text-main">Held with our banking partner</h2>
           <p className="text-muted text-sm leading-relaxed">
-            Payments are powered by our regulated Banking<span className="nowrap">-as-a-</span>Service partner, Anchor
-            Technologies Limited, in partnership with <span className="nowrap">CBN-licensed</span> financial
-            institutions.
+            Payments are powered by our regulated Banking<span className="nowrap">-as-a-</span>Service partner,{' '}
+            <AnchorBrandText>Anchor Technologies Limited</AnchorBrandText>, in partnership with{' '}
+            <span className="nowrap">CBN-licensed</span> financial institutions.
           </p>
         </div>
 

@@ -153,7 +153,15 @@ ALTER TABLE public.transactions
     ADD COLUMN IF NOT EXISTS anchor_vendor_transfer_id TEXT,
     ADD COLUMN IF NOT EXISTS anchor_fee_transfer_id TEXT,
     ADD COLUMN IF NOT EXISTS leg1_idempotency_key TEXT,
-    ADD COLUMN IF NOT EXISTS leg2_idempotency_key TEXT;
+    ADD COLUMN IF NOT EXISTS leg2_idempotency_key TEXT,
+    ADD COLUMN IF NOT EXISTS buyer_whatsapp_consent BOOLEAN DEFAULT FALSE NOT NULL,
+    ADD COLUMN IF NOT EXISTS buyer_phone_verified BOOLEAN DEFAULT FALSE NOT NULL,
+    ADD COLUMN IF NOT EXISTS buyer_phone_verified_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS whatsapp_message_id TEXT,
+    ADD COLUMN IF NOT EXISTS whatsapp_delivery_status TEXT DEFAULT 'not_sent' NOT NULL,
+    ADD COLUMN IF NOT EXISTS whatsapp_blocked BOOLEAN DEFAULT FALSE NOT NULL;
+
+ALTER TABLE public.transactions DROP COLUMN IF EXISTS buyer_email;
 
 -- -------------------------------------------------------------------------
 -- SECTION 3: STATUS CHECK CONSTRAINT (FAIL-LOUD VALIDATION)
@@ -348,9 +356,11 @@ CREATE TRIGGER trg_prevent_ledger_truncate
 INSERT INTO public.system_settings (key, value, description)
 VALUES 
     ('checkout_enabled', 'true'::jsonb, 'Master kill switch for checkout link creation and payments'),
-    ('max_order_ngn', '50000'::jsonb, 'Soft launch maximum order limit in NGN'),
-    ('max_daily_vendor_volume_ngn', '200000'::jsonb, 'Soft launch per-vendor daily transaction volume ceiling in NGN'),
-    ('vendor_allowlist_mode', 'true'::jsonb, 'When true, only vendors with is_allowlisted = true can create links')
+    ('max_order_ngn', 'null'::jsonb, 'Optional maximum order limit in NGN (null = no cap)'),
+    ('max_daily_vendor_volume_ngn', 'null'::jsonb, 'Optional per-vendor daily transaction volume ceiling in NGN (null = no cap)'),
+    ('vendor_allowlist_mode', 'true'::jsonb, 'When true, only vendors with is_allowlisted = true can create links'),
+    ('max_daily_vendor_whatsapp_messages', '50'::jsonb, 'Maximum outbound WhatsApp messages a single vendor can trigger per UTC day'),
+    ('max_daily_buyer_whatsapp_messages', '5'::jsonb, 'Maximum outbound WhatsApp messages sent to a single buyer phone number per UTC day')
 ON CONFLICT (key) DO NOTHING;
 
 -- -------------------------------------------------------------------------

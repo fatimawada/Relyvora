@@ -107,10 +107,10 @@ export function HeroCrossfade() {
               <span className="truncate">{current.handle}</span>
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
             </div>
-            <div className="text-[10px] text-[#64748B] font-mono truncate">{current.caption}</div>
+            <div className="text-[10px] text-[#64748B] font-sans truncate">{current.caption}</div>
           </div>
         </div>
-        <span className="px-2 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+        <span className="px-2 py-1 rounded-full text-[10px] font-sans font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
           {current.tag}
         </span>
       </div>

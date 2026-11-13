@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ArrowUpRight } from 'lucide-react';
 import { Logo } from '@/components/brand/Logo';
+import { AnchorBrandText } from '@/components/common/AnchorBrandText';
 
 const PLATFORM_LINKS = [
   { label: 'The Problem', href: '/problem' },
@@ -43,7 +44,9 @@ export function Footer() {
               Payment protection for WhatsApp and Instagram commerce. Your money is held until your order arrives and you
               confirm with a <span className="nowrap">six-digit</span> code.
             </p>
-            <p className="text-sm font-medium text-main">Payments powered by Anchor</p>
+            <p className="text-sm font-medium text-main">
+              <AnchorBrandText>Payments powered by Anchor</AnchorBrandText>
+            </p>
           </div>
 
           {/* Platform */}

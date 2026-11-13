@@ -8,14 +8,30 @@
 
 import { getServiceSupabase } from './supabaseServer';
 
-export const DEFAULT_MAX_ORDER_NGN = 50000; // ₦50,000 for soft launch
-export const DEFAULT_MAX_DAILY_VENDOR_VOLUME_NGN = 200000; // ₦200,000 daily volume cap
+export const DEFAULT_MAX_ORDER_NGN: number | null = null;
+export const DEFAULT_MAX_DAILY_VENDOR_VOLUME_NGN: number | null = null;
 
 // In-memory cache for hot database settings (expires every 30 seconds)
 let settingsCache: {
   data: Record<string, any>;
   expiresAt: number;
 } | null = null;
+
+export function clearSafetySettingsCache(): void {
+  settingsCache = null;
+}
+
+function parseNullableLimit(raw: unknown): number | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim().toLowerCase();
+    if (trimmed === '' || trimmed === 'null' || trimmed === 'none' || trimmed === 'unlimited') {
+      return null;
+    }
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
 
 async function getHotSettings(): Promise<Record<string, any>> {
   const now = Date.now();
@@ -68,25 +84,52 @@ export function isCheckoutEnabled(): boolean {
 
 /**
  * Maximum allowable transaction amount in NGN (DB setting overrides env).
+ * Returns null when uncapped.
  */
-export async function getMaxOrderNgnServer(): Promise<number> {
+export async function getMaxOrderNgnServer(): Promise<number | null> {
   const settings = await getHotSettings();
-  if (settings.max_order_ngn !== undefined) {
-    const parsed = Number(settings.max_order_ngn);
-    if (!isNaN(parsed) && parsed > 0) return parsed;
+  if (settings.max_order_ngn !== undefined && settings.max_order_ngn !== null) {
+    const dbVal = parseNullableLimit(settings.max_order_ngn);
+    if (dbVal !== null) return dbVal;
   }
 
-  const envVal = process.env.MAX_ORDER_NGN;
-  if (!envVal) return DEFAULT_MAX_ORDER_NGN;
-  const parsed = Number(envVal);
-  return isNaN(parsed) || parsed <= 0 ? DEFAULT_MAX_ORDER_NGN : parsed;
+  const envVal = process.env.MAX_ORDER_NGN ?? process.env.NEXT_PUBLIC_MAX_ORDER_NGN;
+  if (envVal !== undefined) {
+    const parsed = parseNullableLimit(envVal);
+    if (parsed !== null) return parsed;
+  }
+
+  return DEFAULT_MAX_ORDER_NGN;
 }
 
-export function getMaxOrderNgn(): number {
-  const envVal = (typeof window !== 'undefined' ? process.env.NEXT_PUBLIC_MAX_ORDER_NGN : process.env.MAX_ORDER_NGN);
-  if (!envVal) return DEFAULT_MAX_ORDER_NGN;
-  const parsed = Number(envVal);
-  return isNaN(parsed) || parsed <= 0 ? DEFAULT_MAX_ORDER_NGN : parsed;
+export function getMaxOrderNgn(): number | null {
+  const envVal =
+    typeof window !== 'undefined' ? process.env.NEXT_PUBLIC_MAX_ORDER_NGN : process.env.MAX_ORDER_NGN;
+  if (envVal !== undefined) {
+    const parsed = parseNullableLimit(envVal);
+    if (parsed !== null) return parsed;
+  }
+  return DEFAULT_MAX_ORDER_NGN;
+}
+
+/**
+ * Maximum daily volume per vendor in NGN (DB setting overrides env).
+ * Returns null when uncapped.
+ */
+export async function getMaxDailyVendorVolumeNgnServer(): Promise<number | null> {
+  const settings = await getHotSettings();
+  if (settings.max_daily_vendor_volume_ngn !== undefined && settings.max_daily_vendor_volume_ngn !== null) {
+    const dbVal = parseNullableLimit(settings.max_daily_vendor_volume_ngn);
+    if (dbVal !== null) return dbVal;
+  }
+
+  const envVal = process.env.MAX_DAILY_VENDOR_VOLUME_NGN;
+  if (envVal !== undefined) {
+    const parsed = parseNullableLimit(envVal);
+    if (parsed !== null) return parsed;
+  }
+
+  return DEFAULT_MAX_DAILY_VENDOR_VOLUME_NGN;
 }
 
 /**
@@ -145,6 +188,7 @@ export interface OrderSafetyValidation {
     id: string;
     store_name: string;
     email: string;
+    kyc_status?: string;
     is_allowlisted: boolean;
     anchor_deposit_account_id?: string | null;
     daily_volume_ngn: number;
@@ -204,15 +248,15 @@ export async function resolveAndValidateVendorServer(params: {
     };
   }
 
-  // Check 24-hour daily volume reset
-  const maxDailyLimit = Number(settings.max_daily_vendor_volume_ngn) || DEFAULT_MAX_DAILY_VENDOR_VOLUME_NGN;
+  // Check 24-hour daily volume reset (skip if max_daily_vendor_volume_ngn is null)
+  const maxDailyLimit = await getMaxDailyVendorVolumeNgnServer();
   const now = new Date();
   const resetAt = vendor.daily_volume_reset_at ? new Date(vendor.daily_volume_reset_at) : new Date(0);
   const isExpired = now.getTime() - resetAt.getTime() > 24 * 60 * 60 * 1000;
 
   const currentDailyVolume = isExpired ? 0 : (Number(vendor.daily_volume_ngn) || 0);
 
-  if (currentDailyVolume + params.totalAmount > maxDailyLimit) {
+  if (maxDailyLimit !== null && maxDailyLimit > 0 && currentDailyVolume + params.totalAmount > maxDailyLimit) {
     return {
       allowed: false,
       code: 'DAILY_LIMIT_EXCEEDED',
@@ -226,6 +270,7 @@ export async function resolveAndValidateVendorServer(params: {
       id: vendor.id,
       store_name: vendor.store_name,
       email: vendor.email,
+      kyc_status: vendor.kyc_status,
       is_allowlisted: vendor.is_allowlisted,
       anchor_deposit_account_id: vendor.anchor_deposit_account_id,
       daily_volume_ngn: currentDailyVolume,
@@ -250,7 +295,7 @@ export async function validateOrderCreationServer(params: {
   }
 
   const maxOrder = await getMaxOrderNgnServer();
-  if (params.totalAmount > maxOrder) {
+  if (maxOrder !== null && maxOrder > 0 && params.totalAmount > maxOrder) {
     return {
       allowed: false,
       code: 'AMOUNT_EXCEEDED',

@@ -4,6 +4,7 @@ import { isSandboxMode, getServerPaymentsMode } from '@/lib/paymentsMode';
 import { computeReleaseCodeHmac, MAX_CODE_ATTEMPTS } from '@/lib/releaseCode';
 import { getClientIp, checkRateLimit } from '@/lib/rateLimit';
 import { sendSystemAlert } from '@/lib/alerts';
+import { SAFE_TRANSACTION_PUBLIC_COLUMNS } from '@/lib/transactionSelect';
 import { 
   executeAnchorBookTransfer, 
   RELYVORA_FBO_ACCOUNT_ID, 
@@ -111,7 +112,7 @@ export async function POST(request: NextRequest) {
         p_idempotency_key: `${transactionId}_FEE_REVENUE`,
       });
 
-      const { data: finalTx } = await supabase.from('transactions').select('*').eq('id', transactionId).single();
+      const { data: finalTx } = await supabase.from('transactions').select(SAFE_TRANSACTION_PUBLIC_COLUMNS).eq('id', transactionId).single();
       return NextResponse.json({ success: true, transaction: finalTx });
     }
 
@@ -230,7 +231,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const { data: finalTx } = await supabase.from('transactions').select('*').eq('id', transactionId).single();
+    const { data: finalTx } = await supabase.from('transactions').select(SAFE_TRANSACTION_PUBLIC_COLUMNS).eq('id', transactionId).single();
     return NextResponse.json({ success: true, transaction: finalTx });
   } catch (err: any) {
     console.error('Unhandled error in release route:', err);

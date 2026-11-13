@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { ArrowUpRight } from 'lucide-react';
 import { FlagIcon } from '@/components/flags/FlagIcon';
 import { MarketWaitlistForm } from '@/components/markets/MarketWaitlistForm';
+import { AnchorBrandText } from '@/components/common/AnchorBrandText';
 import { LAUNCH_STATUS } from '@/lib/feeConfig';
 
 export const metadata: Metadata = {
@@ -49,7 +50,8 @@ export default function MarketsPage() {
             </div>
 
             <p className="text-muted text-sm leading-relaxed">
-              Payment protection for buyers and sellers on WhatsApp and Instagram in Nigeria. Payments powered by Anchor.
+              Payment protection for buyers and sellers on WhatsApp and Instagram in Nigeria.{' '}
+              <AnchorBrandText>Payments powered by Anchor.</AnchorBrandText>
             </p>
           </div>
 

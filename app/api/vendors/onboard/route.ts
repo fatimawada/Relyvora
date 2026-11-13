@@ -1,14 +1,17 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-// Use the Service Role Key to bypass RLS securely on the server
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getServiceSupabase } from '@/lib/supabaseServer';
+import { isLiveMode } from '@/lib/paymentsMode';
 
 export async function POST(request: Request) {
   try {
+    if (isLiveMode() || process.env.NODE_ENV === 'production') {
+      return NextResponse.json(
+        { success: false, error: 'Legacy sandbox onboarding route is disabled in live/production mode.' },
+        { status: 403 }
+      );
+    }
+
+    const supabase = getServiceSupabase();
     const body = await request.json();
     const { userId, storeName, firstName, lastName, email, phone } = body;
 

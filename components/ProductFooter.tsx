@@ -1,5 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
+import { AnchorBrandText } from '@/components/common/AnchorBrandText';
 
 export function ProductFooter() {
   return (
@@ -19,7 +20,9 @@ export function ProductFooter() {
         </div>
         <div className="pt-2 border-t border-border/60 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-muted">
           <span>Relyvora Technologies Limited (RC 9982218). Abuja, Nigeria.</span>
-          <span className="font-medium text-main/80">Payments powered by Anchor</span>
+          <span className="font-medium text-main/80">
+            <AnchorBrandText>Payments powered by Anchor</AnchorBrandText>
+          </span>
         </div>
       </div>
     </footer>

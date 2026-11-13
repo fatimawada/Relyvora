@@ -216,7 +216,7 @@ export default function FoundationPage() {
               <div className="lg:col-span-7 space-y-6">
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface border border-border text-xs text-muted font-medium">
                   <Sparkles className="w-3.5 h-3.5 text-accent" />
-                  <span>Planned Non-Profit Initiative</span>
+                  <span>Planned Initiative</span>
                 </div>
 
                 <h1 className="text-3xl sm:text-5xl lg:text-6xl font-heading font-semibold text-main tracking-tight leading-[1.12]">

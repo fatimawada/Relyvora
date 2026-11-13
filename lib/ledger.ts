@@ -13,7 +13,8 @@ export type LedgerEntryType =
   | 'REFUND_BUYER'
   | 'SPLIT_VENDOR'
   | 'SPLIT_BUYER'
-  | 'DISPUTE_FREEZE';
+  | 'DISPUTE_FREEZE'
+  | 'RELEASE_CODE_REISSUED';
 
 export interface LedgerEntryInput {
   transactionId: string;

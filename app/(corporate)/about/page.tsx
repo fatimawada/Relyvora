@@ -2,6 +2,7 @@ import React from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, CheckCircle2 } from 'lucide-react';
+import { AnchorBrandText } from '@/components/common/AnchorBrandText';
 
 export const metadata: Metadata = {
   title: 'About Relyvora | Founder & Mission',
@@ -53,7 +54,7 @@ export default function AboutPage() {
         <ul className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-border text-sm text-muted">
           <li className="flex items-center gap-2.5">
             <CheckCircle2 className="w-4 h-4 text-accent shrink-0" aria-hidden="true" />
-            <span>Payments powered by Anchor</span>
+            <AnchorBrandText>Payments powered by Anchor</AnchorBrandText>
           </li>
           <li className="flex items-center gap-2.5">
             <CheckCircle2 className="w-4 h-4 text-accent shrink-0" aria-hidden="true" />
