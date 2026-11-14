@@ -17,22 +17,54 @@ This runbook defines the exact execution sequence for deploying Relyvora to **St
 
 ---
 
-## 2. Stage 1 — Staging Deployment (`bepvqjqjybhhpsfbblqk.supabase.co`)
+## 2. Fresh-Database Setup From Scratch (Empty Supabase Project)
+
+Use [docs/FULL-SCHEMA-FROM-SCRATCH.sql](FULL-SCHEMA-FROM-SCRATCH.sql) whenever initializing a brand-new empty Supabase project (for example a new Staging, Throwaway Verification, or clean Production project). Do **not** run incremental legacy patches first when starting from zero.
+
+### Numbered Execution Sequence (Empty Project)
+1. **Confirm Supabase Auth & Custom SMTP Settings:**
+   - In **Authentication -> Providers**, keep Google OAuth disabled and enable Email login.
+   - In **Authentication -> Settings**, set **Allow new users to sign up = OFF** once the initial admin/vendor accounts exist, enable **Confirm email = ON**, and enable TOTP MFA (AAL2 required by `lib/adminAuth.ts`).
+   - Configure **Custom SMTP** under `relyvora.com` (`no-reply@relyvora.com`).
+2. **Execute [docs/FULL-SCHEMA-FROM-SCRATCH.sql](FULL-SCHEMA-FROM-SCRATCH.sql) inside `BEGIN; ... COMMIT;`:**
+   - Paste the entire file into the **Supabase SQL Editor** and run it once. It executes in strict topological dependency order:
+     1. Extensions (`pgcrypto`, `uuid-ossp`) and ENUM types (`public.vendor_kyc_status`, `public.kyc_status` with labels `'pending'`, `'submitted'`, `'verified'`, `'rejected'`).
+     2. Hardened trigger functions (`public.update_modified_column()`, `public.handle_updated_at()`, `public.prevent_ledger_modification()`).
+     3. All **13 tables** (`vendors`, `transactions`, `buyer_phone_verifications`, `deposits`, `webhook_events`, `transaction_ledger`, `dispute_resolutions`, `system_settings`, `admin_audit_log`, `whatsapp_do_not_contact`, `whatsapp_message_log`, `whatsapp_webhook_events`, `market_waitlist`).
+     4. All triggers (`update_*_modtime` using `update_modified_column()`, plus `trg_prevent_ledger_mutation` and `trg_prevent_ledger_truncate`).
+     5. All indexes across transactions, vendor allowlist/KYC, WhatsApp logs, verifications, deposits, and ledger.
+     6. Runtime `public.system_settings` seeds (`checkout_enabled = true`, `max_order_ngn = null`, `max_daily_vendor_volume_ngn = null`, `vendor_allowlist_mode = true`, `max_daily_vendor_whatsapp_messages = 50`, `max_daily_buyer_whatsapp_messages = 5`).
+     7. All **6 RPC functions** (`rpc_verify_and_prepare_release`, `rpc_finalize_release_step`, `rpc_process_webhook_deposit`, `rpc_admin_unlock_transaction`, `rpc_admin_prepare_dispute_resolution`, `rpc_admin_finalize_dispute_resolution`).
+     8. `ENABLE` + `FORCE ROW LEVEL SECURITY`, explicit `RESTRICTIVE` deny-all policies (`TO anon, authenticated`), `REVOKE ALL` from `PUBLIC, anon, authenticated`, `GRANT ALL` solely to `service_role, postgres`, and `ALTER DEFAULT PRIVILEGES` lockdown.
+3. **Inspect the Built-In Grants & Security Verification Output (Section 9 of `FULL-SCHEMA-FROM-SCRATCH.sql`):**
+   - `information_schema.table_privileges` for `anon`, `authenticated`, `PUBLIC`: **0 rows**.
+   - `information_schema.routine_privileges` for `anon`, `authenticated`, `PUBLIC`: **0 rows**.
+   - `has_table_privilege` matrix for `anon` and `authenticated`: **all `false`**, `rls_enabled = true`, `rls_forced = true` across all 13 tables.
+   - `has_function_privilege` matrix for `anon` and `authenticated`: **all `false`** across all `rpc_*` and trigger functions (`service_role_execute = true`).
+4. **Provision the Admin Account (`app_metadata.role = 'admin'`):**
+   - Create the admin user in **Authentication -> Users**, enroll TOTP MFA, and execute [docs/ADMIN-SETUP-PROD.sql](ADMIN-SETUP-PROD.sql) in the SQL Editor (replacing `<YOUR_ADMIN_EMAIL>`).
+   - Add the returned UUID `id` to the server-only `ADMIN_USER_IDS` environment variable (never `NEXT_PUBLIC_`).
+5. **Seed Staging Test Data Safely (Staging Only — Never Production):**
+   - Point `.env.local` exclusively at Staging (`bepvqjqjybhhpsfbblqk.supabase.co`), never Production, and run `npx tsx scripts/seed-staging-vendor.ts`. The script validates `assertStagingTarget(...)` and aborts if `NODE_ENV=production`, `PAYMENTS_MODE=live`, or any production URL is detected.
+
+---
+
+## 3. Stage 1 — Incremental Staging Migration (`bepvqjqjybhhpsfbblqk.supabase.co`)
 
 > **CRITICAL:** Never run staging seeds or test scripts against the Production Supabase project.
 
-### Step 2.1 Apply SQL Migrations on Staging (Exact Order)
+### Step 3.2 Apply SQL Migrations on Staging (Exact Order)
 Open the **Staging Supabase SQL Editor** and execute each script completely. Both scripts are wrapped in `BEGIN; ... COMMIT;` and are idempotent:
 
 1. **Migration 1:** [docs/PHASE-G1.5-RLS-v3.sql](PHASE-G1.5-RLS-v3.sql)
-   - Creates `transaction_ledger`, `dispute_resolutions`, `deposits`, `system_settings`, `admin_audit_log`.
+   - Creates `transaction_ledger`, `dispute_resolutions`, `deposits`, `system_settings`, `admin_audit_log`, `buyer_phone_verifications`, `market_waitlist`.
    - Seeds `system_settings` with `checkout_enabled = true`, `vendor_allowlist_mode = true`, `max_order_ngn = null`, and `max_daily_vendor_volume_ngn = null`.
    - Drops legacy plaintext `release_code` and `release_code_salt` columns.
-   - Enables RLS + restrictive deny-all policies (`TO anon, authenticated`) across all 8 public tables and revokes all table/function privileges from `anon`, `authenticated`, and `PUBLIC`.
+   - Enables RLS + restrictive deny-all policies (`TO anon, authenticated`) across core tables and revokes all table/function privileges from `anon`, `authenticated`, and `PUBLIC`.
    - Creates `rpc_verify_and_prepare_release`, `rpc_finalize_release_step`, `rpc_process_webhook_deposit`, and `rpc_admin_unlock_transaction`.
 2. **Migration 2:** [docs/PHASE-G2.5-ADMIN-RPC-v2.sql](PHASE-G2.5-ADMIN-RPC-v2.sql)
    - Aligns columns on `transactions`, `dispute_resolutions`, and `deposits` (`sender_account_number`, `sender_bank_code`, `sender_name`), drops `buyer_email`, and adds WhatsApp verification/delivery columns (`buyer_whatsapp_consent`, `buyer_phone_verified`, `buyer_phone_verified_at`, `whatsapp_message_id`, `whatsapp_delivery_status`, `whatsapp_blocked`).
-   - Creates locked-down WhatsApp tables: `whatsapp_do_not_contact`, `whatsapp_message_log`, `whatsapp_webhook_events` (RLS + restrictive deny-all policies + `REVOKE ALL FROM PUBLIC, anon, authenticated`).
+   - Creates locked-down tables: `whatsapp_do_not_contact`, `whatsapp_message_log`, `whatsapp_webhook_events`, `buyer_phone_verifications`, `market_waitlist` (RLS enabled + forced, restrictive deny-all policies, `REVOKE ALL FROM PUBLIC, anon, authenticated`) plus `update_modified_column()`.
    - Seeds WhatsApp daily rate limits (`max_daily_vendor_whatsapp_messages = 50`, `max_daily_buyer_whatsapp_messages = 5`).
    - Adds `'RESOLVING'` to `transactions_status_check`.
    - Creates two-phase dispute RPCs `rpc_admin_prepare_dispute_resolution` and `rpc_admin_finalize_dispute_resolution`.
@@ -46,7 +78,7 @@ SET value = 'null'::jsonb, updated_by = 'release_candidate_reset', updated_at = 
 WHERE key IN ('max_order_ngn', 'max_daily_vendor_volume_ngn');
 ```
 
-### Step 2.2 Run Verification Queries on Staging
+### Step 3.3 Run Verification Queries on Staging
 Execute all 4 verification queries in the **Staging SQL Editor**:
 
 ```sql
@@ -63,11 +95,12 @@ WHERE table_schema = 'public'
   AND table_name IN (
     'transactions', 'vendors', 'webhook_events', 'transaction_ledger',
     'dispute_resolutions', 'deposits', 'system_settings', 'admin_audit_log',
-    'whatsapp_do_not_contact', 'whatsapp_message_log', 'whatsapp_webhook_events'
+    'whatsapp_do_not_contact', 'whatsapp_message_log', 'whatsapp_webhook_events',
+    'buyer_phone_verifications', 'market_waitlist'
   )
   AND grantee IN ('anon', 'authenticated', 'PUBLIC');
 
--- 3. Restrictive deny-all RLS policies active (Expected: 11 rows, permissive = 'RESTRICTIVE')
+-- 3. Restrictive deny-all RLS policies active (Expected: 13 rows, permissive = 'RESTRICTIVE')
 SELECT tablename, policyname, permissive, roles, cmd
 FROM pg_policies
 WHERE schemaname = 'public'
@@ -79,7 +112,7 @@ FROM public.system_settings
 ORDER BY key;
 ```
 
-### Step 2.3 Seed Staging & Run Automated Verification Suite
+### Step 3.4 Seed Staging & Run Automated Verification Suite
 Run from your local workspace pointing `.env.local` at the staging Supabase project:
 
 ```bash
@@ -87,6 +120,7 @@ Run from your local workspace pointing `.env.local` at the staging Supabase proj
 npx tsx scripts/seed-staging-vendor.ts
 
 # 2. Run all automated verification suites against staging
+npx tsx tests/fresh-schema-from-scratch.test.ts
 npx tsx tests/phase-g1.5-v3.test.ts
 npx tsx tests/staging-rpc-rls-denial.test.ts
 npx tsx tests/phase-g2.test.ts
@@ -101,26 +135,26 @@ npm run build
 
 ---
 
-## 3. Stage 2 — Production Deployment
+## 4. Production Deployment
 
-> **STOP GATE:** Proceed to Production ONLY after `release-candidate` has been reviewed, merged into `go-live-prod` -> `main`, and all Staging checks in Section 2 have passed.
+> **STOP GATE:** Proceed to Production ONLY after `release-candidate` has been reviewed, merged into `go-live-prod` -> `main`, and all Staging & Fresh-Schema checks have passed.
 
-### Step 3.1 Pre-Deploy App Code First (Zero-Downtime Column Removal Ordering)
-1. Deploy the release application bundle (which never references legacy plaintext `release_code` or `release_code_salt` columns) to Vercel **with `PAYMENTS_MODE=live` and `CHECKOUT_ENABLED=false` initially** if migrating from an older schema.
-2. Verify all required Production server-only environment variables are set (see [ENVIRONMENTS.md](ENVIRONMENTS.md)).
+### Step 4.1 Apply Database Schema on Production
+- **If Production is a brand-new empty Supabase project:** Execute [docs/FULL-SCHEMA-FROM-SCRATCH.sql](FULL-SCHEMA-FROM-SCRATCH.sql) once in the **Production Supabase SQL Editor** and verify Section 9 outputs zero `anon`/`authenticated`/`PUBLIC` privileges across all 13 tables and all functions.
+- **If upgrading an existing populated Production database incrementally:**
+  1. Deploy the release application bundle to Vercel first (it never queries legacy `release_code`, `release_code_salt`, or `buyer_email`) with `PAYMENTS_MODE=live` and `CHECKOUT_ENABLED=false`.
+  2. Verify all required Production server-only environment variables are set (see [ENVIRONMENTS.md](ENVIRONMENTS.md)).
+  3. Execute [docs/PHASE-G1.5-RLS-v3.sql](PHASE-G1.5-RLS-v3.sql) followed by [docs/PHASE-G2.5-ADMIN-RPC-v2.sql](PHASE-G2.5-ADMIN-RPC-v2.sql) in the **Production Supabase SQL Editor**.
+- Re-run all 4 verification queries from **Section 3** in Production and verify:
+  - Query 1 returns **0 rows**
+  - Query 2 returns **0 rows**
+  - Query 3 confirms restrictive deny-all policies on all **13 tables**
+  - Query 4 confirms `max_order_ngn = null`, `max_daily_vendor_volume_ngn = null`, `vendor_allowlist_mode = true`, `max_daily_vendor_whatsapp_messages = 50`, `max_daily_buyer_whatsapp_messages = 5`
 
-### Step 3.2 Apply SQL Migrations on Production
-Execute in the **Production Supabase SQL Editor** in exact order:
-1. [docs/PHASE-G1.5-RLS-v3.sql](PHASE-G1.5-RLS-v3.sql)
-2. [docs/PHASE-G2.5-ADMIN-RPC-v2.sql](PHASE-G2.5-ADMIN-RPC-v2.sql)
+### Step 4.2 Mark Admin User (`app_metadata.role = 'admin'`)
+Execute [docs/ADMIN-SETUP-PROD.sql](ADMIN-SETUP-PROD.sql) in the **Production Supabase SQL Editor** after enrolling TOTP MFA on your admin account, and add the returned `id` to `ADMIN_USER_IDS` in Vercel.
 
-Re-run all 4 verification queries from **Step 2.2** in Production and verify:
-- Query 1 returns **0 rows**
-- Query 2 returns **0 rows**
-- Query 3 confirms restrictive deny-all policies on all **11 tables**
-- Query 4 confirms `max_order_ngn = null`, `max_daily_vendor_volume_ngn = null`, `vendor_allowlist_mode = true`, `max_daily_vendor_whatsapp_messages = 50`, `max_daily_buyer_whatsapp_messages = 5`
-
-### Step 3.3 Enable Production Checkout & Verify Allowlist
+### Step 4.3 Enable Production Checkout & Verify Allowlist
 1. Add only KYC-verified, Anchor-provisioned pilot vendors with `is_allowlisted = true` in `public.vendors`.
 2. Flip `checkout_enabled = 'true'::jsonb` in `public.system_settings` (or ensure `CHECKOUT_ENABLED=true` in Vercel).
 3. Verify `/api/escrow/confirm-payment` and `/api/vendors/onboard` return HTTP `403`.
@@ -128,7 +162,7 @@ Re-run all 4 verification queries from **Step 2.2** in Production and verify:
 
 ---
 
-## 4. Emergency Rollback Procedure
+## 5. Emergency Rollback Procedure
 
 ### Instant Kill Switch (No Redeploy Required, < 5 Seconds)
 To halt all new checkout link creation and payment confirmations immediately without touching code or migrations:
@@ -157,9 +191,9 @@ WHERE key = 'max_order_ngn';
 
 ---
 
-## 5. Meta WhatsApp Cloud API Setup & Approved Templates
+## 6. Meta WhatsApp Cloud API Setup & Approved Templates
 
-### 5.1 Webhook Registration Checklist
+### 6.1 Webhook Registration Checklist
 1. **Staging Webhook URL:** `https://staging.relyvora.com/api/webhooks/whatsapp` (requires permanent Vercel custom alias `staging.relyvora.com`).
 2. **Production Webhook URL:** `https://ng.relyvora.com/api/webhooks/whatsapp`.
 3. **Verify Token:** Set identical `WHATSAPP_WEBHOOK_VERIFY_TOKEN` in Meta App Dashboard and Vercel environment variables.

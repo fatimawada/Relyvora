@@ -59,6 +59,15 @@ export function assertStagingTarget(
     );
   }
 
+  const prodUrls = [process.env.PROD_SUPABASE_URL, process.env.PRODUCTION_SUPABASE_URL]
+    .filter(Boolean)
+    .map((u) => String(u).trim().replace(/\/+$/, '').toLowerCase());
+  if (prodUrls.includes(normalizedUrl.toLowerCase())) {
+    throw new Error(
+      `REFUSING SEED: Explicit production Supabase URL blocked (${normalizedUrl}).`
+    );
+  }
+
   const allowOverride = process.env.ALLOW_STAGING_URL_OVERRIDE === 'true';
   if (normalizedUrl !== EXPECTED_STAGING_URL && !allowOverride) {
     throw new Error(

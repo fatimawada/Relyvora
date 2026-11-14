@@ -27,6 +27,7 @@ import {
   setWhatsappTransportForTests,
   resetWhatsappTestState,
   getInMemoryOutboundLogsForTests,
+  getInMemoryBuyerPhoneVerification,
   getWhatsappDailyLimits,
   MetaTemplatePayload,
 } from '../lib/whatsapp';
@@ -417,11 +418,16 @@ async function runReleaseCandidateSuite() {
         })
       );
       const replayWhJson = await replayWhRes.json();
+      const confirmBpv = getInMemoryBuyerPhoneVerification(liveTxId);
       assert(
         confirmWhRes.status === 200 &&
           confirmWhJson.processed?.[0]?.action === 'PHONE_VERIFIED' &&
-          replayWhJson.processed?.[0]?.duplicate === true,
-        'Signed "Confirm this is me" marks phone verified and replay check blocks duplicate wamid'
+          replayWhJson.processed?.[0]?.duplicate === true &&
+          confirmBpv?.verified === true &&
+          confirmBpv?.masked_phone === '******1234' &&
+          Boolean(confirmBpv?.phone_hash) &&
+          !confirmBpv?.phone_hash.includes('8099991234'),
+        'Signed "Confirm this is me" marks phone verified, records hashed buyer_phone_verifications entry, and replay check blocks duplicate wamid'
       );
 
       // 3b. Simulate Signed Anchor Webhook Deposit -> issues release code on WhatsApp ONLY (0 buyer emails)
@@ -1020,8 +1026,9 @@ async function runReleaseCandidateSuite() {
       assert(
         notMeWhRes.status === 200 &&
           blockedGetJson.transaction?.whatsapp_blocked === true &&
-          blockedGetJson.transaction?.virtual_account_number === null,
-        '"Not me" Quick Reply marks order whatsapp_blocked=true and hides virtual account details'
+          blockedGetJson.transaction?.virtual_account_number === null &&
+          getInMemoryBuyerPhoneVerification(nmTxId)?.verified !== true,
+        '"Not me" Quick Reply marks order whatsapp_blocked=true, leaves phone unverified, and hides virtual account details'
       );
 
       // Re-sending or new order to DNC number must send 0 WhatsApp messages

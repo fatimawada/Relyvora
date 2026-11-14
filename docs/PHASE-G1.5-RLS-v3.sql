@@ -94,6 +94,29 @@ CREATE TABLE IF NOT EXISTS public.admin_audit_log (
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- 1.6 Dedicated Buyer WhatsApp Phone Verifications Audit Record
+CREATE TABLE IF NOT EXISTS public.buyer_phone_verifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    transaction_id UUID NOT NULL UNIQUE REFERENCES public.transactions(id) ON DELETE CASCADE,
+    phone_hash TEXT NOT NULL,
+    masked_phone TEXT NOT NULL,
+    verified BOOLEAN NOT NULL DEFAULT TRUE,
+    verification_method TEXT NOT NULL DEFAULT 'WHATSAPP_QUICK_REPLY'
+        CHECK (verification_method IN ('WHATSAPP_QUICK_REPLY', 'WHATSAPP_INBOUND')),
+    whatsapp_message_id TEXT,
+    verified_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 1.7 International Expansion Waitlist
+CREATE TABLE IF NOT EXISTS public.market_waitlist (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT NOT NULL,
+    market TEXT NOT NULL CHECK (market IN ('GH', 'KE', 'ZA')),
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
 -- -------------------------------------------------------------------------
 -- SECTION 2: ALTER EXISTING TABLES (webhook_events, vendors, transactions)
 -- -------------------------------------------------------------------------
@@ -208,7 +231,9 @@ BEGIN
               'dispute_resolutions',
               'deposits',
               'system_settings',
-              'admin_audit_log'
+              'admin_audit_log',
+              'buyer_phone_verifications',
+              'market_waitlist'
           )
     ) LOOP
         EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I', r.policyname, r.schemaname, r.tablename);
@@ -228,6 +253,10 @@ ALTER TABLE public.dispute_resolutions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.deposits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_audit_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.buyer_phone_verifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.buyer_phone_verifications FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.market_waitlist ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.market_waitlist FORCE ROW LEVEL SECURITY;
 
 -- Revoke ALL table permissions from anon, authenticated, and PUBLIC
 REVOKE ALL ON TABLE public.transactions FROM anon, authenticated, public;
@@ -238,6 +267,8 @@ REVOKE ALL ON TABLE public.dispute_resolutions FROM anon, authenticated, public;
 REVOKE ALL ON TABLE public.deposits FROM anon, authenticated, public;
 REVOKE ALL ON TABLE public.system_settings FROM anon, authenticated, public;
 REVOKE ALL ON TABLE public.admin_audit_log FROM anon, authenticated, public;
+REVOKE ALL ON TABLE public.buyer_phone_verifications FROM anon, authenticated, public;
+REVOKE ALL ON TABLE public.market_waitlist FROM anon, authenticated, public;
 
 -- Explicit RESTRICTIVE Deny Policies: unconditionally block anon and authenticated
 CREATE POLICY "Strict Restrictive Deny All on transactions"
@@ -304,6 +335,22 @@ CREATE POLICY "Strict Restrictive Deny All on admin_audit_log"
     USING (false)
     WITH CHECK (false);
 
+CREATE POLICY "Strict Restrictive Deny All on buyer_phone_verifications"
+    ON public.buyer_phone_verifications
+    AS RESTRICTIVE
+    FOR ALL
+    TO anon, authenticated
+    USING (false)
+    WITH CHECK (false);
+
+CREATE POLICY "Strict Restrictive Deny All on market_waitlist"
+    ON public.market_waitlist
+    AS RESTRICTIVE
+    FOR ALL
+    TO anon, authenticated
+    USING (false)
+    WITH CHECK (false);
+
 -- Grant privileges solely to service_role and postgres superuser
 GRANT ALL ON TABLE public.transactions TO service_role, postgres;
 GRANT ALL ON TABLE public.vendors TO service_role, postgres;
@@ -313,6 +360,8 @@ GRANT ALL ON TABLE public.dispute_resolutions TO service_role, postgres;
 GRANT ALL ON TABLE public.deposits TO service_role, postgres;
 GRANT ALL ON TABLE public.system_settings TO service_role, postgres;
 GRANT ALL ON TABLE public.admin_audit_log TO service_role, postgres;
+GRANT ALL ON TABLE public.buyer_phone_verifications TO service_role, postgres;
+GRANT ALL ON TABLE public.market_waitlist TO service_role, postgres;
 
 -- -------------------------------------------------------------------------
 -- SECTION 7: IMMUTABLE APPEND-ONLY LEDGER TRIGGERS (UPDATE, DELETE & TRUNCATE)

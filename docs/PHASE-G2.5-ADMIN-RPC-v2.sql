@@ -125,17 +125,68 @@ CREATE TABLE IF NOT EXISTS public.whatsapp_webhook_events (
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Strict RLS & Zero Public Privilege Lockdown on all WhatsApp tables
+-- 1.7b Dedicated Buyer WhatsApp Phone Verifications Audit Record
+CREATE TABLE IF NOT EXISTS public.buyer_phone_verifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    transaction_id UUID NOT NULL UNIQUE REFERENCES public.transactions(id) ON DELETE CASCADE,
+    phone_hash TEXT NOT NULL,
+    masked_phone TEXT NOT NULL,
+    verified BOOLEAN NOT NULL DEFAULT TRUE,
+    verification_method TEXT NOT NULL DEFAULT 'WHATSAPP_QUICK_REPLY'
+        CHECK (verification_method IN ('WHATSAPP_QUICK_REPLY', 'WHATSAPP_INBOUND')),
+    whatsapp_message_id TEXT,
+    verified_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_buyer_phone_verifications_tx ON public.buyer_phone_verifications (transaction_id);
+CREATE INDEX IF NOT EXISTS idx_buyer_phone_verifications_hash ON public.buyer_phone_verifications (phone_hash);
+
+-- 1.7c International Expansion Waitlist
+CREATE TABLE IF NOT EXISTS public.market_waitlist (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT NOT NULL,
+    market TEXT NOT NULL CHECK (market IN ('GH', 'KE', 'ZA')),
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Hardened modified timestamp trigger function
+CREATE OR REPLACE FUNCTION public.update_modified_column()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    NEW.updated_at = timezone('utc'::text, now());
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS update_buyer_phone_verifications_modtime ON public.buyer_phone_verifications;
+CREATE TRIGGER update_buyer_phone_verifications_modtime
+    BEFORE UPDATE ON public.buyer_phone_verifications
+    FOR EACH ROW
+    EXECUTE FUNCTION public.update_modified_column();
+
+-- Strict RLS & Zero Public Privilege Lockdown on all WhatsApp & verification tables
 ALTER TABLE public.whatsapp_do_not_contact ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.whatsapp_do_not_contact FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.whatsapp_message_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.whatsapp_message_log FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.whatsapp_webhook_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.whatsapp_webhook_events FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.buyer_phone_verifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.buyer_phone_verifications FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.market_waitlist ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.market_waitlist FORCE ROW LEVEL SECURITY;
 
 REVOKE ALL ON TABLE public.whatsapp_do_not_contact FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.whatsapp_message_log FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.whatsapp_webhook_events FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.buyer_phone_verifications FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.market_waitlist FROM PUBLIC, anon, authenticated;
 
 DROP POLICY IF EXISTS "Strict Restrictive Deny All on whatsapp_do_not_contact" ON public.whatsapp_do_not_contact;
 CREATE POLICY "Strict Restrictive Deny All on whatsapp_do_not_contact"
@@ -164,9 +215,32 @@ CREATE POLICY "Strict Restrictive Deny All on whatsapp_webhook_events"
     USING (false)
     WITH CHECK (false);
 
+DROP POLICY IF EXISTS "Strict Restrictive Deny All on buyer_phone_verifications" ON public.buyer_phone_verifications;
+CREATE POLICY "Strict Restrictive Deny All on buyer_phone_verifications"
+    ON public.buyer_phone_verifications
+    AS RESTRICTIVE
+    FOR ALL
+    TO anon, authenticated
+    USING (false)
+    WITH CHECK (false);
+
+DROP POLICY IF EXISTS "Strict Restrictive Deny All on market_waitlist" ON public.market_waitlist;
+CREATE POLICY "Strict Restrictive Deny All on market_waitlist"
+    ON public.market_waitlist
+    AS RESTRICTIVE
+    FOR ALL
+    TO anon, authenticated
+    USING (false)
+    WITH CHECK (false);
+
 GRANT ALL ON TABLE public.whatsapp_do_not_contact TO service_role, postgres;
 GRANT ALL ON TABLE public.whatsapp_message_log TO service_role, postgres;
 GRANT ALL ON TABLE public.whatsapp_webhook_events TO service_role, postgres;
+GRANT ALL ON TABLE public.buyer_phone_verifications TO service_role, postgres;
+GRANT ALL ON TABLE public.market_waitlist TO service_role, postgres;
+
+REVOKE EXECUTE ON FUNCTION public.update_modified_column() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.update_modified_column() TO service_role, postgres;
 
 -- 1.8 Seed WhatsApp Daily Abuse Limits in system_settings (non-destructive if already overridden)
 INSERT INTO public.system_settings (key, value, description, updated_by)

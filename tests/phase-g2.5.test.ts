@@ -223,7 +223,7 @@ async function runPhaseG25v2Tests() {
   } finally {
     process.env.ADMIN_USER_IDS = originalAdminUserIds;
     process.env.PAYMENTS_MODE = originalPaymentsMode;
-    process.env.NODE_ENV = originalNodeEnv;
+    (process.env as Record<string, string | undefined>).NODE_ENV = originalNodeEnv;
   }
 
   // =========================================================================
@@ -328,7 +328,7 @@ async function runPhaseG25v2Tests() {
     `Scenario 2 Split: Vendor paid ₦2,000 delivery fee; Buyer refunded ₦18,000 item price; Fee ₦500 retained`);
 
   // 2.3 Solvency exact equality constraint
-  assert(s1Result.buyerRefundAmount + s1Result.vendorPayoutAmount + s1Result.platformFee === sampleTx.amount_paid,
+  assert((s1Result.buyerRefundAmount ?? 0) + (s1Result.vendorPayoutAmount ?? 0) + (s1Result.platformFee ?? 0) === sampleTx.amount_paid,
     `Solvency constraint verified: buyer (₦${s1Result.buyerRefundAmount}) + vendor (₦${s1Result.vendorPayoutAmount}) + fee (₦${s1Result.platformFee}) == amount_paid (₦${sampleTx.amount_paid})`);
 
   // 2.4 Documented Override without reason -> Rejected

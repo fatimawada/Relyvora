@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { supabase } from '@/lib/supabase';
+import { getServiceSupabase } from '@/lib/supabaseServer';
 
 // Simple in-memory rate limiting map: IP -> timestamp[]
 const rateLimitMap = new Map<string, number[]>();
@@ -44,7 +44,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    // Insert into market_waitlist table
+    // Insert into market_waitlist table (service role required; anon/authenticated have no direct table privileges)
+    const supabase = getServiceSupabase();
     const { error } = await supabase.from('market_waitlist').insert({
       email: email.toLowerCase().trim(),
       market,

@@ -111,9 +111,20 @@ interface OutboundLogMemoryEntry {
   created_at: string;
 }
 
+export interface BuyerPhoneVerificationRecord {
+  transaction_id: string;
+  phone_hash: string;
+  masked_phone: string;
+  verified: boolean;
+  verification_method: 'WHATSAPP_QUICK_REPLY' | 'WHATSAPP_INBOUND';
+  whatsapp_message_id: string | null;
+  verified_at: string;
+}
+
 interface GlobalWhatsappStore {
   transportOverride: WhatsappTransportFn | null;
   txStates: Map<string, TxWhatsappFallbackState>;
+  buyerPhoneVerifications?: Map<string, BuyerPhoneVerificationRecord>;
   dncHashes: Map<string, { masked_phone: string; reason: WhatsappDncReason; source_transaction_id?: string | null; created_at: string }>;
   outboundLogs: OutboundLogMemoryEntry[];
   webhookEvents: Set<string>;
@@ -128,10 +139,14 @@ function getWhatsappStore(): GlobalWhatsappStore {
     globalForWhatsapp.__relyvoraWhatsappStore = {
       transportOverride: null,
       txStates: new Map(),
+      buyerPhoneVerifications: new Map(),
       dncHashes: new Map(),
       outboundLogs: [],
       webhookEvents: new Set(),
     };
+  }
+  if (!globalForWhatsapp.__relyvoraWhatsappStore.buyerPhoneVerifications) {
+    globalForWhatsapp.__relyvoraWhatsappStore.buyerPhoneVerifications = new Map();
   }
   return globalForWhatsapp.__relyvoraWhatsappStore;
 }
@@ -150,6 +165,7 @@ export function resetWhatsappTestState() {
   const store = getWhatsappStore();
   store.transportOverride = null;
   store.txStates.clear();
+  store.buyerPhoneVerifications?.clear();
   store.dncHashes.clear();
   store.outboundLogs = [];
   store.webhookEvents.clear();
@@ -605,6 +621,107 @@ export function getTransactionWhatsappFallbackState(
   return getWhatsappStore().txStates.get(transactionId);
 }
 
+/**
+ * Records a buyer WhatsApp phone verification in public.buyer_phone_verifications
+ * (storing only SHA-256 hash + masked number, never plaintext) and in-memory overlay.
+ */
+export async function recordBuyerPhoneVerification(
+  input: {
+    transactionId: string;
+    phone: string;
+    verificationMethod?: 'WHATSAPP_QUICK_REPLY' | 'WHATSAPP_INBOUND';
+    whatsappMessageId?: string | null;
+    verifiedAt?: string;
+  },
+  supabaseClient?: ReturnType<typeof getServiceSupabase>
+): Promise<void> {
+  const normalized = normalizeWhatsappPhone(input.phone) || input.phone;
+  const phoneHash = hashWhatsappPhone(normalized);
+  const maskedPhone = maskWhatsappNumber(normalized);
+  const verifiedAt = input.verifiedAt || new Date().toISOString();
+  const method = input.verificationMethod || 'WHATSAPP_QUICK_REPLY';
+  const wamid = input.whatsappMessageId || null;
+
+  const store = getWhatsappStore();
+  if (!store.buyerPhoneVerifications) {
+    store.buyerPhoneVerifications = new Map();
+  }
+  store.buyerPhoneVerifications.set(input.transactionId, {
+    transaction_id: input.transactionId,
+    phone_hash: phoneHash,
+    masked_phone: maskedPhone,
+    verified: true,
+    verification_method: method,
+    whatsapp_message_id: wamid,
+    verified_at: verifiedAt,
+  });
+
+  try {
+    const supabase = supabaseClient || getServiceSupabase();
+    const { error } = await supabase
+      .from('buyer_phone_verifications')
+      .upsert(
+        {
+          transaction_id: input.transactionId,
+          phone_hash: phoneHash,
+          masked_phone: maskedPhone,
+          verified: true,
+          verification_method: method,
+          whatsapp_message_id: wamid,
+          verified_at: verifiedAt,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'transaction_id' }
+      );
+
+    if (error && !isSchemaMissingError(error)) {
+      console.warn('Failed recording buyer_phone_verifications row:', error.message);
+    }
+  } catch {
+    // non-fatal when running against unmigrated staging/sandbox DB
+  }
+}
+
+/**
+ * Revokes buyer WhatsApp phone verification in public.buyer_phone_verifications (STOP / "Not me").
+ */
+export async function revokeBuyerPhoneVerification(
+  transactionId: string,
+  supabaseClient?: ReturnType<typeof getServiceSupabase>
+): Promise<void> {
+  const store = getWhatsappStore();
+  const existing = store.buyerPhoneVerifications?.get(transactionId);
+  if (existing) {
+    store.buyerPhoneVerifications?.set(transactionId, {
+      ...existing,
+      verified: false,
+    });
+  }
+
+  try {
+    const supabase = supabaseClient || getServiceSupabase();
+    const { error } = await supabase
+      .from('buyer_phone_verifications')
+      .update({
+        verified: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('transaction_id', transactionId);
+
+    if (error && !isSchemaMissingError(error)) {
+      console.warn('Failed revoking buyer_phone_verifications row:', error.message);
+    }
+  } catch {
+    // non-fatal when running against unmigrated staging/sandbox DB
+  }
+}
+
+export function getInMemoryBuyerPhoneVerification(
+  transactionId: string
+): BuyerPhoneVerificationRecord | undefined {
+  return getWhatsappStore().buyerPhoneVerifications?.get(transactionId);
+}
+
 export const WHATSAPP_DB_COLUMNS =
   'buyer_whatsapp_consent, buyer_phone_verified, buyer_phone_verified_at, whatsapp_message_id, whatsapp_delivery_status, whatsapp_blocked';
 
@@ -624,23 +741,62 @@ export async function selectTransactionWithWhatsapp<T extends Record<string, any
     .eq('id', id)
     .maybeSingle();
 
+  let txData: Record<string, any> | null = null;
   if (!first.error) {
-    return { data: (first.data as unknown as T) || null, error: null };
-  }
-
-  if (isSchemaMissingError(first.error)) {
+    txData = (first.data as unknown as Record<string, any>) || null;
+  } else if (isSchemaMissingError(first.error)) {
     const fallback = await supabase
       .from('transactions')
       .select(baseColumns)
       .eq('id', id)
       .maybeSingle();
-    return {
-      data: (fallback.data as unknown as T) || null,
-      error: fallback.error,
-    };
+    if (fallback.error) {
+      return { data: null, error: fallback.error };
+    }
+    txData = (fallback.data as unknown as Record<string, any>) || null;
+  } else {
+    return { data: null, error: first.error };
   }
 
-  return { data: null, error: first.error };
+  if (!txData) {
+    return { data: null, error: null };
+  }
+
+  const memBlocked = getWhatsappStore().txStates.get(id)?.whatsapp_blocked;
+  if (!txData.buyer_phone_verified && !txData.whatsapp_blocked && !memBlocked) {
+    try {
+      const { data: bpv, error: bpvErr } = await supabase
+        .from('buyer_phone_verifications')
+        .select('verified, verified_at')
+        .eq('transaction_id', id)
+        .eq('verified', true)
+        .maybeSingle();
+
+      if (!bpvErr && bpv?.verified) {
+        txData = {
+          ...txData,
+          buyer_phone_verified: true,
+          buyer_phone_verified_at: bpv.verified_at ?? txData.buyer_phone_verified_at ?? null,
+        };
+      } else if (bpvErr && isSchemaMissingError(bpvErr)) {
+        const memBpv = getWhatsappStore().buyerPhoneVerifications?.get(id);
+        if (memBpv?.verified) {
+          txData = {
+            ...txData,
+            buyer_phone_verified: true,
+            buyer_phone_verified_at: memBpv.verified_at ?? txData.buyer_phone_verified_at ?? null,
+          };
+        }
+      }
+    } catch {
+      // non-fatal when running against unmigrated staging/sandbox DB
+    }
+  }
+
+  return {
+    data: (txData as unknown as T) || null,
+    error: null,
+  };
 }
 
 /**
@@ -729,10 +885,11 @@ export async function verifyVendorEligibleForWhatsapp(
  */
 export function applyWhatsappVerificationRedaction<T extends Record<string, any>>(tx: T): T {
   const fallback = tx?.id ? getTransactionWhatsappFallbackState(tx.id) : undefined;
+  const bpvFallback = tx?.id ? getInMemoryBuyerPhoneVerification(tx.id) : undefined;
   const buyerPhoneVerified =
     typeof tx.buyer_phone_verified === 'boolean'
-      ? tx.buyer_phone_verified || Boolean(fallback?.buyer_phone_verified)
-      : Boolean(fallback?.buyer_phone_verified);
+      ? tx.buyer_phone_verified || Boolean(fallback?.buyer_phone_verified) || Boolean(bpvFallback?.verified)
+      : Boolean(fallback?.buyer_phone_verified) || Boolean(bpvFallback?.verified);
 
   const whatsappBlocked =
     typeof tx.whatsapp_blocked === 'boolean'
@@ -749,7 +906,8 @@ export function applyWhatsappVerificationRedaction<T extends Record<string, any>
       ? tx.buyer_whatsapp_consent || Boolean(fallback?.buyer_whatsapp_consent)
       : Boolean(fallback?.buyer_whatsapp_consent);
 
-  const buyerPhoneVerifiedAt = tx.buyer_phone_verified_at || fallback?.buyer_phone_verified_at || null;
+  const buyerPhoneVerifiedAt =
+    tx.buyer_phone_verified_at || fallback?.buyer_phone_verified_at || (bpvFallback?.verified ? bpvFallback.verified_at : null) || null;
   const whatsappMessageId = tx.whatsapp_message_id || fallback?.whatsapp_message_id || null;
 
   const isVerifiedAndUnblocked = buyerPhoneVerified && !whatsappBlocked;

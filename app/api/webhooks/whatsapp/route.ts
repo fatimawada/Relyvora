@@ -11,6 +11,8 @@ import {
   isSchemaMissingError,
   maskWhatsappNumber,
   normalizeWhatsappPhone,
+  recordBuyerPhoneVerification,
+  revokeBuyerPhoneVerification,
   selectTransactionWithWhatsapp,
   updateTransactionWhatsappState,
   verifyMetaWebhookSignature,
@@ -190,6 +192,7 @@ export async function POST(request: NextRequest) {
                   { whatsapp_blocked: true, buyer_phone_verified: false },
                   supabase
                 );
+                await revokeBuyerPhoneVerification(openTx.id, supabase);
               }
             }
 
@@ -239,6 +242,7 @@ export async function POST(request: NextRequest) {
                 { whatsapp_blocked: true, buyer_phone_verified: false },
                 supabase
               );
+              await revokeBuyerPhoneVerification(txId, supabase);
             }
 
             await supabase
@@ -314,11 +318,21 @@ export async function POST(request: NextRequest) {
               continue;
             }
 
+            const verifiedAt = new Date().toISOString();
             await updateTransactionWhatsappState(
               txId,
               {
                 buyer_phone_verified: true,
-                buyer_phone_verified_at: new Date().toISOString(),
+                buyer_phone_verified_at: verifiedAt,
+              },
+              supabase
+            );
+            await recordBuyerPhoneVerification(
+              {
+                transactionId: txId,
+                phone: senderE164,
+                verificationMethod: 'WHATSAPP_QUICK_REPLY',
+                verifiedAt,
               },
               supabase
             );
