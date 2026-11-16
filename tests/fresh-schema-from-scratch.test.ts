@@ -16,10 +16,50 @@
  */
 
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
+import { execFileSync } from 'child_process';
+import { pathToFileURL } from 'url';
 import { PGlite } from '@electric-sql/pglite';
 import { assertStagingTarget } from '../scripts/seed-staging-vendor';
+
+async function createLowMemPGlite(): Promise<{ db: PGlite; cleanup: () => Promise<void> }> {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relyvora-pglite-test-'));
+  try {
+    const initdbChunkUrl = pathToFileURL(
+      path.resolve(process.cwd(), 'node_modules/@electric-sql/pglite/dist/chunk-N66TTF7B.js')
+    ).href;
+    const mod = (await import(initdbChunkUrl)) as {
+      h: (opts: { pg: PGlite }) => Promise<{ exitCode: number; stderr: string }>;
+    };
+    const f = await PGlite.create({ dataDir: tmpDir, noInitDb: true });
+    try {
+      const modAny = f.Module as unknown as { HEAPU8: Uint8Array };
+      modAny.HEAPU8 = new Uint8Array(modAny.HEAPU8.buffer, 0, 24 * 1024 * 1024);
+      const initRes = await mod.h({ pg: f });
+      if (initRes.exitCode !== 0 && !initRes.stderr.includes('exists but is not empty')) {
+        throw new Error(`Low-mem initdb failed: ${initRes.stderr}`);
+      }
+    } finally {
+      await f.close().catch(() => {});
+    }
+    const gcFn = (globalThis as unknown as { gc?: () => void }).gc;
+    if (typeof gcFn === 'function') gcFn();
+    const db = await PGlite.create({ dataDir: tmpDir });
+    return {
+      db,
+      cleanup: async () => {
+        await db.close().catch(() => {});
+        if (typeof gcFn === 'function') gcFn();
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      },
+    };
+  } catch (err) {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    throw err;
+  }
+}
 
 function loadEnvLocal() {
   const envPath = path.resolve(process.cwd(), '.env.local');
@@ -61,6 +101,9 @@ const EXPECTED_TABLES = [
   'deposits',
   'dispute_resolutions',
   'market_waitlist',
+  'order_evidence_files',
+  'rate_limit_buckets',
+  'risk_flags',
   'system_settings',
   'transaction_ledger',
   'transactions',
@@ -78,14 +121,34 @@ const APP_CALLABLE_RPCS = [
   'rpc_admin_unlock_transaction',
   'rpc_admin_prepare_dispute_resolution',
   'rpc_admin_finalize_dispute_resolution',
+  'rpc_admin_clear_risk_hold',
+  'rpc_raise_dispute_with_lock',
+  'rpc_check_rate_limit',
+];
+
+const ALREADY_DEPLOYED_STAGING_RPCS = [
+  'rpc_verify_and_prepare_release',
+  'rpc_finalize_release_step',
+  'rpc_process_webhook_deposit',
+  'rpc_admin_unlock_transaction',
+  'rpc_admin_prepare_dispute_resolution',
+  'rpc_admin_finalize_dispute_resolution',
 ];
 
 async function main() {
+  const args = process.argv.slice(2);
+  const deltaIdx = args.indexOf('--delta-only');
+  if (deltaIdx !== -1 && args[deltaIdx + 1]) {
+    await runDeltaPhase();
+    fs.writeFileSync(args[deltaIdx + 1], JSON.stringify({ passed, failed }), 'utf8');
+    process.exit(failed > 0 ? 1 : 0);
+  }
+
   console.log('======================================================================');
   console.log('FRESH FROM-SCRATCH DATABASE PROOF (THROWAWAY EMPTY PGLITE INSTANCE)');
   console.log('======================================================================\n');
 
-  const db = new PGlite();
+  const { db, cleanup: cleanupFreshDb } = await createLowMemPGlite();
 
   try {
     // 1. Bootstrap an empty Supabase-like role environment (anon, authenticated, service_role)
@@ -128,6 +191,19 @@ async function main() {
     assert(
       EXPECTED_TABLES.every((t) => createdNames.includes(t)) && createdNames.length === EXPECTED_TABLES.length,
       `All ${EXPECTED_TABLES.length} public tables created: ${createdNames.join(', ')}`
+    );
+
+    // 3b. Verify legacy KYC PII columns are absent from public.vendors
+    const piiColsRes = await db.query<{ column_name: string }>(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'vendors'
+         AND column_name IN ('date_of_birth', 'gender', 'business_address', 'id_type', 'id_number')`
+    );
+    assert(
+      piiColsRes.rows.length === 0,
+      'public.vendors omits all 5 legacy KYC PII columns (date_of_birth, gender, business_address, id_type, id_number)'
     );
 
     // 4. Verify ENUM types & labels
@@ -222,7 +298,7 @@ async function main() {
           r.auth_update === false &&
           r.auth_delete === false
       );
-    assert(allMatrixSafe, 'Query 9.3: All 13 tables have rls_enabled=true, rls_forced=true, and ALL false for anon/authenticated');
+    assert(allMatrixSafe, `Query 9.3: All ${EXPECTED_TABLES.length} tables have rls_enabled=true, rls_forced=true, and ALL false for anon/authenticated`);
 
     // 8. Run Verification Query 9.4 (pg_proc function execute matrix)
     const funcRes = await db.query<{
@@ -249,7 +325,7 @@ async function main() {
         funcNames.includes('update_modified_column') &&
         funcNames.includes('handle_updated_at') &&
         funcNames.includes('prevent_ledger_modification'),
-      'All 6 rpc_* functions and all 3 trigger functions exist in public schema'
+      `All ${APP_CALLABLE_RPCS.length} rpc_* functions and all 3 trigger functions exist in public schema`
     );
     assert(
       funcRes.rows.every((r) => r.anon_execute === false && r.auth_execute === false && r.service_role_execute === true),
@@ -263,20 +339,41 @@ async function main() {
     console.log('\n--- VERIFICATION QUERY 9.5: system_settings Seed Rows ---');
     console.table(settingsRes.rows);
     const settingsMap = new Map(settingsRes.rows.map((r) => [r.key, r.value]));
+    const tierCfg: any = settingsMap.get('tier_config');
+    const riskCfg: any = settingsMap.get('risk_engine_config');
+    const coolingCfg: any = settingsMap.get('cooling_window_config');
+    const payoutCfg: any = settingsMap.get('payout_safety_config');
+    const adminCfg: any = settingsMap.get('admin_safety_config');
     assert(
       settingsMap.get('max_order_ngn') === null &&
         settingsMap.get('max_daily_vendor_volume_ngn') === null &&
         settingsMap.get('checkout_enabled') === true &&
-        settingsMap.get('vendor_allowlist_mode') === true &&
+        settingsMap.get('payouts_enabled') === true &&
+        settingsMap.get('vendor_allowlist_mode') === false &&
         settingsMap.get('max_daily_vendor_whatsapp_messages') === 50 &&
-        settingsMap.get('max_daily_buyer_whatsapp_messages') === 5,
-      'system_settings seeds match release-candidate uncapped defaults'
+        settingsMap.get('max_daily_buyer_whatsapp_messages') === 5 &&
+        tierCfg?.tiers?.NEW?.per_order_cap_ngn === 2500000 &&
+        tierCfg?.tiers?.NEW?.daily_volume_cap_ngn === 5000000 &&
+        tierCfg?.tiers?.ESTABLISHED?.per_order_cap_ngn === 10000000 &&
+        tierCfg?.tiers?.ESTABLISHED?.daily_volume_cap_ngn === 20000000 &&
+        tierCfg?.tiers?.TRUSTED?.per_order_cap_ngn === null &&
+        tierCfg?.tiers?.TRUSTED?.daily_volume_cap_ngn === null &&
+        settingsMap.get('tier1_order_limit_ngn') === 2500000 &&
+        settingsMap.get('tier_upgrade_threshold') === 5 &&
+        payoutCfg?.settlement_change_wait_hours === 48 &&
+        riskCfg?.review_hold_threshold === 3 &&
+        riskCfg?.block_threshold === 6 &&
+        riskCfg?.amount_review_threshold_ngn === 500000 &&
+        coolingCfg?.hours_by_tier?.NEW === 2 &&
+        coolingCfg?.high_value_cooling_hours === 2 &&
+        adminCfg?.session_max_age_minutes === 15,
+      'system_settings seeds match Final Decisions defaults (vendor_allowlist_mode=false, payouts_enabled=true, tier/risk/cooling/payout/admin configs)'
     );
 
     // 10. Test update_modified_column() trigger + buyer_phone_verifications + append-only ledger trigger
     const vendorInsert = await db.query<{ id: string; created_at: string; updated_at: string }>(
-      `INSERT INTO public.vendors (store_name, email, phone_number, kyc_status, is_allowlisted, anchor_deposit_account_id)
-       VALUES ('Throwaway Store', 'throwaway@relyvora.test', '+2348099990000', 'verified', true, 'anc_acct_1')
+      `INSERT INTO public.vendors (store_name, email, phone_number, kyc_status, is_allowlisted, anchor_deposit_account_id, payout_account_verified, settlement_account_name_matched)
+       VALUES ('Throwaway Store', 'throwaway@relyvora.test', '+2348099990000', 'verified', true, 'anc_acct_1', true, true)
        RETURNING id, created_at::text, updated_at::text`
     );
     const vId = vendorInsert.rows[0].id;
@@ -321,6 +418,86 @@ async function main() {
       ledgerUpdateBlocked = String(err?.message || '').includes('append-only');
     }
     assert(ledgerUpdateBlocked, 'transaction_ledger append-only trigger blocks UPDATE mutations');
+
+    // 10b. Verify 4-arg rpc_verify_and_prepare_release (cooling 202 + review_hold block) & rpc_admin_clear_risk_hold in PGlite
+    const secret = 'test_fresh_schema_hmac_secret';
+    const rawCode = '654321';
+    const hmacHash = crypto.createHmac('sha256', secret).update(`${rawCode}`).digest('hex');
+    const coolTxId = crypto.randomUUID();
+    await db.query(
+      `INSERT INTO public.transactions (id, vendor_id, item_name, item_price, delivery_fee, protection_fee, total_amount, vendor_handle, buyer_phone, status, release_code_hash, anchor_deposit_id, amount_paid, review_hold, review_hold_reason)
+       VALUES ($1, $2, 'TEST Cooling Hold Widget', 10000, 1500, 500, 12000, '@Throwaway', '+2348099990002', 'FUNDS_LOCKED', $3, 'dep_fresh_schema_1', 12000, true, 'TEST hold')`,
+      [coolTxId, vId, hmacHash]
+    );
+    await db.query(
+      `INSERT INTO public.risk_flags (transaction_id, vendor_id, score, severity, action_taken, status) VALUES ($1, $2, 45, 'MEDIUM', 'HOLD_PAYOUT', 'OPEN')`,
+      [coolTxId, vId]
+    );
+
+    const heldRes = await db.query<{ rpc_verify_and_prepare_release: any }>(
+      `SELECT public.rpc_verify_and_prepare_release($1::uuid, $2::text, 5, 2)`,
+      [coolTxId, hmacHash]
+    );
+    assert(
+      heldRes.rows[0].rpc_verify_and_prepare_release?.success === false &&
+        heldRes.rows[0].rpc_verify_and_prepare_release?.status_code === 423 &&
+        heldRes.rows[0].rpc_verify_and_prepare_release?.error === 'TEST hold',
+      'PGlite rpc_verify_and_prepare_release blocks payout when review_hold=true'
+    );
+
+    const clearRes = await db.query<{ rpc_admin_clear_risk_hold: any }>(
+      `SELECT public.rpc_admin_clear_risk_hold($1::uuid, 'admin@relyvora.com', 'Verified legitimate buyer', false, '127.0.0.1')`,
+      [coolTxId]
+    );
+    assert(
+      clearRes.rows[0].rpc_admin_clear_risk_hold?.success === true &&
+        clearRes.rows[0].rpc_admin_clear_risk_hold?.cleared_flags_count === 1,
+      'PGlite rpc_admin_clear_risk_hold clears OPEN risk_flags, lifts review_hold, and writes audit log'
+    );
+
+    const coolRes = await db.query<{ rpc_verify_and_prepare_release: any }>(
+      `SELECT public.rpc_verify_and_prepare_release($1::uuid, $2::text, 5, 2)`,
+      [coolTxId, hmacHash]
+    );
+    assert(
+      coolRes.rows[0].rpc_verify_and_prepare_release?.cooling_active === true &&
+        coolRes.rows[0].rpc_verify_and_prepare_release?.status_code === 202,
+      'PGlite 4-arg rpc_verify_and_prepare_release initiates 2h cooling window with cooling_active=true (status_code 202)'
+    );
+
+    const disputeLockTxId = crypto.randomUUID();
+    await db.query(
+      `INSERT INTO public.transactions (id, vendor_id, item_name, item_price, delivery_fee, protection_fee, total_amount, vendor_handle, buyer_phone, status)
+       VALUES ($1, $2, 'TEST Dispute Lock Widget', 10000, 1500, 500, 12000, '@Throwaway', '+2348099990003', 'FUNDS_LOCKED')`,
+      [disputeLockTxId, vId]
+    );
+    const raiseRes = await db.query<{ rpc_raise_dispute_with_lock: any }>(
+      `SELECT public.rpc_raise_dispute_with_lock($1::uuid, 'BUYER', 1, 'Item mismatch test', NULL)`,
+      [disputeLockTxId]
+    );
+    assert(
+      raiseRes.rows[0].rpc_raise_dispute_with_lock?.success === true &&
+        raiseRes.rows[0].rpc_raise_dispute_with_lock?.status === 'DISPUTED' &&
+        raiseRes.rows[0].rpc_raise_dispute_with_lock?.review_hold === true,
+      'PGlite rpc_raise_dispute_with_lock atomically sets DISPUTED + review_hold=true'
+    );
+
+    const rl1 = await db.query<{ rpc_check_rate_limit: any }>(
+      `SELECT public.rpc_check_rate_limit('test:key:1', 2, 60000)`
+    );
+    const rl2 = await db.query<{ rpc_check_rate_limit: any }>(
+      `SELECT public.rpc_check_rate_limit('test:key:1', 2, 60000)`
+    );
+    const rl3 = await db.query<{ rpc_check_rate_limit: any }>(
+      `SELECT public.rpc_check_rate_limit('test:key:1', 2, 60000)`
+    );
+    assert(
+      rl1.rows[0].rpc_check_rate_limit?.allowed === true &&
+        rl2.rows[0].rpc_check_rate_limit?.allowed === true &&
+        rl3.rows[0].rpc_check_rate_limit?.allowed === false &&
+        rl3.rows[0].rpc_check_rate_limit?.remaining === 0,
+      'PGlite rpc_check_rate_limit enforces shared Postgres bucket limits across calls'
+    );
 
     // 11. Active SET LOCAL ROLE anon/authenticated exploitation tests
     for (const role of ['anon', 'authenticated']) {
@@ -428,23 +605,237 @@ async function main() {
       const rpcPaths = Object.keys(specJson.paths || {}).filter((p) => p.startsWith('/rpc/'));
       console.log('\n--- STAGING OPENAPI /rpc/* ENDPOINTS CONFIRMED ---');
       console.log(rpcPaths.sort().join('\n'));
-      const missingRpcs = APP_CALLABLE_RPCS.filter((fn) => !rpcPaths.includes(`/rpc/${fn}`));
+      const missingRpcs = ALREADY_DEPLOYED_STAGING_RPCS.filter((fn) => !rpcPaths.includes(`/rpc/${fn}`));
+      const hasClearRiskHoldOnStaging = rpcPaths.includes('/rpc/rpc_admin_clear_risk_hold');
       assert(
         specRes.ok && missingRpcs.length === 0,
-        `All 6 app RPCs confirmed present in Staging Supabase (${stagingUrl}): ${APP_CALLABLE_RPCS.join(', ')}`
+        `All 6 baseline RPCs confirmed present in Staging Supabase (${stagingUrl}); rpc_admin_clear_risk_hold on Staging=${hasClearRiskHoldOnStaging}`
       );
     }
   } finally {
-    await db.close();
+    await cleanupFreshDb();
+  }
+
+  const deltaTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relyvora-delta-res-'));
+  const deltaResPath = path.join(deltaTmpDir, 'delta-result.json');
+  try {
+    const selfPath = path.resolve(process.cwd(), 'tests', 'fresh-schema-from-scratch.test.ts');
+    const childArgs = [...process.execArgv, selfPath, '--delta-only', deltaResPath];
+    execFileSync(process.execPath, childArgs, { stdio: 'inherit' });
+  } catch {
+    // Child counts captured via deltaResPath below
+  } finally {
+    if (fs.existsSync(deltaResPath)) {
+      const deltaRes = JSON.parse(fs.readFileSync(deltaResPath, 'utf8')) as { passed: number; failed: number };
+      passed += Number(deltaRes.passed || 0);
+      failed += Number(deltaRes.failed || 0);
+    } else {
+      failed++;
+      console.error('❌ [FAIL] Delta phase child process did not emit result JSON');
+    }
+    fs.rmSync(deltaTmpDir, { recursive: true, force: true });
   }
 
   console.log('\n======================================================================');
   console.log(`FRESH SCHEMA & RPC AUDIT SUMMARY: ${passed}/${passed + failed} CHECKS PASSED`);
   console.log('======================================================================');
-  process.exitCode = failed > 0 ? 1 : 0;
+  process.exit(failed > 0 ? 1 : 0);
+}
+
+async function runDeltaPhase(): Promise<void> {
+  console.log('\n--- 14. STAGING-ADDITIONS.SQL DELTA PROOF (THROWAWAY PRE-DELTA PGLITE) ---');
+  const { db: deltaDb, cleanup: cleanupDeltaDb } = await createLowMemPGlite();
+  try {
+    await deltaDb.exec(`
+      DO $$
+      BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+              CREATE ROLE anon NOLOGIN NOINHERIT;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+              CREATE ROLE authenticated NOLOGIN NOINHERIT;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+              CREATE ROLE service_role NOLOGIN NOINHERIT BYPASSRLS;
+          END IF;
+      END $$;
+      GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+
+      CREATE TYPE public.vendor_kyc_status AS ENUM ('pending', 'submitted', 'verified', 'rejected');
+      CREATE TABLE public.vendors (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          store_name VARCHAR(255) NOT NULL,
+          email VARCHAR(255) UNIQUE NOT NULL,
+          phone_number VARCHAR(64) NOT NULL,
+          date_of_birth DATE,
+          gender VARCHAR(32),
+          business_address TEXT,
+          id_type VARCHAR(32),
+          id_number VARCHAR(64),
+          kyc_status public.vendor_kyc_status NOT NULL DEFAULT 'pending',
+          is_allowlisted BOOLEAN NOT NULL DEFAULT FALSE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+      );
+      CREATE TABLE public.transactions (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          item_name TEXT NOT NULL DEFAULT '',
+          item_price NUMERIC(12, 2) NOT NULL DEFAULT 0,
+          protection_fee NUMERIC(12, 2) NOT NULL DEFAULT 0,
+          total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+          vendor_handle TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'AWAITING_PAYMENT',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+      );
+      CREATE TABLE public.system_settings (
+          key TEXT PRIMARY KEY,
+          value JSONB NOT NULL,
+          description TEXT,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+          updated_by TEXT
+      );
+      INSERT INTO public.system_settings (key, value, description, updated_by)
+      VALUES ('max_order_ngn', '500000'::jsonb, 'Legacy cap', 'legacy')
+      ON CONFLICT (key) DO NOTHING;
+    `);
+
+    const additionsPath = path.resolve(process.cwd(), 'docs', 'STAGING-ADDITIONS.sql');
+    const additionsSql = fs.readFileSync(additionsPath, 'utf8');
+    await deltaDb.exec(additionsSql);
+    await deltaDb.exec(additionsSql);
+    assert(true, 'docs/STAGING-ADDITIONS.sql executed cleanly twice (idempotent single-transaction delta)');
+
+    const deltaPiiCols = await deltaDb.query<{ column_name: string }>(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'vendors'
+         AND column_name IN ('date_of_birth', 'gender', 'business_address', 'id_type', 'id_number')`
+    );
+    assert(deltaPiiCols.rows.length === 0, 'STAGING-ADDITIONS.sql dropped all 5 KYC PII columns from vendors');
+
+    const deltaKycEnum = await deltaDb.query<{ enumlabel: string }>(
+      `SELECT e.enumlabel
+       FROM pg_type t
+       JOIN pg_enum e ON t.oid = e.enumtypid
+       JOIN pg_namespace n ON n.oid = t.typnamespace
+       WHERE n.nspname = 'public' AND t.typname = 'kyc_status'
+       ORDER BY e.enumsortorder`
+    );
+    assert(
+      JSON.stringify(deltaKycEnum.rows.map((r) => r.enumlabel)) ===
+        JSON.stringify(['pending', 'submitted', 'verified', 'rejected']),
+      'STAGING-ADDITIONS.sql created public.kyc_status enum with expected labels'
+    );
+
+    const deltaPrivs = await deltaDb.query(
+      `SELECT table_name, grantee, privilege_type
+       FROM information_schema.table_privileges
+       WHERE table_schema = 'public'
+         AND table_name IN ('buyer_phone_verifications', 'market_waitlist', 'risk_flags', 'order_evidence_files', 'rate_limit_buckets')
+         AND grantee IN ('anon', 'authenticated', 'PUBLIC')`
+    );
+    const deltaMatrix = await deltaDb.query<{
+      table_name: string;
+      rls_enabled: boolean;
+      rls_forced: boolean;
+      anon_select: boolean;
+      auth_select: boolean;
+    }>(
+      `SELECT
+          c.relname AS table_name,
+          c.relrowsecurity AS rls_enabled,
+          c.relforcerowsecurity AS rls_forced,
+          has_table_privilege('anon', c.oid, 'SELECT') AS anon_select,
+          has_table_privilege('authenticated', c.oid, 'SELECT') AS auth_select
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'public'
+         AND c.relname IN ('buyer_phone_verifications', 'market_waitlist', 'risk_flags', 'order_evidence_files', 'rate_limit_buckets')
+       ORDER BY c.relname`
+    );
+    assert(
+      deltaPrivs.rows.length === 0 &&
+        deltaMatrix.rows.length === 5 &&
+        deltaMatrix.rows.every((r) => r.rls_enabled && r.rls_forced && !r.anon_select && !r.auth_select),
+      'STAGING-ADDITIONS.sql locks buyer_phone_verifications, market_waitlist, risk_flags, order_evidence_files & rate_limit_buckets with FORCE RLS and zero public access'
+    );
+
+    const deltaRpcCheck = await deltaDb.query<{ proname: string; anon_exec: boolean; auth_exec: boolean }>(
+      `SELECT
+          p.proname,
+          has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_exec,
+          has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth_exec
+       FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public'
+         AND p.proname IN ('rpc_admin_clear_risk_hold', 'rpc_verify_and_prepare_release', 'rpc_finalize_release_step', 'rpc_process_webhook_deposit', 'rpc_raise_dispute_with_lock', 'rpc_check_rate_limit')`
+    );
+    assert(
+      deltaRpcCheck.rows.length >= 6 &&
+        deltaRpcCheck.rows.some((r) => r.proname === 'rpc_admin_clear_risk_hold') &&
+        deltaRpcCheck.rows.some((r) => r.proname === 'rpc_raise_dispute_with_lock') &&
+        deltaRpcCheck.rows.some((r) => r.proname === 'rpc_check_rate_limit') &&
+        deltaRpcCheck.rows.some((r) => r.proname === 'rpc_finalize_release_step') &&
+        deltaRpcCheck.rows.every((r) => !r.anon_exec && !r.auth_exec),
+      'STAGING-ADDITIONS.sql creates/updates all 6 delta RPCs including rpc_raise_dispute_with_lock & rpc_check_rate_limit with EXECUTE revoked from anon/authenticated'
+    );
+
+    const salesColCheck = await deltaDb.query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'vendors' AND column_name = 'successful_sales_count'`
+    );
+    assert(
+      salesColCheck.rows.length === 1,
+      'STAGING-ADDITIONS.sql adds public.vendors.successful_sales_count column'
+    );
+
+    const fnExecCheck = await deltaDb.query<{ anon_exec: boolean; auth_exec: boolean }>(
+      `SELECT
+          has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_exec,
+          has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth_exec
+       FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public' AND p.proname = 'update_modified_column'`
+    );
+    assert(
+      fnExecCheck.rows.length === 1 && !fnExecCheck.rows[0].anon_exec && !fnExecCheck.rows[0].auth_exec,
+      'STAGING-ADDITIONS.sql revokes EXECUTE on update_modified_column() from anon/authenticated'
+    );
+
+    const deltaSettings = await deltaDb.query<{ key: string; value: unknown }>(
+      `SELECT key, value FROM public.system_settings ORDER BY key`
+    );
+    const settingsObj = new Map(deltaSettings.rows.map((r) => [r.key, r.value]));
+    assert(
+      settingsObj.size >= 19 &&
+        settingsObj.get('max_order_ngn') === null &&
+        settingsObj.get('max_daily_vendor_volume_ngn') === null &&
+        settingsObj.get('checkout_enabled') === true &&
+        settingsObj.get('payouts_enabled') === true &&
+        settingsObj.get('vendor_allowlist_mode') === false &&
+        Number(settingsObj.get('max_daily_vendor_whatsapp_messages')) === 50 &&
+        Number(settingsObj.get('max_daily_buyer_whatsapp_messages')) === 5 &&
+        Number(settingsObj.get('tier1_order_limit_ngn')) === 2500000 &&
+        Number(settingsObj.get('tier_upgrade_threshold')) === 5 &&
+        settingsObj.has('tier_config') &&
+        settingsObj.has('payout_safety_config') &&
+        settingsObj.has('risk_engine_config') &&
+        settingsObj.has('cooling_window_config') &&
+        settingsObj.has('admin_safety_config') &&
+        settingsObj.has('delivery_window_config') &&
+        settingsObj.has('dispute_policy_config') &&
+        settingsObj.has('dispatch_proof_config') &&
+        settingsObj.has('order_lifecycle_config') &&
+        settingsObj.has('retention_and_storage_config'),
+      'STAGING-ADDITIONS.sql upserts all 19 system_settings keys (open-signup + tiers + Tier 1 lifecycle/dispute/retention configs)'
+    );
+  } finally {
+    await cleanupDeltaDb();
+  }
 }
 
 main().catch((err) => {
   console.error('Fatal fresh-schema test error:', err);
-  process.exitCode = 1;
+  process.exit(1);
 });

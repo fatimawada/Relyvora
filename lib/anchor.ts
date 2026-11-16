@@ -205,13 +205,14 @@ export interface CustomerKycInput {
   customerId: string;
   level?: 'TIER_1' | 'TIER_2' | 'TIER_3' | 'FULL';
   bvn?: string;
+  nin?: string;
   dateOfBirth?: string; // YYYY-MM-DD
   gender?: 'MALE' | 'FEMALE' | string;
 }
 
 /**
  * Endpoint: POST /customers/{customerId}/verification/individual
- * Passes a valid dummy BVN to upgrade customer to Tier 1.
+ * Passes customer BVN or NIN + DOB/gender directly to Anchor KYC verification.
  */
 export async function verifyAnchorCustomer(
   customerIdOrInput: string | CustomerKycInput,
@@ -226,18 +227,23 @@ export async function verifyAnchorCustomer(
     ? { customerId: customerIdOrInput, bvn, dateOfBirth, gender, level: 'TIER_1' }
     : {
         customerId: customerIdOrInput.customerId,
-        bvn: customerIdOrInput.bvn || bvn,
+        bvn: customerIdOrInput.bvn,
+        nin: customerIdOrInput.nin,
         dateOfBirth: customerIdOrInput.dateOfBirth || dateOfBirth,
         gender: customerIdOrInput.gender || gender,
         level: customerIdOrInput.level || 'TIER_1',
       };
+
+  const identityAttrs = input.nin
+    ? { nin: input.nin }
+    : { bvn: input.bvn || bvn };
 
   const payload = {
     data: {
       type: 'IndividualCustomerVerification',
       attributes: {
         level: input.level || 'TIER_1',
-        bvn: input.bvn || '22222222222',
+        ...identityAttrs,
         dateOfBirth: input.dateOfBirth || '1994-06-25',
         gender: input.gender || 'MALE',
       },
@@ -826,4 +832,34 @@ export async function getAnchorAccountBalance(accountId: string): Promise<{ avai
     availableBalance: attributes.availableBalance ?? attributes.balance ?? 0,
     ledgerBalance: attributes.ledgerBalance ?? attributes.balance ?? 0,
   };
+}
+
+/**
+ * Closes / deactivates a Virtual NUBAN in Anchor when an unpaid order expires or is cancelled.
+ * Safe no-op in sandbox or when virtualNubanId is absent.
+ */
+export async function closeAnchorVirtualNuban(
+  virtualNubanId?: string | null
+): Promise<{ closed: boolean; skipped?: boolean; error?: string }> {
+  if (!virtualNubanId || virtualNubanId.startsWith('sandbox_')) {
+    return { closed: true, skipped: true };
+  }
+  if (!process.env.ANCHOR_SECRET_KEY) {
+    return { closed: true, skipped: true };
+  }
+
+  const baseUrl = getAnchorBaseUrl();
+  try {
+    const response = await fetch(`${baseUrl}/virtual-nubans/${encodeURIComponent(virtualNubanId)}`, {
+      method: 'DELETE',
+      headers: getAnchorHeaders(),
+    });
+    if (response.ok || response.status === 404 || response.status === 204) {
+      return { closed: true };
+    }
+    const errBody = await response.text().catch(() => '');
+    return { closed: false, error: `HTTP ${response.status}: ${errBody.slice(0, 200)}` };
+  } catch (err: any) {
+    return { closed: false, error: err?.message || 'Anchor Virtual NUBAN closure failed' };
+  }
 }

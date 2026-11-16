@@ -12,23 +12,23 @@ import { Logo } from '@/components/brand/Logo';
 import { StatusBadge } from '@/components/StatusBadge';
 import { SimulatedPaymentModal } from '@/components/SimulatedPaymentModal';
 import { AnchorBrandText } from '@/components/common/AnchorBrandText';
-import { 
-  ShieldCheck, 
-  Lock, 
-  CheckCircle2, 
-  Sparkles, 
-  ArrowRight, 
-  ShieldAlert, 
-  Check, 
+import { ProductFooter } from '@/components/ProductFooter';
+import {
+  ShieldCheck,
+  Lock,
+  CheckCircle2,
+  ArrowRight,
+  ShieldAlert,
+  Check,
   HelpCircle,
-  Truck,
-  KeyRound,
   AlertCircle,
   Copy,
   Building2,
   RefreshCw,
   ArrowLeft,
-  MessageCircle
+  MessageCircle,
+  Clock,
+  XCircle,
 } from 'lucide-react';
 
 export default function BuyerCheckoutPage() {
@@ -45,12 +45,13 @@ export default function BuyerCheckoutPage() {
   const [isResendingWhatsapp, setIsResendingWhatsapp] = useState(false);
   const [resendWhatsappNotice, setResendWhatsappNotice] = useState<string | null>(null);
   const [resendWhatsappError, setResendWhatsappError] = useState<string | null>(null);
+  const [buyerTermsAccepted, setBuyerTermsAccepted] = useState(false);
+  const [isSavingConsent, setIsSavingConsent] = useState(false);
+  const [consentError, setConsentError] = useState<string | null>(null);
   const [storedReleaseCode, setStoredReleaseCode] = useState<string | null>(null);
-  const [storedAuthToken, setStoredAuthToken] = useState<string | null>(null);
 
   const liveMode = isLiveMode() || transaction?.payments_mode === 'live';
 
-  // Restore buyer session and release code from localStorage ONLY in sandbox mode
   useEffect(() => {
     if (liveMode) {
       setStoredReleaseCode(null);
@@ -63,10 +64,9 @@ export default function BuyerCheckoutPage() {
           const parsed = JSON.parse(cached);
           if (parsed.releaseCode) {
             setStoredReleaseCode(parsed.releaseCode);
-            setStoredAuthToken(parsed.authToken || null);
           }
         } catch {
-          // ignore cache parse errors
+          // ignore
         }
       }
     }
@@ -79,6 +79,9 @@ export default function BuyerCheckoutPage() {
       const { data, error } = await getTransactionById(id);
       if (data) {
         setTransaction(data);
+        if (data.buyer_terms_accepted_at) {
+          setBuyerTermsAccepted(true);
+        }
       } else {
         setError(error || 'Transaction not found.');
       }
@@ -116,8 +119,45 @@ export default function BuyerCheckoutPage() {
     router,
   ]);
 
+  const handleTermsConsentChange = async (checked: boolean) => {
+    setBuyerTermsAccepted(checked);
+    setConsentError(null);
+    if (!checked || !transaction) return;
+
+    setIsSavingConsent(true);
+    try {
+      const res = await fetch(`/api/escrow/${encodeURIComponent(transaction.id)}/consent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acceptedTerms: true }),
+      });
+      const json = await res.json();
+      if (json.success && json.acceptedAt) {
+        setTransaction((prev) =>
+          prev
+            ? {
+                ...prev,
+                buyer_terms_accepted_at: json.acceptedAt,
+                buyer_terms_version: json.termsVersion,
+              }
+            : prev
+        );
+      } else if (!json.success) {
+        setConsentError(json.error || 'Could not record consent.');
+      }
+    } catch (err: any) {
+      setConsentError(err?.message || 'Network error saving terms consent.');
+    } finally {
+      setIsSavingConsent(false);
+    }
+  };
+
   const handleConfirmPayment = async (method: string) => {
     if (!transaction) return;
+    if (!buyerTermsAccepted && !transaction.buyer_terms_accepted_at) {
+      setConsentError('Please accept the Terms and Privacy Policy before paying.');
+      return;
+    }
 
     try {
       const res = await fetch('/api/escrow/confirm-payment', {
@@ -134,22 +174,22 @@ export default function BuyerCheckoutPage() {
         const code = json.sandbox_release_code || '';
         const token = json.buyer_auth_token || '';
 
-        // Owner Rule 3 Step B: Save in buyer localStorage
         if (typeof window !== 'undefined' && code) {
-          localStorage.setItem(`relyvora_buyer_escrow_${transaction.id}`, JSON.stringify({
-            transactionId: transaction.id,
-            releaseCode: code,
-            authToken: token,
-            timestamp: Date.now(),
-          }));
+          localStorage.setItem(
+            `relyvora_buyer_escrow_${transaction.id}`,
+            JSON.stringify({
+              transactionId: transaction.id,
+              releaseCode: code,
+              authToken: token,
+              timestamp: Date.now(),
+            })
+          );
         }
 
         setStoredReleaseCode(code);
-        setStoredAuthToken(token);
         setTransaction(json.transaction);
         setIsPaymentModalOpen(false);
 
-        // Redirect to order tracker with code param
         router.push(`/order/${transaction.id}?new_payment=true&code=${code}`);
       } else {
         alert(`Payment error: ${json.error || 'Failed to process payment'}`);
@@ -166,7 +206,7 @@ export default function BuyerCheckoutPage() {
       const { data } = await getTransactionById(id);
       if (data) {
         setTransaction(data);
-        if (data.status !== 'AWAITING_PAYMENT') {
+        if (data.status !== 'AWAITING_PAYMENT' && data.status !== 'EXPIRED' && data.status !== 'CANCELLED') {
           router.push(`/order/${data.id}?new_payment=true`);
         }
       }
@@ -235,11 +275,13 @@ export default function BuyerCheckoutPage() {
     );
   }
 
-  const isAlreadyPaid = transaction.status !== 'AWAITING_PAYMENT';
+  const isExpired = transaction.status === 'EXPIRED';
+  const isCancelled = transaction.status === 'CANCELLED';
+  const isAlreadyPaid = !isExpired && !isCancelled && transaction.status !== 'AWAITING_PAYMENT';
+  const consentRecorded = buyerTermsAccepted || Boolean(transaction.buyer_terms_accepted_at);
 
   return (
     <div className="max-w-xl mx-auto px-4 py-6 sm:py-10 space-y-6 w-full">
-      {/* Top Brand Link */}
       <div className="flex items-center justify-between">
         <Link
           href="/"
@@ -255,9 +297,7 @@ export default function BuyerCheckoutPage() {
         </div>
       </div>
 
-      {/* Main Checkout Card */}
       <div className="bg-surface rounded-3xl border border-border shadow-card overflow-hidden transition-colors">
-        {/* Card Header */}
         <div className="p-6 border-b border-border bg-site/50 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Logo variant="symbol" height={32} withLink={false} />
@@ -274,7 +314,6 @@ export default function BuyerCheckoutPage() {
         </div>
 
         <div className="p-6 sm:p-7 space-y-6">
-          {/* Order Item & Price Summary */}
           <div>
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted block mb-1">
               Purchase Details
@@ -289,7 +328,6 @@ export default function BuyerCheckoutPage() {
             )}
           </div>
 
-          {/* Transparent Price Breakdown */}
           <div className="bg-site border border-border rounded-2xl p-4 sm:p-5 space-y-3">
             <div className="flex items-center justify-between text-xs sm:text-sm text-muted">
               <span>Item Agreed Price:</span>
@@ -324,7 +362,6 @@ export default function BuyerCheckoutPage() {
             </div>
           </div>
 
-          {/* How You Are Protected (3-Step Visual Timeline) */}
           <div className="space-y-3">
             <h3 className="text-xs font-bold text-muted uppercase tracking-wide flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4 text-accent" />
@@ -365,15 +402,33 @@ export default function BuyerCheckoutPage() {
                   <p className="text-[11px] text-muted leading-snug">
                     You receive a six-digit release code. Give the code to the dispatch rider only after you have opened the package and checked the items.
                   </p>
+                  <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 mt-1">
+                    Giving the code releases the money. The release code is sent only to the buyer.
+                  </p>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Action Button or Already Paid Alert */}
-          {isAlreadyPaid ? (
+          {/* Terminal Unpaid States (EXPIRED / CANCELLED) */}
+          {isExpired ? (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 text-center space-y-2.5">
+              <Clock className="w-8 h-8 text-amber-600 dark:text-amber-400 mx-auto" />
+              <h3 className="text-sm font-heading font-semibold text-main">Payment Link Expired</h3>
+              <p className="text-xs text-muted leading-relaxed">
+                This unpaid escrow link expired and its temporary virtual bank account has been closed. Ask {transaction.vendor_handle} for a fresh checkout link before transferring any funds.
+              </p>
+            </div>
+          ) : isCancelled ? (
+            <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-5 text-center space-y-2.5">
+              <XCircle className="w-8 h-8 text-rose-600 dark:text-rose-400 mx-auto" />
+              <h3 className="text-sm font-heading font-semibold text-main">Order Cancelled</h3>
+              <p className="text-xs text-muted leading-relaxed">
+                This order was cancelled ({transaction.cancellation_reason || 'pre-dispatch vendor cancellation'}). Do not transfer funds to any closed account.
+              </p>
+            </div>
+          ) : isAlreadyPaid ? (
             !liveMode && storedReleaseCode ? (
-              /* Sandbox Mode Success Screen */
               <div className="bg-surface border-2 border-accent/40 rounded-2xl p-6 sm:p-7 text-center space-y-4 shadow-card transition-colors">
                 <div className="w-12 h-12 rounded-full bg-accent/15 text-accent flex items-center justify-center mx-auto border border-accent/30">
                   <CheckCircle2 className="w-6 h-6" />
@@ -397,7 +452,7 @@ export default function BuyerCheckoutPage() {
                 <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-left flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300 max-w-md mx-auto">
                   <Lock className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                   <span>
-                    Keep this code confidential. Give the code to the dispatch rider only after you have opened the package and checked the items.
+                    <strong>Giving the code releases the money.</strong> Keep this code confidential — the release code is sent only to the buyer. Give the code to the dispatch rider only after you have opened the package and checked the items.
                   </span>
                 </div>
                 <div className="pt-1">
@@ -411,7 +466,6 @@ export default function BuyerCheckoutPage() {
                 </div>
               </div>
             ) : (
-              /* Live Mode (or reloaded page) Success Screen: Never renders plaintext code on page */
               <div className="bg-surface border-2 border-accent/40 rounded-2xl p-6 sm:p-7 text-center space-y-4 shadow-card transition-colors">
                 <div className="w-12 h-12 rounded-full bg-accent/15 text-accent flex items-center justify-center mx-auto border border-accent/30">
                   <CheckCircle2 className="w-6 h-6" />
@@ -426,6 +480,12 @@ export default function BuyerCheckoutPage() {
                   <p className="text-xs sm:text-sm text-muted max-w-md mx-auto leading-relaxed">
                     Give the code to the dispatch rider only after you have opened the package and checked the items.
                   </p>
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-left flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300 max-w-md mx-auto">
+                    <Lock className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>Giving the code releases the money.</strong> The release code is sent only to the buyer — never share it before inspecting your package.
+                    </span>
+                  </div>
                 </div>
                 <Link
                   href={`/order/${transaction.id}`}
@@ -505,132 +565,170 @@ export default function BuyerCheckoutPage() {
                 </button>
               </div>
             </div>
-          ) : liveMode ? (
-            /* Live Mode: Bank Transfer ONLY via Anchor Virtual Account Card */
-            <div className="space-y-4 pt-2">
-              <div className="bg-navy-950 text-white rounded-2xl p-5 space-y-4 border border-border shadow-md">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Building2 className="w-5 h-5 text-accent" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-accent">
-                      Virtual Bank Transfer Account
-                    </span>
-                  </div>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-accent/20 text-accent border border-accent/30">
-                    <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-                    <span>Awaiting Transfer</span>
+          ) : (
+            <div className="space-y-4 pt-1">
+              {/* Mandatory Buyer Terms & Privacy Consent Gate */}
+              <div className="bg-site border border-border rounded-2xl p-4 space-y-2">
+                <label htmlFor="buyerTermsConsent" className="flex items-start gap-2.5 cursor-pointer text-xs text-main">
+                  <input
+                    id="buyerTermsConsent"
+                    type="checkbox"
+                    checked={consentRecorded}
+                    disabled={isSavingConsent}
+                    onChange={(e) => handleTermsConsentChange(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-border text-accent focus:ring-accent shrink-0 cursor-pointer"
+                  />
+                  <span className="leading-snug">
+                    By paying you agree to the{' '}
+                    <Link href="/terms" target="_blank" rel="noopener noreferrer" className="text-accent font-semibold underline">
+                      Terms of Service
+                    </Link>
+                    ,{' '}
+                    <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="text-accent font-semibold underline">
+                      Privacy Policy
+                    </Link>
+                    , and{' '}
+                    <Link href="/prohibited-items" target="_blank" rel="noopener noreferrer" className="text-accent font-semibold underline">
+                      Prohibited Items Policy
+                    </Link>
+                    .
                   </span>
+                </label>
+                {consentError && (
+                  <p className="text-[11px] text-rose-600 dark:text-rose-400">{consentError}</p>
+                )}
+              </div>
+
+              {!consentRecorded ? (
+                <div className="bg-site border border-dashed border-border rounded-2xl p-4 text-center text-xs text-muted">
+                  Tick the agreement checkbox above to reveal bank transfer details and complete escrow checkout.
                 </div>
-
-                <div className="space-y-3 bg-white/5 border border-white/10 rounded-xl p-4">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400 font-medium">Bank:</span>
-                    <span className="font-bold text-white">{transaction.virtual_bank_name || 'Providus Bank'}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400 font-medium">Account Name:</span>
-                    <span className="font-semibold text-slate-200 truncate max-w-[220px]">
-                      {transaction.virtual_account_name || `Relyvora Escrow / ${transaction.vendor_handle}`}
-                    </span>
-                  </div>
-
-                  <div className="pt-2 border-t border-white/10 flex items-center justify-between">
-                    <div>
-                      <span className="text-[11px] text-slate-400 font-medium block">Account Number:</span>
-                      <span className="text-2xl font-bold font-heading tabular-nums tracking-widest text-accent select-all">
-                        {transaction.virtual_account_number || 'Generating...'}
+              ) : liveMode ? (
+                <div className="space-y-4">
+                  <div className="bg-navy-950 text-white rounded-2xl p-5 space-y-4 border border-border shadow-md">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Building2 className="w-5 h-5 text-accent" />
+                        <span className="text-xs font-bold uppercase tracking-wider text-accent">
+                          Virtual Bank Transfer Account
+                        </span>
+                      </div>
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-accent/20 text-accent border border-accent/30">
+                        <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+                        <span>Awaiting Transfer</span>
                       </span>
                     </div>
+
+                    <div className="space-y-3 bg-white/5 border border-white/10 rounded-xl p-4">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400 font-medium">Bank:</span>
+                        <span className="font-bold text-white">{transaction.virtual_bank_name || 'Providus Bank'}</span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400 font-medium">Account Name:</span>
+                        <span className="font-semibold text-slate-200 truncate max-w-[220px]">
+                          {transaction.virtual_account_name || `Relyvora Escrow / ${transaction.vendor_handle}`}
+                        </span>
+                      </div>
+
+                      <div className="pt-2 border-t border-white/10 flex items-center justify-between">
+                        <div>
+                          <span className="text-[11px] text-slate-400 font-medium block">Account Number:</span>
+                          <span className="text-2xl font-bold font-heading tabular-nums tracking-widest text-accent select-all">
+                            {transaction.virtual_account_number || 'Generating...'}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleCopyAccount}
+                          disabled={!transaction.virtual_account_number}
+                          className="px-3.5 py-2 bg-accent hover:opacity-90 text-[#071229] text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          {copiedAccount ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                          <span>{copiedAccount ? 'Copied' : 'Copy'}</span>
+                        </button>
+                      </div>
+
+                      <div className="pt-2 border-t border-white/10 flex items-center justify-between">
+                        <span className="text-xs text-slate-400 font-medium">Exact Amount:</span>
+                        <span className="text-base font-bold font-heading tabular-nums text-accent">
+                          {formatNaira(Number(transaction.total_amount))}
+                        </span>
+                      </div>
+
+                      <div className="pt-2 border-t border-white/10 flex items-center justify-between text-xs">
+                        <span className="text-slate-400 font-medium">Link Expiry:</span>
+                        <span className="font-heading tabular-nums font-medium text-slate-200">
+                          {transaction.expires_at
+                            ? new Date(transaction.expires_at).toLocaleString('en-NG', {
+                                dateStyle: 'medium',
+                                timeStyle: 'short',
+                              })
+                            : transaction.created_at
+                              ? `${new Date(new Date(transaction.created_at).getTime() + 24 * 60 * 60 * 1000).toLocaleString('en-NG', {
+                                  dateStyle: 'medium',
+                                  timeStyle: 'short',
+                                })} (24h window)`
+                              : '24 hours'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-slate-200 leading-relaxed font-medium">
+                      Pay by bank transfer from your bank app, internet banking or your bank&apos;s USSD code. Transfer the exact amount.
+                    </p>
+
                     <button
                       type="button"
-                      onClick={handleCopyAccount}
-                      disabled={!transaction.virtual_account_number}
-                      className="px-3.5 py-2 bg-accent hover:opacity-90 text-[#071229] text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                      onClick={handleCheckStatus}
+                      disabled={isCheckingStatus}
+                      className="w-full py-3 px-4 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center justify-center gap-2 border border-white/20 transition-all cursor-pointer disabled:opacity-50"
                     >
-                      {copiedAccount ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedAccount ? 'Copied' : 'Copy'}</span>
+                      <RefreshCw className={`w-3.5 h-3.5 text-accent ${isCheckingStatus ? 'animate-spin' : ''}`} />
+                      <span>{isCheckingStatus ? 'Checking Escrow Balance...' : "I've Sent the Transfer • Check Status"}</span>
                     </button>
                   </div>
 
-                  <div className="pt-2 border-t border-white/10 flex items-center justify-between">
-                    <span className="text-xs text-slate-400 font-medium">Exact Amount:</span>
-                    <span className="text-base font-bold font-heading tabular-nums text-accent">
-                      {formatNaira(Number(transaction.total_amount))}
+                  <div className="flex items-center justify-center gap-4 text-[11px] text-muted text-center">
+                    <span className="flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5 text-accent" />
+                      Protected Escrow Custody
                     </span>
-                  </div>
-
-                  <div className="pt-2 border-t border-white/10 flex items-center justify-between text-xs">
-                    <span className="text-slate-400 font-medium">Expiry:</span>
-                    <span className="font-heading tabular-nums font-medium text-slate-200">
-                      {transaction.code_expires_at
-                        ? new Date(transaction.code_expires_at).toLocaleString('en-NG', {
-                            dateStyle: 'medium',
-                            timeStyle: 'short',
-                          })
-                        : transaction.created_at
-                          ? `${new Date(new Date(transaction.created_at).getTime() + 24 * 60 * 60 * 1000).toLocaleString('en-NG', {
-                              dateStyle: 'medium',
-                              timeStyle: 'short',
-                            })} (24h window)`
-                          : '24 hours'}
-                    </span>
+                    <span>•</span>
+                    <AnchorBrandText>Payments powered by Anchor</AnchorBrandText>
+                    <span>•</span>
+                    <span>Bank Transfer Only</span>
                   </div>
                 </div>
+              ) : (
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsPaymentModalOpen(true)}
+                    className="w-full py-4 px-5 rounded-2xl bg-accent hover:opacity-90 text-[#071229] font-bold text-base sm:text-lg flex items-center justify-center gap-2 shadow-card transition-all transform active:scale-[0.99] cursor-pointer"
+                  >
+                    <Lock className="w-5 h-5 text-[#071229]" />
+                    <span>Lock {formatNaira(Number(transaction.total_amount))} in Safe Escrow</span>
+                  </button>
 
-                <p className="text-xs text-slate-200 leading-relaxed font-medium">
-                  Pay by bank transfer from your bank app, internet banking or your bank&apos;s USSD code. Transfer the exact amount.
-                </p>
-
-                <button
-                  type="button"
-                  onClick={handleCheckStatus}
-                  disabled={isCheckingStatus}
-                  className="w-full py-3 px-4 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center justify-center gap-2 border border-white/20 transition-all cursor-pointer disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 text-accent ${isCheckingStatus ? 'animate-spin' : ''}`} />
-                  <span>{isCheckingStatus ? 'Checking Escrow Balance...' : "I've Sent the Transfer • Check Status"}</span>
-                </button>
-              </div>
-
-              <div className="flex items-center justify-center gap-4 text-[11px] text-muted text-center">
-                <span className="flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-accent" />
-                  Protected Escrow Custody
-                </span>
-                <span>•</span>
-                <AnchorBrandText>Payments powered by Anchor</AnchorBrandText>
-                <span>•</span>
-                <span>Bank Transfer Only</span>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsPaymentModalOpen(true)}
-                className="w-full py-4 px-5 rounded-2xl bg-accent hover:opacity-90 text-[#071229] font-bold text-base sm:text-lg flex items-center justify-center gap-2 shadow-card transition-all transform active:scale-[0.99] cursor-pointer"
-              >
-                <Lock className="w-5 h-5 text-[#071229]" />
-                <span>Lock {formatNaira(Number(transaction.total_amount))} in Safe Escrow</span>
-              </button>
-
-              <div className="flex items-center justify-center gap-4 text-[11px] text-muted text-center">
-                <span className="flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-accent" />
-                  Simulated Gateway
-                </span>
-                <span>•</span>
-                <span>Sandbox Mode</span>
-                <span>•</span>
-                <span>Code Issued on Payment</span>
-              </div>
+                  <div className="flex items-center justify-center gap-4 text-[11px] text-muted text-center">
+                    <span className="flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5 text-accent" />
+                      Simulated Gateway
+                    </span>
+                    <span>•</span>
+                    <span>Sandbox Mode</span>
+                    <span>•</span>
+                    <span>Code Issued on Payment</span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Simulated Payment Modal — Rendered ONLY in sandbox mode */}
       {!liveMode && (
         <SimulatedPaymentModal
           isOpen={isPaymentModalOpen}
@@ -640,6 +738,8 @@ export default function BuyerCheckoutPage() {
           itemName={transaction.item_name}
         />
       )}
+
+      <ProductFooter />
     </div>
   );
 }

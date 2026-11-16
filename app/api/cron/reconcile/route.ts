@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runDailyReconciliation } from '@/lib/reconciliation';
+import {
+  expireUnpaidOrders,
+  flagOverdueDispatchesAndSendReminders,
+  retryStuckSettlementLegs,
+} from '@/lib/orderLifecycle';
+import { runRetentionCleanup } from '@/lib/retentionCleanup';
 
 export async function GET(request: NextRequest) {
   return handleCronReconcile(request);
@@ -30,8 +36,14 @@ async function handleCronReconcile(request: NextRequest) {
       }
     }
 
-    // 2. Execute Daily Reconciliation & Integrity Audit
+    // 2. Run automated order lifecycle & retention jobs
+    const expired = await expireUnpaidOrders();
+    const reminders = await flagOverdueDispatchesAndSendReminders();
+    const stuckRetry = await retryStuckSettlementLegs();
+
+    // 3. Execute Daily Reconciliation & Integrity Audit
     const report = await runDailyReconciliation(undefined, { sendAlerts: true });
+    const retention = await runRetentionCleanup();
 
     return NextResponse.json({
       success: true,
@@ -42,6 +54,12 @@ async function handleCronReconcile(request: NextRequest) {
       criticalCount: report.criticalCount,
       warningCount: report.warningCount,
       fboStatus: report.anchorBalance?.status || 'UNKNOWN',
+      lifecycle: {
+        expired,
+        reminders,
+        stuckRetry,
+        retention,
+      },
       report,
     }, { status: 200 });
   } catch (err: any) {

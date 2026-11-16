@@ -21,7 +21,7 @@ import { calculatePricing } from '../lib/pricing';
 import { calculateFee } from '../lib/feeConfig';
 import { computeReleaseCodeHmac } from '../lib/releaseCode';
 import { isAnchorBrandApproved, ANCHOR_BRAND_APPROVED_DEFAULT } from '../lib/anchorBrand';
-import { verifyAdminSession } from '../lib/adminAuth';
+import { verifyAdminSession, verifyAdminIdentityForMfaSetup } from '../lib/adminAuth';
 import { maskPhoneNumber } from '../lib/smsDelivery';
 import {
   setWhatsappTransportForTests,
@@ -29,6 +29,7 @@ import {
   getInMemoryOutboundLogsForTests,
   getInMemoryBuyerPhoneVerification,
   getWhatsappDailyLimits,
+  hashWhatsappPhone,
   MetaTemplatePayload,
 } from '../lib/whatsapp';
 
@@ -40,7 +41,8 @@ import { POST as whatsappWebhookPost } from '../app/api/webhooks/whatsapp/route'
 import { POST as resendWhatsappPost } from '../app/api/escrow/[id]/resend-whatsapp/route';
 import { POST as reissueCodePost } from '../app/api/escrow/reissue-code/route';
 import { POST as confirmPaymentPost } from '../app/api/escrow/confirm-payment/route';
-import { POST as legacyVendorsOnboardPost } from '../app/api/vendors/onboard/route';
+import { GET as adminSecurityGet } from '../app/api/admin/security/route';
+import { POST as vendorOnboardingPost } from '../app/api/vendor/onboarding/route';
 
 const EXPECTED_STAGING_URL = 'https://bepvqjqjybhhpsfbblqk.supabase.co';
 
@@ -194,9 +196,16 @@ async function runReleaseCandidateSuite() {
     const origPepper = process.env.RELEASE_CODE_PEPPER;
     const origWaAppSecret = process.env.WHATSAPP_APP_SECRET;
     const origWaVerifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
+    const origWaAllowedRecipients = process.env.WHATSAPP_ALLOWED_RECIPIENTS;
     const origResendKey = process.env.RESEND_API_KEY;
     const realFetch = globalThis.fetch;
     const realConsoleLog = console.log;
+
+    // Clean stale Staging WhatsApp logs/DNC for test fixtures before hitting daily limits
+    const staleDefaultHash = hashWhatsappPhone('+2348099991234');
+    await supabase.from('whatsapp_message_log').delete().eq('vendor_handle', '@StagingTestVendor');
+    await supabase.from('whatsapp_message_log').delete().eq('recipient_phone_hash', staleDefaultHash);
+    await supabase.from('whatsapp_do_not_contact').delete().eq('phone_hash', staleDefaultHash);
 
     const capturedWaPayloads: MetaTemplatePayload[] = [];
     const capturedEmails: Array<{ to: string; subject: string; html: string }> = [];
@@ -208,7 +217,12 @@ async function runReleaseCandidateSuite() {
     process.env.RELEASE_CODE_PEPPER = 'rc_test_pepper_32bytes_hex_staging';
     process.env.WHATSAPP_APP_SECRET = 'wa_rc_test_app_secret_32bytes_min';
     process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN = 'wa_rc_verify_token';
+    delete process.env.WHATSAPP_ALLOWED_RECIPIENTS;
     process.env.RESEND_API_KEY = 're_rc_staging_mock';
+
+    const staleTestHash = hashWhatsappPhone('+2348099991234');
+    await supabase.from('whatsapp_message_log').delete().eq('recipient_phone_hash', staleTestHash);
+    await supabase.from('whatsapp_do_not_contact').delete().eq('phone_hash', staleTestHash);
 
     resetWhatsappTestState();
     setWhatsappTransportForTests(async (payload) => {
@@ -290,7 +304,7 @@ async function runReleaseCandidateSuite() {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          itemName: 'RC Staging Camera Lens',
+          itemName: 'TEST - RC Staging Camera Lens',
           itemPrice: 40000,
           deliveryFee: 2000,
           vendorHandle: '@StagingTestVendor',
@@ -310,21 +324,22 @@ async function runReleaseCandidateSuite() {
       const liveTotalAmount = Number(createJson.transaction.total_amount);
       createdTxIds.push(liveTxId);
 
+      const firstWaPayload = capturedWaPayloads[0];
       assert(
         createJson.whatsapp_delivery_status === 'sent' &&
           capturedWaPayloads.length === 1 &&
-          capturedWaPayloads[0].to === '+2348099991234' &&
-          capturedWaPayloads[0].template.name === 'payment_link_v1',
+          firstWaPayload?.to === '+2348099991234' &&
+          firstWaPayload?.template?.name === 'payment_link_v1',
         'payment_link_v1 auto-sent ONLY to vendor-entered number (+2348099991234)'
       );
 
-      const bodyComp = capturedWaPayloads[0].template.components.find((c) => c.type === 'body') as any;
-      const btnUrlComp = capturedWaPayloads[0].template.components.find(
+      const bodyComp = firstWaPayload?.template?.components?.find((c) => c.type === 'body') as any;
+      const btnUrlComp = firstWaPayload?.template?.components?.find(
         (c) => c.type === 'button' && c.sub_type === 'url'
       ) as any;
       assert(
         bodyComp?.parameters?.[0]?.text === '@StagingTestVendor' &&
-          bodyComp?.parameters?.[1]?.text === 'RC Staging Camera Lens' &&
+          bodyComp?.parameters?.[1]?.text === 'TEST - RC Staging Camera Lens' &&
           btnUrlComp?.parameters?.[0]?.text === liveTxId,
         'payment_link_v1 includes vendor display name, item name, amount, and dynamic order token URL suffix'
       );
@@ -469,10 +484,14 @@ async function runReleaseCandidateSuite() {
 
       const releasePayload = capturedWaPayloads.find((p) => p.template.name === 'release_code_v1');
       const releaseBodyComp = releasePayload?.template.components.find((c) => c.type === 'body') as any;
-      const originalCode = String(releaseBodyComp?.parameters?.[2]?.text || '');
+      const releaseBtnComp = releasePayload?.template.components.find((c) => c.type === 'button') as any;
+      const originalCode = String(releaseBodyComp?.parameters?.[0]?.text || '');
+      const copyBtnCode = String(releaseBtnComp?.parameters?.[0]?.text || '');
       assert(
-        /^\d{6}$/.test(originalCode) && releasePayload?.to === '+2348099991234',
-        'Anchor webhook delivered 6-digit release code via WhatsApp template release_code_v1'
+        /^\d{6}$/.test(originalCode) &&
+          copyBtnCode === originalCode &&
+          releasePayload?.to === '+2348099991234',
+        'Anchor webhook delivered 6-digit release code via AUTHENTICATION WhatsApp template release_code_v1 (body + copy-code button)'
       );
       assert(
         !capturedEmails.some((e) => e.html.includes(originalCode)),
@@ -559,8 +578,12 @@ async function runReleaseCandidateSuite() {
       );
       const reissuedPayload = capturedWaPayloads[waCountBeforeReissue];
       const reissuedBodyComp = reissuedPayload?.template.components.find((c) => c.type === 'body') as any;
-      const reissuedCode = String(reissuedBodyComp?.parameters?.[2]?.text || '');
-      assert(/^\d{6}$/.test(reissuedCode), 'Reissue dispatched new 6-digit release code via WhatsApp');
+      const reissuedBtnComp = reissuedPayload?.template.components.find((c) => c.type === 'button') as any;
+      const reissuedCode = String(reissuedBodyComp?.parameters?.[0]?.text || '');
+      assert(
+        /^\d{6}$/.test(reissuedCode) && String(reissuedBtnComp?.parameters?.[0]?.text || '') === reissuedCode,
+        'Reissue dispatched new 6-digit release code via AUTHENTICATION WhatsApp template release_code_v1'
+      );
 
       // Verify old code no longer works
       const oldHmac = computeReleaseCodeHmac(liveTxId, originalCode);
@@ -633,6 +656,8 @@ async function runReleaseCandidateSuite() {
       else process.env.WHATSAPP_APP_SECRET = origWaAppSecret;
       if (origWaVerifyToken === undefined) delete process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
       else process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN = origWaVerifyToken;
+      if (origWaAllowedRecipients === undefined) delete process.env.WHATSAPP_ALLOWED_RECIPIENTS;
+      else process.env.WHATSAPP_ALLOWED_RECIPIENTS = origWaAllowedRecipients;
       if (origResendKey === undefined) delete process.env.RESEND_API_KEY;
       else process.env.RESEND_API_KEY = origResendKey;
     }
@@ -790,7 +815,7 @@ async function runReleaseCandidateSuite() {
       const accNum = `8800${Math.floor(100000 + Math.random() * 899999)}`;
       await supabase.from('transactions').insert({
         id: testTxId,
-        item_name: `RC ${targetStatus} Status Preservation Check`,
+        item_name: `TEST - RC ${targetStatus} Status Preservation Check`,
         item_price: 10000,
         delivery_fee: 0,
         protection_fee: 500,
@@ -864,7 +889,83 @@ async function runReleaseCandidateSuite() {
       assert(rAal1.statusCode === 403, 'Admin auth rejects non-MFA aal1 session with 403');
       assert(rValid.authorized && rValid.statusCode === 200, 'Admin auth grants 200 for confirmed AAL2 allowlisted admin');
 
-      // Test routes disabled in live/prod mode
+      const rNotEnrolled = await verifyAdminSession(
+        new NextRequest('http://localhost/api/admin/disputes/list', { headers: { authorization: 'Bearer tok' } }),
+        {
+          auth: {
+            getUser: async () => ({
+              data: {
+                user: {
+                  id: 'adm_rc_001',
+                  email: 'a@relyvora.com',
+                  email_confirmed_at: '2026-01-01',
+                  app_metadata: { role: 'admin', aal: 'aal1' },
+                  factors: [],
+                },
+              },
+              error: null,
+            }),
+          },
+        }
+      );
+      const rFactorBypassBlocked = await verifyAdminSession(
+        new NextRequest('http://localhost/api/admin/disputes/list', { headers: { authorization: 'Bearer tok' } }),
+        {
+          auth: {
+            getUser: async () => ({
+              data: {
+                user: {
+                  id: 'adm_rc_001',
+                  email: 'a@relyvora.com',
+                  email_confirmed_at: '2026-01-01',
+                  app_metadata: { role: 'admin', aal: 'aal1' },
+                  factors: [{ status: 'verified', factor_type: 'totp' }],
+                },
+              },
+              error: null,
+            }),
+          },
+        }
+      );
+      const rSetupPermitted = await verifyAdminIdentityForMfaSetup(
+        new NextRequest('http://localhost/api/admin/security', { headers: { authorization: 'Bearer tok' } }),
+        mockSupabaseAuth({ id: 'adm_rc_001', email: 'a@relyvora.com', email_confirmed_at: '2026-01-01', app_metadata: { role: 'admin', aal: 'aal1' }, aal: 'aal1' })
+      );
+      const rSetupForged = await verifyAdminIdentityForMfaSetup(
+        new NextRequest('http://localhost/api/admin/security', { headers: { authorization: 'Bearer tok' } }),
+        mockSupabaseAuth({ id: 'adm_rc_001', email: 'a@relyvora.com', email_confirmed_at: '2026-01-01', user_metadata: { role: 'admin' }, app_metadata: { role: 'vendor' }, aal: 'aal1' })
+      );
+      const secUnauthRes = await adminSecurityGet(new NextRequest('http://localhost/api/admin/security'));
+      const secUnauthJson = await secUnauthRes.json();
+      assert(
+        rNotEnrolled.statusCode === 403 &&
+          rNotEnrolled.code === 'MFA_NOT_ENROLLED' &&
+          rNotEnrolled.enrollmentUrl === '/admin/security' &&
+          rFactorBypassBlocked.statusCode === 403 &&
+          rFactorBypassBlocked.code === 'MFA_AAL2_REQUIRED',
+        'Admin auth refuses aal1 even with enrolled TOTP factor and distinguishes MFA_NOT_ENROLLED vs MFA_AAL2_REQUIRED'
+      );
+      assert(
+        rSetupPermitted.authorized &&
+          rSetupPermitted.statusCode === 200 &&
+          rSetupPermitted.aal === 'aal1' &&
+          rSetupForged.statusCode === 403 &&
+          secUnauthRes.status === 401 &&
+          secUnauthJson.enrollmentUrl === '/admin/security',
+        'GET /api/admin/security & verifyAdminIdentityForMfaSetup permit allowlisted aal1 setup while blocking forged/unauth callers'
+      );
+
+      const adminSecPageSrc = fs.readFileSync('app/(app)/admin/security/page.tsx', 'utf8');
+      const adminDisputesPageSrc = fs.readFileSync('app/(app)/admin/disputes/page.tsx', 'utf8');
+      assert(
+        adminSecPageSrc.includes('mfa.enroll') &&
+          adminSecPageSrc.includes('challengeAndVerify') &&
+          adminDisputesPageSrc.includes('/admin/security') &&
+          adminDisputesPageSrc.includes('MFA_NOT_ENROLLED'),
+        '/admin/security TOTP enrollment UI and /admin/disputes AAL2 gate are wired cleanly'
+      );
+
+      // Test routes disabled in live/prod mode & legacy duplicate onboard route removed
       const cpRes = await confirmPaymentPost(
         new NextRequest('http://localhost/api/escrow/confirm-payment', {
           method: 'POST',
@@ -872,15 +973,338 @@ async function runReleaseCandidateSuite() {
           body: JSON.stringify({ transactionId: zeroUuid }),
         })
       );
-      const voRes = await legacyVendorsOnboardPost(
-        new Request('http://localhost/api/vendors/onboard', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({}),
-        })
-      );
       assert(cpRes.status === 403, `POST /api/escrow/confirm-payment disabled in live mode (HTTP ${cpRes.status})`);
-      assert(voRes.status === 403, `POST /api/vendors/onboard disabled in live mode (HTTP ${voRes.status})`);
+
+      // End-to-end invite-only Vendor Onboarding & Anchor KYC verification (/vendor/onboarding -> /api/vendor/onboarding)
+      assert(
+        !fs.existsSync('app/api/vendors/onboard/route.ts'),
+        'Unused legacy app/api/vendors/onboard/route.ts is removed'
+      );
+
+      const flowSrc = fs.readFileSync('components/vendor/VendorOnboardingFlow.tsx', 'utf8');
+      const onboardingPageSrc = fs.readFileSync('app/(app)/vendor/onboarding/page.tsx', 'utf8');
+      assert(
+        onboardingPageSrc.includes('VendorOnboardingFlow') &&
+          flowSrc.includes("fetch('/api/vendor/onboarding'") &&
+          flowSrc.includes('signInWithPassword') &&
+          flowSrc.includes('Authorization: `Bearer ${accessToken}`'),
+        '/vendor/onboarding renders VendorOnboardingFlow wired to authenticated POST /api/vendor/onboarding'
+      );
+
+      const validOnboardPayload = (email: string, storeName: string) => ({
+        captchaToken: 'sandbox_rc_captcha_valid',
+        acceptedTermsAndProhibitedItems: true,
+        profile: {
+          storeName,
+          email,
+          phoneNumber: '+2348000000001',
+        },
+        regulatoryKyc: {
+          legalFirstName: 'TEST Staging',
+          legalLastName: 'Vendor',
+          dateOfBirth: '1990-05-15',
+          gender: 'FEMALE',
+          address: '10 Adeola Odeku Street, Victoria Island, Lagos',
+          idType: 'BVN',
+          idNumber: '22222222222',
+          bankCode: '058',
+          accountNumber: '0123456789',
+        },
+      });
+
+      const realFetch10 = globalThis.fetch;
+      const origAnchorSecret = process.env.ANCHOR_SECRET_KEY;
+      const origTurnstileSecret = process.env.TURNSTILE_SECRET_KEY;
+      const anchorCalls: Array<{ url: string; body: any; hasKey: boolean }> = [];
+
+      // Look up or ephemerally create real auth.users row so vendors_user_id_fkey passes even with PAYMENTS_MODE='live'
+      let stagingAuthUserId = '00000000-0000-0000-0000-000000000104';
+      let ephemeralAuthUserId: string | null = null;
+      const { data: usersList } = await supabase.auth.admin.listUsers({ perPage: 50 });
+      const existingAuthUser = usersList?.users?.find(
+        (u) => u.email?.toLowerCase() === 'staging-vendor@relyvora.com'
+      );
+      if (existingAuthUser?.id) {
+        stagingAuthUserId = existingAuthUser.id;
+      } else {
+        const { data: createdAuth } = await supabase.auth.admin.createUser({
+          email: 'staging-vendor@relyvora.com',
+          password: `RcTemp_${Date.now()}!99`,
+          email_confirm: true,
+        });
+        if (createdAuth?.user?.id) {
+          stagingAuthUserId = createdAuth.user.id;
+          ephemeralAuthUserId = createdAuth.user.id;
+        }
+      }
+
+      process.env.ANCHOR_SECRET_KEY = 'anc_test_secret_rc_10';
+      process.env.TURNSTILE_SECRET_KEY = 'turnstile_test_secret_rc_10';
+
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const u = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+        if (u.includes('challenges.cloudflare.com/turnstile')) {
+          return new Response(JSON.stringify({ success: true }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+
+        if (u.includes('/auth/v1/user')) {
+          const headersObj = new Headers(init?.headers || {});
+          const auth = headersObj.get('authorization') || '';
+          const tok = auth.replace(/^Bearer\s+/i, '').trim();
+          const mockUsers: Record<string, any> = {
+            tok_unconfirmed: {
+              id: '00000000-0000-0000-0000-000000000101',
+              email: 'staging-vendor@relyvora.com',
+              email_confirmed_at: null,
+            },
+            tok_other_email: {
+              id: '00000000-0000-0000-0000-000000000102',
+              email: 'different@relyvora.com',
+              email_confirmed_at: '2026-01-01T00:00:00Z',
+            },
+            tok_uninvited: {
+              id: '00000000-0000-0000-0000-000000000103',
+              email: 'uninvited-vendor@relyvora.com',
+              email_confirmed_at: '2026-01-01T00:00:00Z',
+            },
+            tok_staging_vendor: {
+              id: stagingAuthUserId,
+              email: 'staging-vendor@relyvora.com',
+              email_confirmed_at: '2026-01-01T00:00:00Z',
+            },
+          };
+          const user = mockUsers[tok];
+          if (!user) {
+            return new Response(JSON.stringify({ message: 'Invalid JWT' }), { status: 401 });
+          }
+          return new Response(JSON.stringify(user), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+
+        if (u.includes('getanchor.co')) {
+          const parsedBody = init?.body ? JSON.parse(String(init.body)) : null;
+          const headersObj = new Headers(init?.headers || {});
+          anchorCalls.push({ url: u, body: parsedBody, hasKey: Boolean(headersObj.get('x-anchor-key')) });
+
+          if (u.endsWith('/customers')) {
+            return new Response(JSON.stringify({ data: { id: 'anc_ind_cst_rc_test', type: 'IndividualCustomer' } }), {
+              status: 201,
+              headers: { 'content-type': 'application/json' },
+            });
+          }
+          if (u.includes('/verification/individual')) {
+            return new Response(JSON.stringify({ data: { id: 'kyc_rc_verified', status: 'VERIFIED' } }), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            });
+          }
+          if (u.endsWith('/accounts')) {
+            return new Response(
+              JSON.stringify({ data: { id: 'anc_acc_rc_test', type: 'DepositAccount', attributes: {} } }),
+              { status: 201, headers: { 'content-type': 'application/json' } }
+            );
+          }
+          if (u.endsWith('/counterparties')) {
+            return new Response(
+              JSON.stringify({
+                data: {
+                  id: 'anc_cp_rc_test',
+                  type: 'CounterParty',
+                  attributes: { accountName: 'TEST Staging Vendor' },
+                },
+              }),
+              {
+                status: 201,
+                headers: { 'content-type': 'application/json' },
+              }
+            );
+          }
+        }
+
+        return realFetch10(input as any, init);
+      };
+
+      try {
+        // Unauthenticated caller -> 401
+        const resUnauth = await vendorOnboardingPost(
+          new NextRequest('http://localhost/api/vendor/onboarding', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-forwarded-for': '10.10.1.1' },
+            body: JSON.stringify(validOnboardPayload('staging-vendor@relyvora.com', '@StagingTestVendor')),
+          })
+        );
+        // Unconfirmed email -> 403
+        const resUnconfirmed = await vendorOnboardingPost(
+          new NextRequest('http://localhost/api/vendor/onboarding', {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              authorization: 'Bearer tok_unconfirmed',
+              'x-forwarded-for': '10.10.1.2',
+            },
+            body: JSON.stringify(validOnboardPayload('staging-vendor@relyvora.com', '@StagingTestVendor')),
+          })
+        );
+        // Missing/invalid KYC payload (when authenticated) -> 400
+        const resBadBody = await vendorOnboardingPost(
+          new NextRequest('http://localhost/api/vendor/onboarding', {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              authorization: 'Bearer tok_staging_vendor',
+              'x-forwarded-for': '10.10.1.3',
+            },
+            body: JSON.stringify({}),
+          })
+        );
+        // Email mismatch -> 403
+        const resMismatch = await vendorOnboardingPost(
+          new NextRequest('http://localhost/api/vendor/onboarding', {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              authorization: 'Bearer tok_other_email',
+              'x-forwarded-for': '10.10.1.4',
+            },
+            body: JSON.stringify(validOnboardPayload('staging-vendor@relyvora.com', '@StagingTestVendor')),
+          })
+        );
+        // Enable instant invite-only switch temporarily to test VENDOR_NOT_ALLOWLISTED block
+        await supabase.from('system_settings').upsert(
+          { key: 'vendor_allowlist_mode', value: true, updated_by: 'test_release_candidate', updated_at: new Date().toISOString() },
+          { onConflict: 'key' }
+        );
+        clearSafetySettingsCache();
+
+        // Authenticated user NOT on invite allowlist -> 403 VENDOR_NOT_ALLOWLISTED (0 Anchor calls)
+        const resUninvited = await vendorOnboardingPost(
+          new NextRequest('http://localhost/api/vendor/onboarding', {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              authorization: 'Bearer tok_uninvited',
+              'x-forwarded-for': '10.10.1.5',
+            },
+            body: JSON.stringify(validOnboardPayload('uninvited-vendor@relyvora.com', '@UninvitedShop')),
+          })
+        );
+        const jsonUninvited = await resUninvited.json();
+
+        assert(
+          resUnauth.status === 401 &&
+            resUnconfirmed.status === 403 &&
+            resBadBody.status === 400 &&
+            resMismatch.status === 403 &&
+            resUninvited.status === 403 &&
+            jsonUninvited.code === 'VENDOR_NOT_ALLOWLISTED' &&
+            anchorCalls.length === 0,
+          'Vendor onboarding enforces auth (401), email confirmation/match (403), validation (400), and invite-only allowlist (403) before Anchor calls'
+        );
+
+        // Restore open-signup default before completing onboarding flow
+        await supabase.from('system_settings').upsert(
+          { key: 'vendor_allowlist_mode', value: false, updated_by: 'test_release_candidate', updated_at: new Date().toISOString() },
+          { onConflict: 'key' }
+        );
+        clearSafetySettingsCache();
+
+        // Authenticated allowlisted vendor -> full end-to-end Anchor customer + KYC + account + counterparty + DB metadata
+        const resAllowed = await vendorOnboardingPost(
+          new NextRequest('http://localhost/api/vendor/onboarding', {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              authorization: 'Bearer tok_staging_vendor',
+              'x-forwarded-for': '10.10.1.6',
+            },
+            body: JSON.stringify(validOnboardPayload('staging-vendor@relyvora.com', '@StagingTestVendor')),
+          })
+        );
+        const jsonAllowed = await resAllowed.json();
+        const rawResponseStr = JSON.stringify(jsonAllowed);
+
+        const kycCall = anchorCalls.find((c) => c.url.includes('/verification/individual'));
+        assert(
+          resAllowed.status === 200 &&
+            jsonAllowed.success === true &&
+            jsonAllowed.data?.kycStatus === 'VERIFIED' &&
+            jsonAllowed.data?.dbKycStatus === 'verified' &&
+            jsonAllowed.data?.isAllowlisted === true &&
+            jsonAllowed.data?.settlement?.maskedAccountNumber === '******6789',
+          `Allowlisted authenticated vendor completes server-side Anchor onboarding & KYC (HTTP ${resAllowed.status})`
+        );
+        assert(
+          anchorCalls.length >= 4 &&
+            anchorCalls.every((c) => c.hasKey) &&
+            kycCall?.body?.data?.attributes?.bvn === '22222222222' &&
+            !rawResponseStr.includes('22222222222') &&
+            !rawResponseStr.includes('0123456789') &&
+            !rawResponseStr.includes('anc_ind_cst_rc_test') &&
+            !rawResponseStr.includes('anc_acc_rc_test') &&
+            !rawResponseStr.includes('anc_test_secret_rc_10'),
+          'BVN goes directly to Anchor server-side; browser response hides BVN/NIN, secrets, raw NUBAN, and internal Anchor IDs'
+        );
+
+        // Confirm Staging DB row has updated metadata and NO BVN/NIN or KYC PII columns stored
+        const { data: stagingVendorRow } = await supabase
+          .from('vendors')
+          .select('*')
+          .eq('email', 'staging-vendor@relyvora.com')
+          .single();
+        assert(
+          stagingVendorRow?.kyc_status === 'verified' &&
+            stagingVendorRow?.anchor_customer_id === 'anc_ind_cst_rc_test' &&
+            stagingVendorRow?.anchor_deposit_account_id === 'anc_acc_rc_test' &&
+            stagingVendorRow?.id_number == null &&
+            stagingVendorRow?.date_of_birth == null &&
+            stagingVendorRow?.business_address == null,
+          'Staging DB persists operational vendor state only and never stores BVN/NIN or KYC PII'
+        );
+
+        // Rate limit check (6th request on same IP -> 429)
+        let rlStatus = 200;
+        for (let i = 0; i < 6; i++) {
+          const r = await vendorOnboardingPost(
+            new NextRequest('http://localhost/api/vendor/onboarding', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', 'x-forwarded-for': '10.10.1.99' },
+              body: JSON.stringify({}),
+            })
+          );
+          rlStatus = r.status;
+        }
+        assert(rlStatus === 429, `POST /api/vendor/onboarding enforces IP rate limit (6th attempt -> HTTP ${rlStatus})`);
+      } finally {
+        globalThis.fetch = realFetch10;
+        if (origAnchorSecret === undefined) delete process.env.ANCHOR_SECRET_KEY;
+        else process.env.ANCHOR_SECRET_KEY = origAnchorSecret;
+        if (origTurnstileSecret === undefined) delete process.env.TURNSTILE_SECRET_KEY;
+        else process.env.TURNSTILE_SECRET_KEY = origTurnstileSecret;
+        await supabase.from('system_settings').upsert(
+          { key: 'vendor_allowlist_mode', value: false, updated_by: 'test_release_candidate', updated_at: new Date().toISOString() },
+          { onConflict: 'key' }
+        );
+        clearSafetySettingsCache();
+        await supabase
+          .from('vendors')
+          .update({
+            user_id: null,
+            anchor_customer_id: null,
+            anchor_deposit_account_id: 'anc_staging_acc_001',
+            kyc_status: 'verified',
+            is_allowlisted: true,
+          })
+          .eq('email', 'staging-vendor@relyvora.com');
+        if (ephemeralAuthUserId) {
+          await supabase.auth.admin.deleteUser(ephemeralAuthUserId).catch(() => {});
+        }
+      }
     } finally {
       if (origAdminIds === undefined) delete process.env.ADMIN_USER_IDS;
       else process.env.ADMIN_USER_IDS = origAdminIds;
@@ -973,7 +1397,7 @@ async function runReleaseCandidateSuite() {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            itemName: 'RC Not-Me Test Item',
+            itemName: 'TEST - RC Not-Me Test Item',
             itemPrice: 15000,
             vendorHandle: '@StagingTestVendor',
             buyerPhone: '+2348011112222',
@@ -1042,7 +1466,7 @@ async function runReleaseCandidateSuite() {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            itemName: 'RC Post-NotMe Order',
+            itemName: 'TEST - RC Post-NotMe Order',
             itemPrice: 10000,
             vendorHandle: '@StagingTestVendor',
             buyerPhone: '+2348011112222',
@@ -1100,7 +1524,7 @@ async function runReleaseCandidateSuite() {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            itemName: 'RC Post-STOP Order',
+            itemName: 'TEST - RC Post-STOP Order',
             itemPrice: 9000,
             vendorHandle: '@StagingTestVendor',
             buyerPhone: '+2348033334444',
@@ -1124,7 +1548,7 @@ async function runReleaseCandidateSuite() {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
-              itemName: `RC Cap Check ${idx + 1}`,
+              itemName: `TEST - RC Cap Check ${idx + 1}`,
               itemPrice: 8000,
               vendorHandle: '@StagingTestVendor',
               buyerPhone: capPhone,
@@ -1141,7 +1565,7 @@ async function runReleaseCandidateSuite() {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            itemName: 'RC Cap Exceed Check',
+            itemName: 'TEST - RC Cap Exceed Check',
             itemPrice: 8000,
             vendorHandle: '@StagingTestVendor',
             buyerPhone: capPhone,
@@ -1174,12 +1598,31 @@ async function runReleaseCandidateSuite() {
       await supabase.from('webhook_events').delete().in('event_id', createdEventIds);
       await supabase.from('deposits').delete().in('anchor_event_id', createdEventIds);
     }
+    const testPhoneHashes = [
+      hashWhatsappPhone('+2348011112222'),
+      hashWhatsappPhone('+2348033334444'),
+      hashWhatsappPhone('+2348055556666'),
+      hashWhatsappPhone('+2348099991234'),
+    ];
+    await supabase.from('whatsapp_do_not_contact').delete().in('phone_hash', testPhoneHashes);
+    await supabase.from('whatsapp_message_log').delete().in('recipient_phone_hash', testPhoneHashes);
+
     for (const txId of createdTxIds) {
+      await supabase.from('whatsapp_message_log').delete().eq('transaction_id', txId);
+      await supabase.from('buyer_phone_verifications').delete().eq('transaction_id', txId);
+      await supabase.from('dispute_resolutions').delete().eq('transaction_id', txId);
       await supabase.from('admin_audit_log').delete().eq('target_id', txId);
       const { error: delErr } = await supabase.from('transactions').delete().eq('id', txId);
       if (delErr) {
+        await supabase
+          .from('transactions')
+          .update({
+            item_name: `TEST - Archived Ledger Test Order (${txId.slice(0, 8)})`,
+            resolution_notes: 'TEST',
+          })
+          .eq('id', txId);
         console.log(
-          `Notice: transaction ${txId} retained because append-only ledger trigger prevents cascading delete (${delErr.message}).`
+          `Notice: transaction ${txId} retained & labeled TEST because append-only ledger trigger prevents delete (${delErr.message}).`
         );
       }
     }

@@ -10,7 +10,14 @@ export async function GET(request: NextRequest) {
     const auth = await verifyAdminSession(request);
     if (!auth.authorized) {
       return NextResponse.json(
-        { success: false, error: auth.error },
+        {
+          success: false,
+          error: auth.error,
+          code: auth.code,
+          aal: auth.aal,
+          mfaEnrolled: auth.mfaEnrolled,
+          enrollmentUrl: auth.enrollmentUrl || '/admin/security',
+        },
         { status: auth.statusCode }
       );
     }
@@ -34,7 +41,14 @@ export async function POST(request: NextRequest) {
     const auth = await verifyAdminSession(request);
     if (!auth.authorized || !auth.user?.email) {
       return NextResponse.json(
-        { success: false, error: auth.error },
+        {
+          success: false,
+          error: auth.error,
+          code: auth.code,
+          aal: auth.aal,
+          mfaEnrolled: auth.mfaEnrolled,
+          enrollmentUrl: auth.enrollmentUrl || '/admin/security',
+        },
         { status: auth.statusCode }
       );
     }

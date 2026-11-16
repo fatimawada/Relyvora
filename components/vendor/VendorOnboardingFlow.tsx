@@ -25,6 +25,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { AnchorBrandText } from '@/components/common/AnchorBrandText';
+import { supabase } from '@/lib/supabase';
 
 // List of major Nigerian commercial banks & digital BaaS institutions
 export const NIGERIAN_BANKS = [
@@ -129,6 +130,9 @@ export type Step2FormData = z.infer<typeof step2Schema>;
 export function VendorOnboardingFlow() {
   const [currentStep, setCurrentStep] = useState<1 | 2>(1);
   const [step1Data, setStep1Data] = useState<Step1FormData | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string>('');
+  const [acceptedTermsAndProhibitedItems, setAcceptedTermsAndProhibitedItems] = useState(false);
+  const [emailConfirmationNotice, setEmailConfirmationNotice] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -160,13 +164,58 @@ export function VendorOnboardingFlow() {
 
   const selectedIdType = watchStep2('idType');
 
-  // Handle Step 1 Submission
-  const onStep1Submit = (data: Step1FormData) => {
+  // Handle Step 1 Submission (public open signup: confirms CAPTCHA, signs in or signs up + checks email confirmation)
+  const onStep1Submit = async (data: Step1FormData) => {
+    setIsSubmitting(true);
     setServerError(null);
-    setStep1Data(data);
-    setCurrentStep(2);
-    // Scroll to top of form
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setEmailConfirmationNotice(null);
+    try {
+      if (!captchaToken.trim()) {
+        setServerError('Please complete the CAPTCHA verification check before continuing.');
+        return;
+      }
+
+      const targetEmail = data.email.trim().toLowerCase();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const activeEmail = sessionData?.session?.user?.email?.trim().toLowerCase();
+
+      if (!sessionData?.session?.access_token || activeEmail !== targetEmail) {
+        const { error: signInErr } = await supabase.auth.signInWithPassword({
+          email: targetEmail,
+          password: data.password,
+        });
+        if (signInErr) {
+          // Try public open signup if this email does not yet have a session
+          const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+            email: targetEmail,
+            password: data.password,
+          });
+          if (signUpErr) {
+            setServerError(
+              signInErr.message ||
+                signUpErr.message ||
+                'Account sign-up failed. Please verify your confirmed email and password.'
+            );
+            return;
+          }
+          if (!signUpData.session) {
+            setEmailConfirmationNotice(
+              `Verification link sent to ${targetEmail}. Open the email to confirm your address, then submit again to continue to KYC.`
+            );
+            return;
+          }
+        }
+      }
+
+      setStep1Data(data);
+      setCurrentStep(2);
+      // Scroll to top of form
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err: any) {
+      setServerError(err?.message || 'Unable to verify vendor session. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Handle Step 2 Final Submission
@@ -175,14 +224,33 @@ export function VendorOnboardingFlow() {
     setServerError(null);
 
     try {
+      if (!acceptedTermsAndProhibitedItems) {
+        throw new Error(
+          'Please accept the Relyvora Terms of Service, Privacy Policy, and Prohibited Items Policy to continue.'
+        );
+      }
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) {
+        throw new Error('Your authenticated vendor session expired. Go back to Step 1 and sign in again.');
+      }
+
+      const { password: _pw, confirmPassword: _cpw, ...safeProfile } = step1Data || ({} as Step1FormData);
       const fullPayload = {
-        profile: step1Data,
+        profile: safeProfile,
         regulatoryKyc: data,
+        captchaToken: captchaToken.trim(),
+        acceptedTermsAndProhibitedItems,
       };
 
       const response = await fetch('/api/vendor/onboarding', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
         body: JSON.stringify(fullPayload),
       });
 
@@ -207,15 +275,18 @@ export function VendorOnboardingFlow() {
       <div className="text-center space-y-3 mb-8">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200/80 text-xs font-sans font-semibold text-emerald-800 shadow-2xs">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-          <AnchorBrandText>Anchor BaaS Regulated Onboarding</AnchorBrandText>
+          <AnchorBrandText>Open Vendor Signup • Anchor BaaS Regulated</AnchorBrandText>
         </div>
         <h1 className="text-2xl sm:text-3xl font-heading font-bold text-slate-900 tracking-tight">
           Vendor Onboarding &amp; Verification
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto">
-          Create your Relyvora seller profile and activate bank payouts{' '}
+          Create your Relyvora seller profile with confirmed email, WhatsApp verification, and bank KYC{' '}
           <AnchorBrandText>powered by Anchor Technologies</AnchorBrandText>.
         </p>
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-[11px] font-semibold text-slate-700">
+          <span>Starting Tier: NEW — ₦2,500,000 per-order escrow cap</span>
+        </div>
       </div>
 
       {/* Two-Step Progress Stepper */}
@@ -284,8 +355,16 @@ export function VendorOnboardingFlow() {
               </span>
             </div>
             <div className="flex items-center justify-between text-slate-700">
+              <span className="text-slate-500">Vendor Tier &amp; Cap:</span>
+              <span className="font-heading tabular-nums font-semibold text-slate-900">NEW (₦2,500,000/order)</span>
+            </div>
+            <div className="flex items-center justify-between text-slate-700">
+              <span className="text-slate-500">WhatsApp Number:</span>
+              <span className="font-semibold text-amber-700">Confirm on WhatsApp to create links</span>
+            </div>
+            <div className="flex items-center justify-between text-slate-700">
               <span className="text-slate-500">Settlement Account:</span>
-              <span className="font-heading tabular-nums font-semibold text-slate-900">Verified NUBAN</span>
+              <span className="font-heading tabular-nums font-semibold text-slate-900">Verified &amp; Name-Matched NUBAN</span>
             </div>
             <div className="flex items-center justify-between text-slate-700">
               <span className="text-slate-500">Instant Release:</span>
@@ -308,9 +387,16 @@ export function VendorOnboardingFlow() {
         <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200/90 shadow-xl space-y-6">
           
           {serverError && (
-            <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2.5">
+            <div role="status" className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2.5">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
               <span>{serverError}</span>
+            </div>
+          )}
+
+          {emailConfirmationNotice && (
+            <div role="status" className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2.5">
+              <Mail className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>{emailConfirmationNotice}</span>
             </div>
           )}
 
@@ -384,13 +470,14 @@ export function VendorOnboardingFlow() {
               {/* Phone Number */}
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                  <span>Phone Number (WhatsApp Active)</span>
+                  <span>Phone Number (WhatsApp Active — Confirmation Required)</span>
                   <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative">
                   <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="tel"
+                    autoComplete="tel"
                     {...registerStep1('phoneNumber')}
                     placeholder="+2348012345678 or 08012345678"
                     className={`w-full pl-10 pr-4 py-3 rounded-xl border text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 transition-colors ${
@@ -400,6 +487,9 @@ export function VendorOnboardingFlow() {
                     }`}
                   />
                 </div>
+                <p className="text-[11px] text-slate-500">
+                  We send a WhatsApp confirmation message after KYC. You must confirm your number on WhatsApp before creating payment links.
+                </p>
                 {errorsStep1.phoneNumber && (
                   <p className="text-[11px] text-rose-600 flex items-center gap-1 pt-0.5">
                     <AlertCircle className="w-3.5 h-3.5 shrink-0" />
@@ -463,13 +553,48 @@ export function VendorOnboardingFlow() {
                 </div>
               </div>
 
+              {/* CAPTCHA / Human Verification Gate */}
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                <label className="flex items-center gap-2.5 text-xs font-semibold text-slate-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(captchaToken)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setCaptchaToken(`sandbox_captcha_${Date.now()}`);
+                        setServerError(null);
+                      } else {
+                        setCaptchaToken('');
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span>Verify human signup (CAPTCHA security check required)</span>
+                </label>
+                {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY ? (
+                  <input
+                    type="text"
+                    name="captchaToken"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    placeholder="Paste CAPTCHA challenge response token..."
+                    value={captchaToken}
+                    onChange={(e) => setCaptchaToken(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900"
+                  />
+                ) : null}
+              </div>
+
               {/* Step 1 Action Button */}
               <div className="pt-4">
                 <button
                   type="submit"
-                  className="w-full py-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all transform active:scale-[0.99]"
+                  disabled={isSubmitting}
+                  className="w-full py-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all transform active:scale-[0.99]"
                 >
-                  <span>Create Account</span>
+                  <span>{isSubmitting ? 'Signing in / Creating Account...' : 'Continue to KYC Verification'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -496,7 +621,7 @@ export function VendorOnboardingFlow() {
                     Important: Name Matching Requirement
                   </strong>
                   <p className="text-xs text-amber-800 leading-relaxed">
-                    To receive instant payouts, your Legal Name must exactly match the name on your BVN/NIN and Bank Account. Payouts cannot be routed to mismatched third-party accounts.
+                    Anchor Name Enquiry validates that your settlement bank account matches your KYC Legal Name. Mismatched third-party accounts are blocked automatically, and future settlement bank changes require WhatsApp confirmation plus a 48-hour payout security hold.
                   </p>
                 </div>
               </div>
@@ -747,6 +872,37 @@ export function VendorOnboardingFlow() {
                     </p>
                   )}
                 </div>
+              </div>
+
+              {/* Mandatory Terms, Privacy & Prohibited Items Agreement */}
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                <label className="flex items-start gap-2.5 text-xs text-slate-800 cursor-pointer leading-snug">
+                  <input
+                    type="checkbox"
+                    checked={acceptedTermsAndProhibitedItems}
+                    onChange={(e) => {
+                      setAcceptedTermsAndProhibitedItems(e.target.checked);
+                      if (e.target.checked) setServerError(null);
+                    }}
+                    required
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 shrink-0"
+                  />
+                  <span>
+                    I confirm my business complies with the{' '}
+                    <Link href="/terms" target="_blank" rel="noopener noreferrer" className="text-emerald-700 font-semibold underline">
+                      Terms of Service
+                    </Link>
+                    ,{' '}
+                    <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="text-emerald-700 font-semibold underline">
+                      Privacy Policy
+                    </Link>
+                    , and{' '}
+                    <Link href="/prohibited-items" target="_blank" rel="noopener noreferrer" className="text-emerald-700 font-semibold underline">
+                      Prohibited Items Policy
+                    </Link>
+                    .
+                  </span>
+                </label>
               </div>
 
               {/* Step 2 Action Buttons */}

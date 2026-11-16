@@ -26,6 +26,7 @@ const LEGAL_LINKS = [
   { label: 'Terms of Service', href: '/terms' },
   { label: 'Privacy Policy', href: '/privacy' },
   { label: 'Dispute Policy', href: '/disputes' },
+  { label: 'Prohibited Items', href: '/prohibited-items' },
 ];
 
 export function Footer() {

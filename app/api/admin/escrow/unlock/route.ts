@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { getClientIp } from '@/lib/rateLimit';
 import { verifyAdminSession } from '@/lib/adminAuth';
+import { logAndAlertAdminAction } from '@/lib/adminSafety';
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,7 +10,14 @@ export async function POST(request: NextRequest) {
     const auth = await verifyAdminSession(request);
     if (!auth.authorized || !auth.user?.email) {
       return NextResponse.json(
-        { success: false, error: auth.error || 'Unauthorized admin access' },
+        {
+          success: false,
+          error: auth.error || 'Unauthorized admin access',
+          code: auth.code,
+          aal: auth.aal,
+          mfaEnrolled: auth.mfaEnrolled,
+          enrollmentUrl: auth.enrollmentUrl || '/admin/security',
+        },
         { status: auth.statusCode }
       );
     }
@@ -42,6 +50,19 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    await logAndAlertAdminAction({
+      adminEmail: verifiedAdminEmail,
+      action: 'ADMIN_ESCROW_UNLOCK',
+      targetType: 'transaction',
+      targetId: transactionId,
+      ipAddress: clientIp,
+      skipAuditInsert: true,
+      alertTitle: 'Admin Unlocked Code-Locked Escrow Transaction',
+      severity: 'WARNING',
+      metadata: { reason: (reason || '').trim() },
+      supabaseClient: supabase,
+    });
 
     return NextResponse.json({ 
       success: true, 

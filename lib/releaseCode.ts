@@ -12,7 +12,24 @@
 import crypto from 'crypto';
 
 export const MAX_CODE_ATTEMPTS = 5;
-export const CODE_LIFETIME_HOURS = 72; // 72-hour expiration from escrow lock
+export const CODE_LIFETIME_HOURS = 72; // Fallback default
+export const DELIVERY_WINDOW_DEFAULTS = {
+  same_city_days: 3,
+  interstate_days: 7,
+  grace_days: 3,
+  hard_max_days: 14,
+  dispatch_deadline_days: 3,
+  reminder_hours_before_expiry: 24,
+};
+
+export interface DeliveryWindowConfig {
+  same_city_days: number;
+  interstate_days: number;
+  grace_days: number;
+  hard_max_days: number;
+  dispatch_deadline_days: number;
+  reminder_hours_before_expiry: number;
+}
 
 /**
  * Retrieves the server-side release code pepper.
@@ -84,4 +101,31 @@ export function calculateCodeExpiration(hours: number = CODE_LIFETIME_HOURS): st
   const d = new Date();
   d.setHours(d.getHours() + hours);
   return d.toISOString();
+}
+
+/**
+ * Computes delivery window code lifetime in hours:
+ *   totalDays = min(hard_max_days, chosenWindowDays + grace_days)
+ *   Defaults: same_city = 3d + 3d = 6d (144h); interstate = 7d + 3d = 10d (240h); hard max = 14d (336h).
+ */
+export function calculateDeliveryWindowCodeExpiration(
+  deliveryType: 'same_city' | 'interstate' = 'same_city',
+  cfg?: Partial<DeliveryWindowConfig>,
+  fromIso?: string
+): { codeExpiresAt: string; windowDays: number; totalDays: number; deliveryDeadlineAt: string } {
+  const merged = { ...DELIVERY_WINDOW_DEFAULTS, ...(cfg || {}) };
+  const windowDays =
+    deliveryType === 'interstate'
+      ? Math.max(1, Number(merged.interstate_days) || 7)
+      : Math.max(1, Number(merged.same_city_days) || 3);
+  const graceDays = Math.max(0, Number(merged.grace_days) || 3);
+  const hardMaxDays = Math.max(1, Number(merged.hard_max_days) || 14);
+  const totalDays = Math.min(hardMaxDays, windowDays + graceDays);
+
+  const baseMs = fromIso ? new Date(fromIso).getTime() : Date.now();
+  const safeBaseMs = Number.isNaN(baseMs) ? Date.now() : baseMs;
+
+  const deliveryDeadlineAt = new Date(safeBaseMs + windowDays * 24 * 3600 * 1000).toISOString();
+  const codeExpiresAt = new Date(safeBaseMs + totalDays * 24 * 3600 * 1000).toISOString();
+  return { codeExpiresAt, windowDays, totalDays, deliveryDeadlineAt };
 }

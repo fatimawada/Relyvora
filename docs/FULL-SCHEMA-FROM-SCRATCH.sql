@@ -98,20 +98,50 @@ CREATE TABLE IF NOT EXISTS public.vendors (
     store_name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     phone_number VARCHAR(64) NOT NULL,
+    phone_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    phone_verified_at TIMESTAMPTZ,
+    phone_hash TEXT,
     legal_first_name VARCHAR(255),
     legal_last_name VARCHAR(255),
-    date_of_birth DATE,
-    gender VARCHAR(32),
-    business_address TEXT,
-    id_type VARCHAR(32),
-    id_number VARCHAR(64),
     settlement_bank_code VARCHAR(32),
     settlement_account_number VARCHAR(32),
     settlement_account_name TEXT,
+    payout_account_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    settlement_account_name_matched BOOLEAN NOT NULL DEFAULT FALSE,
+    settlement_name_match_score NUMERIC(5, 4),
+    pending_settlement_bank_code VARCHAR(32),
+    pending_settlement_account_number VARCHAR(32),
+    pending_settlement_account_name TEXT,
+    pending_settlement_requested_at TIMESTAMPTZ,
+    pending_settlement_confirmed_at TIMESTAMPTZ,
+    payout_hold_until TIMESTAMPTZ,
     anchor_customer_id VARCHAR(255) UNIQUE,
     anchor_deposit_account_id TEXT,
     kyc_status public.vendor_kyc_status NOT NULL DEFAULT 'pending',
     is_allowlisted BOOLEAN NOT NULL DEFAULT FALSE,
+    tier TEXT NOT NULL DEFAULT 'NEW' CONSTRAINT vendors_tier_check CHECK (tier IN ('NEW', 'ESTABLISHED', 'TRUSTED')),
+    successful_sales_count INT NOT NULL DEFAULT 0,
+    completed_orders_count INT NOT NULL DEFAULT 0,
+    disputes_count INT NOT NULL DEFAULT 0,
+    first_order_at TIMESTAMPTZ,
+    tier_updated_at TIMESTAMPTZ,
+    cap_override_unlimited BOOLEAN NOT NULL DEFAULT FALSE,
+    cap_override_reason TEXT,
+    cap_override_by TEXT,
+    cap_override_at TIMESTAMPTZ,
+    signup_ip_hash TEXT,
+    signup_ip_expires_at TIMESTAMPTZ,
+    signup_ua_hash TEXT,
+    signup_device_hash TEXT,
+    compliance_strikes INT NOT NULL DEFAULT 0,
+    is_suspended BOOLEAN NOT NULL DEFAULT FALSE,
+    suspended_at TIMESTAMPTZ,
+    suspension_reason TEXT,
+    terms_accepted_at TIMESTAMPTZ,
+    terms_version TEXT,
+    prohibited_items_accepted_at TIMESTAMPTZ,
+    prohibited_items_version TEXT,
+    signup_consent_ip_hash TEXT,
     daily_volume_ngn NUMERIC(15, 2) NOT NULL DEFAULT 0,
     daily_volume_reset_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
@@ -125,14 +155,15 @@ CREATE TABLE IF NOT EXISTS public.transactions (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     vendor_id UUID REFERENCES public.vendors(id),
     item_name TEXT NOT NULL,
-    item_price NUMERIC(15, 2) NOT NULL DEFAULT 0 CHECK (item_price >= 0),
-    delivery_fee NUMERIC(15, 2) NOT NULL DEFAULT 0 CHECK (delivery_fee >= 0),
-    protection_fee NUMERIC(15, 2) NOT NULL DEFAULT 0 CHECK (protection_fee >= 0),
-    total_amount NUMERIC(15, 2) NOT NULL CHECK (total_amount >= 0),
+    item_price NUMERIC(15, 2) NOT NULL DEFAULT 0 CONSTRAINT transactions_item_price_check CHECK (item_price >= 0),
+    delivery_fee NUMERIC(15, 2) NOT NULL DEFAULT 0 CONSTRAINT transactions_delivery_fee_check CHECK (delivery_fee >= 0),
+    protection_fee NUMERIC(15, 2) NOT NULL DEFAULT 0 CONSTRAINT transactions_protection_fee_check CHECK (protection_fee >= 0),
+    total_amount NUMERIC(15, 2) NOT NULL CONSTRAINT transactions_total_amount_check CHECK (total_amount >= 0),
     amount_paid NUMERIC(15, 2) NOT NULL DEFAULT 0,
     excess_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
     vendor_handle TEXT NOT NULL DEFAULT '@LagosHairPlug',
     buyer_phone TEXT,
+    buyer_phone_hash TEXT,
     buyer_notes TEXT,
     buyer_whatsapp_consent BOOLEAN NOT NULL DEFAULT FALSE,
     buyer_phone_verified BOOLEAN NOT NULL DEFAULT FALSE,
@@ -151,6 +182,9 @@ CREATE TABLE IF NOT EXISTS public.transactions (
     disputed_at TIMESTAMPTZ,
     resolving_at TIMESTAMPTZ,
     resolved_at TIMESTAMPTZ,
+    code_verified_at TIMESTAMPTZ,
+    payout_available_at TIMESTAMPTZ,
+    cooling_window_hours INT,
     dispute_reason TEXT,
     dispute_scenario INT,
     resolution_action TEXT,
@@ -179,6 +213,59 @@ CREATE TABLE IF NOT EXISTS public.transactions (
     refund_destination_account TEXT,
     refund_destination_bank TEXT,
     refund_destination_name TEXT,
+    sender_account_number TEXT,
+    sender_bank_code TEXT,
+    sender_name TEXT,
+    creator_ip_hash TEXT,
+    creator_ip_expires_at TIMESTAMPTZ,
+    creator_ua_hash TEXT,
+    creator_device_hash TEXT,
+    buyer_ip_hash TEXT,
+    buyer_ip_expires_at TIMESTAMPTZ,
+    buyer_ua_hash TEXT,
+    buyer_device_hash TEXT,
+    risk_score INT NOT NULL DEFAULT 0,
+    risk_signals JSONB NOT NULL DEFAULT '[]'::jsonb,
+    review_hold BOOLEAN NOT NULL DEFAULT FALSE,
+    review_hold_reason TEXT,
+    review_cleared_by TEXT,
+    review_cleared_at TIMESTAMPTZ,
+    review_clear_reason TEXT,
+    order_blocked BOOLEAN NOT NULL DEFAULT FALSE,
+    order_block_reason TEXT,
+    delivery_type TEXT NOT NULL DEFAULT 'same_city',
+    delivery_window_days INT NOT NULL DEFAULT 3,
+    dispatch_deadline_at TIMESTAMPTZ,
+    delivery_deadline_at TIMESTAMPTZ,
+    reminder_sent_at TIMESTAMPTZ,
+    courier_name TEXT,
+    courier_phone TEXT,
+    tracking_number TEXT,
+    dispatch_notes TEXT,
+    dispatch_proof_count INT NOT NULL DEFAULT 0,
+    handover_proof_count INT NOT NULL DEFAULT 0,
+    dispute_raised_by TEXT,
+    dispute_response_deadline_at TIMESTAMPTZ,
+    counterparty_response_text TEXT,
+    counterparty_responded_at TIMESTAMPTZ,
+    refund_account_ciphertext TEXT,
+    refund_account_iv TEXT,
+    refund_account_auth_tag TEXT,
+    refund_account_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    refund_account_verified_at TIMESTAMPTZ,
+    refund_account_source TEXT,
+    expires_at TIMESTAMPTZ,
+    expired_at TIMESTAMPTZ,
+    cancelled_at TIMESTAMPTZ,
+    cancelled_by TEXT,
+    cancellation_reason TEXT,
+    virtual_account_closed BOOLEAN NOT NULL DEFAULT FALSE,
+    excess_refund_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+    excess_refund_transfer_id TEXT,
+    buyer_terms_accepted_at TIMESTAMPTZ,
+    buyer_terms_version TEXT,
+    buyer_consent_ip_hash TEXT,
+    whatsapp_retry_count INT NOT NULL DEFAULT 0,
     idempotency_key TEXT UNIQUE,
     CONSTRAINT transactions_status_check CHECK (
         status IN (
@@ -191,11 +278,25 @@ CREATE TABLE IF NOT EXISTS public.transactions (
             'VENDOR_PAID',
             'RELEASED',
             'DISPUTED',
-            'REFUNDED'
+            'REFUNDED',
+            'EXPIRED',
+            'CANCELLED'
         )
     ),
     CONSTRAINT transactions_whatsapp_delivery_status_check CHECK (
         whatsapp_delivery_status IN ('not_sent', 'queued', 'sent', 'delivered', 'read', 'failed')
+    ),
+    CONSTRAINT transactions_delivery_type_check CHECK (
+        delivery_type IN ('same_city', 'interstate')
+    ),
+    CONSTRAINT transactions_delivery_window_days_check CHECK (
+        delivery_window_days >= 1 AND delivery_window_days <= 14
+    ),
+    CONSTRAINT transactions_dispute_raised_by_check CHECK (
+        dispute_raised_by IS NULL OR dispute_raised_by IN ('BUYER', 'VENDOR', 'ADMIN', 'SYSTEM')
+    ),
+    CONSTRAINT transactions_refund_account_source_check CHECK (
+        refund_account_source IS NULL OR refund_account_source IN ('DEPOSIT_SENDER', 'BUYER_OTP_CONFIRMED')
     )
 );
 
@@ -207,7 +308,7 @@ CREATE TABLE IF NOT EXISTS public.buyer_phone_verifications (
     masked_phone TEXT NOT NULL,
     verified BOOLEAN NOT NULL DEFAULT TRUE,
     verification_method TEXT NOT NULL DEFAULT 'WHATSAPP_QUICK_REPLY'
-        CHECK (verification_method IN ('WHATSAPP_QUICK_REPLY', 'WHATSAPP_INBOUND')),
+        CONSTRAINT buyer_phone_verifications_verification_method_check CHECK (verification_method IN ('WHATSAPP_QUICK_REPLY', 'WHATSAPP_INBOUND')),
     whatsapp_message_id TEXT,
     verified_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
@@ -222,7 +323,7 @@ CREATE TABLE IF NOT EXISTS public.deposits (
     account_number TEXT NOT NULL,
     amount NUMERIC(15, 2) NOT NULL,
     status TEXT NOT NULL DEFAULT 'RECORDED'
-        CHECK (status IN ('RECORDED', 'REFUND_PENDING', 'REFUNDED', 'EXCESS_DEPOSIT', 'LATE_DEPOSIT')),
+        CONSTRAINT deposits_status_check CHECK (status IN ('RECORDED', 'REFUND_PENDING', 'REFUNDED', 'EXCESS_DEPOSIT', 'LATE_DEPOSIT', 'LATE_AFTER_TERMINAL')),
     metadata JSONB DEFAULT '{}'::jsonb,
     sender_account_number TEXT,
     sender_bank_code TEXT,
@@ -311,7 +412,7 @@ CREATE TABLE IF NOT EXISTS public.admin_audit_log (
 CREATE TABLE IF NOT EXISTS public.whatsapp_do_not_contact (
     phone_hash TEXT PRIMARY KEY,
     masked_phone TEXT NOT NULL,
-    reason TEXT NOT NULL CHECK (reason IN ('NOT_ME', 'STOP_REPLY', 'MANUAL')),
+    reason TEXT NOT NULL CONSTRAINT whatsapp_do_not_contact_reason_check CHECK (reason IN ('NOT_ME', 'STOP_REPLY', 'MANUAL')),
     source_transaction_id UUID REFERENCES public.transactions(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
@@ -326,8 +427,9 @@ CREATE TABLE IF NOT EXISTS public.whatsapp_message_log (
     recipient_phone_hash TEXT NOT NULL,
     masked_number TEXT NOT NULL,
     template_name TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('queued', 'sent', 'delivered', 'read', 'failed', 'blocked')),
+    status TEXT NOT NULL CONSTRAINT whatsapp_message_log_status_check CHECK (status IN ('queued', 'sent', 'delivered', 'read', 'failed', 'blocked')),
     error_code TEXT,
+    retry_count INT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
@@ -343,8 +445,53 @@ CREATE TABLE IF NOT EXISTS public.whatsapp_webhook_events (
 CREATE TABLE IF NOT EXISTS public.market_waitlist (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT NOT NULL,
-    market TEXT NOT NULL CHECK (market IN ('GH', 'KE', 'ZA')),
+    market TEXT NOT NULL CONSTRAINT market_waitlist_market_check CHECK (market IN ('GH', 'KE', 'ZA')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+-- 3.14 Risk Scoring Flags & Review Holds
+CREATE TABLE IF NOT EXISTS public.risk_flags (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    transaction_id UUID REFERENCES public.transactions(id) ON DELETE CASCADE,
+    vendor_id UUID REFERENCES public.vendors(id) ON DELETE CASCADE,
+    score INT NOT NULL DEFAULT 0,
+    severity TEXT NOT NULL CONSTRAINT risk_flags_severity_check CHECK (severity IN ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')),
+    action_taken TEXT NOT NULL CONSTRAINT risk_flags_action_taken_check CHECK (action_taken IN ('ALLOW', 'FLAG_REVIEW', 'HOLD_PAYOUT', 'BLOCK')),
+    signals JSONB NOT NULL DEFAULT '[]'::jsonb,
+    status TEXT NOT NULL DEFAULT 'OPEN' CONSTRAINT risk_flags_status_check CHECK (status IN ('OPEN', 'CLEARED', 'BLOCKED')),
+    cleared_by TEXT,
+    cleared_reason TEXT,
+    cleared_at TIMESTAMPTZ,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+-- 3.15 Order Evidence & Proof of Delivery Storage Metadata (Private Bucket, Signed URL Only)
+CREATE TABLE IF NOT EXISTS public.order_evidence_files (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    transaction_id UUID NOT NULL REFERENCES public.transactions(id) ON DELETE CASCADE,
+    uploaded_by_role TEXT NOT NULL CONSTRAINT order_evidence_files_role_check CHECK (uploaded_by_role IN ('BUYER', 'VENDOR', 'ADMIN')),
+    evidence_category TEXT NOT NULL CONSTRAINT order_evidence_files_category_check CHECK (evidence_category IN ('DISPUTE_EVIDENCE', 'DISPATCH_PROOF', 'DELIVERY_HANDOVER_PROOF')),
+    scenario_id INT,
+    storage_bucket TEXT NOT NULL DEFAULT 'relyvora-evidence',
+    storage_object_path TEXT NOT NULL UNIQUE,
+    original_filename TEXT,
+    mime_type TEXT NOT NULL CONSTRAINT order_evidence_files_mime_check CHECK (mime_type IN ('image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'application/pdf')),
+    file_size_bytes BIGINT NOT NULL CONSTRAINT order_evidence_files_size_check CHECK (file_size_bytes > 0 AND file_size_bytes <= 26214400),
+    sha256_checksum TEXT,
+    description TEXT,
+    retention_delete_after TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+-- 3.16 Shared Distributed Rate Limit Buckets
+CREATE TABLE IF NOT EXISTS public.rate_limit_buckets (
+    key TEXT PRIMARY KEY,
+    count INT NOT NULL DEFAULT 1 CONSTRAINT rate_limit_buckets_count_check CHECK (count >= 0),
+    reset_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 
 -- -------------------------------------------------------------------------
@@ -382,6 +529,18 @@ CREATE TRIGGER update_buyer_phone_verifications_modtime
     FOR EACH ROW
     EXECUTE FUNCTION public.update_modified_column();
 
+DROP TRIGGER IF EXISTS update_risk_flags_modtime ON public.risk_flags;
+CREATE TRIGGER update_risk_flags_modtime
+    BEFORE UPDATE ON public.risk_flags
+    FOR EACH ROW
+    EXECUTE FUNCTION public.update_modified_column();
+
+DROP TRIGGER IF EXISTS update_rate_limit_buckets_modtime ON public.rate_limit_buckets;
+CREATE TRIGGER update_rate_limit_buckets_modtime
+    BEFORE UPDATE ON public.rate_limit_buckets
+    FOR EACH ROW
+    EXECUTE FUNCTION public.update_modified_column();
+
 DROP TRIGGER IF EXISTS trg_prevent_ledger_mutation ON public.transaction_ledger;
 CREATE TRIGGER trg_prevent_ledger_mutation
     BEFORE UPDATE OR DELETE ON public.transaction_ledger
@@ -400,6 +559,8 @@ CREATE TRIGGER trg_prevent_ledger_truncate
 
 CREATE INDEX IF NOT EXISTS idx_vendors_anchor_customer ON public.vendors(anchor_customer_id);
 CREATE INDEX IF NOT EXISTS idx_vendors_allowlisted ON public.vendors(is_allowlisted, kyc_status);
+CREATE INDEX IF NOT EXISTS idx_vendors_tier ON public.vendors(tier);
+CREATE INDEX IF NOT EXISTS idx_vendors_phone_hash ON public.vendors(phone_hash);
 
 CREATE INDEX IF NOT EXISTS idx_transactions_status ON public.transactions(status);
 CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON public.transactions(created_at DESC);
@@ -409,6 +570,11 @@ CREATE INDEX IF NOT EXISTS idx_transactions_code_hash ON public.transactions(rel
 CREATE INDEX IF NOT EXISTS idx_transactions_virtual_nuban ON public.transactions(virtual_account_number);
 CREATE INDEX IF NOT EXISTS idx_transactions_idempotency ON public.transactions(idempotency_key);
 CREATE INDEX IF NOT EXISTS idx_transactions_wa_msg_id ON public.transactions(whatsapp_message_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_review_hold ON public.transactions(review_hold, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_transactions_buyer_phone_hash ON public.transactions(buyer_phone_hash);
+CREATE INDEX IF NOT EXISTS idx_transactions_creator_ip_hash ON public.transactions(creator_ip_hash);
+CREATE INDEX IF NOT EXISTS idx_transactions_dispatch_deadline ON public.transactions(dispatch_deadline_at);
+CREATE INDEX IF NOT EXISTS idx_transactions_expires_at ON public.transactions(expires_at);
 
 CREATE INDEX IF NOT EXISTS idx_buyer_phone_verifications_tx ON public.buyer_phone_verifications(transaction_id);
 CREATE INDEX IF NOT EXISTS idx_buyer_phone_verifications_hash ON public.buyer_phone_verifications(phone_hash);
@@ -426,29 +592,51 @@ CREATE INDEX IF NOT EXISTS idx_dispute_resolutions_scenario ON public.dispute_re
 CREATE INDEX IF NOT EXISTS idx_whatsapp_log_vendor_created ON public.whatsapp_message_log(vendor_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_whatsapp_log_phone_created ON public.whatsapp_message_log(recipient_phone_hash, created_at DESC);
 
+CREATE INDEX IF NOT EXISTS idx_risk_flags_status_created ON public.risk_flags(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_risk_flags_tx ON public.risk_flags(transaction_id);
+CREATE INDEX IF NOT EXISTS idx_risk_flags_vendor ON public.risk_flags(vendor_id);
+
+CREATE INDEX IF NOT EXISTS idx_order_evidence_files_tx_cat ON public.order_evidence_files(transaction_id, evidence_category);
+CREATE INDEX IF NOT EXISTS idx_order_evidence_files_retention ON public.order_evidence_files(retention_delete_after);
+CREATE INDEX IF NOT EXISTS idx_rate_limit_buckets_reset ON public.rate_limit_buckets(reset_at);
+
 -- -------------------------------------------------------------------------
--- SECTION 6: INITIAL SYSTEM SETTINGS SEEDS (UNCAPPED DEFAULTS)
+-- SECTION 6: INITIAL SYSTEM SETTINGS SEEDS (OPEN SIGNUP + TIERS + RISK CONFIG)
 -- -------------------------------------------------------------------------
 
 INSERT INTO public.system_settings (key, value, description, updated_by)
 VALUES
     ('checkout_enabled', 'true'::jsonb, 'Master kill switch for checkout link creation and payments', 'system'),
+    ('payouts_enabled', 'true'::jsonb, 'Master incident kill switch pausing all vendor payouts when false', 'system'),
     ('max_order_ngn', 'null'::jsonb, 'Optional maximum order limit in NGN (null = no cap)', 'system'),
     ('max_daily_vendor_volume_ngn', 'null'::jsonb, 'Optional per-vendor daily transaction volume ceiling in NGN (null = no cap)', 'system'),
-    ('vendor_allowlist_mode', 'true'::jsonb, 'When true, only vendors with is_allowlisted = true can create links', 'system'),
+    ('vendor_allowlist_mode', 'false'::jsonb, 'Instant kill switch: when true, only is_allowlisted vendors can create links', 'system'),
     ('max_daily_vendor_whatsapp_messages', '50'::jsonb, 'Maximum outbound WhatsApp messages a single vendor can trigger per UTC day.', 'system'),
-    ('max_daily_buyer_whatsapp_messages', '5'::jsonb, 'Maximum outbound WhatsApp messages sent to a single buyer phone number per UTC day.', 'system')
+    ('max_daily_buyer_whatsapp_messages', '5'::jsonb, 'Maximum outbound WhatsApp messages sent to a single buyer phone number per UTC day.', 'system'),
+    ('tier1_order_limit_ngn', '2500000'::jsonb, 'Tier 1 (NEW vendor) per-order limit in NGN before reaching tier_upgrade_threshold', 'system'),
+    ('tier_upgrade_threshold', '5'::jsonb, 'Number of successful RELEASED sales required to graduate from Tier 1 order cap to uncapped', 'system'),
+    ('tier_config', '{"tiers":{"NEW":{"per_order_cap_ngn":2500000,"daily_volume_cap_ngn":5000000},"ESTABLISHED":{"per_order_cap_ngn":10000000,"daily_volume_cap_ngn":20000000},"TRUSTED":{"per_order_cap_ngn":null,"daily_volume_cap_ngn":null}},"promotion":{"established_min_completed_orders":5,"established_min_days_since_first_order":14,"established_max_disputes":0}}'::jsonb, 'Configurable vendor tier limits and automatic promotion rules', 'system'),
+    ('payout_safety_config', '{"name_match_min_score":0.7,"settlement_change_wait_hours":48,"require_whatsapp_confirm_on_bank_change":true}'::jsonb, 'Name matching threshold and settlement account change waiting period', 'system'),
+    ('risk_engine_config', '{"review_hold_threshold":3,"block_threshold":6,"amount_review_threshold_ngn":500000,"near_cap_ratio_min":0.85,"velocity_window_minutes":60,"velocity_max_orders":5,"repeat_pair_window_hours":24,"repeat_pair_max_orders":3,"spike_multiplier":3,"spike_min_baseline_ngn":50000,"ip_hash_retention_hours":72,"weights":{"ABOVE_REVIEW_AMOUNT":2,"HIGH_VELOCITY_VENDOR":2,"REPEATED_BUYER_VENDOR_PAIR":2,"REPEATED_NEAR_CAP_ORDER":2,"SUDDEN_AMOUNT_SPIKE":2,"SHARED_DEVICE_OR_IP":3,"MISSING_DEPOSIT_SENDER_NAME":3,"DEPOSIT_EXCEEDS_TIER_CAP":3,"SETTLEMENT_HOLD_ACTIVE":3,"SHARED_PHONE_VENDOR_BUYER":6,"SELF_DEALING_NAME_MATCH":6,"SELF_DEALING_ACCOUNT_MATCH":6}}'::jsonb, 'Configurable risk scoring thresholds, windows, retention hours, and signal weights', 'system'),
+    ('cooling_window_config', '{"hours_by_tier":{"NEW":2,"ESTABLISHED":0,"TRUSTED":0},"high_value_cooling_hours":2,"notify_buyer_on_code_use":true}'::jsonb, 'Configurable payout cooling delay hours per vendor tier', 'system'),
+    ('admin_safety_config', '{"session_max_age_minutes":15,"high_value_confirm_threshold_ngn":500000,"require_typed_confirmation":true,"alert_on_every_admin_action":true}'::jsonb, 'Admin session freshness, typed confirmation thresholds, and audit alerting rules', 'system'),
+    ('delivery_window_config', '{"same_city_days":3,"interstate_days":7,"grace_days":3,"hard_max_days":14,"dispatch_deadline_days":3,"reminder_hours_before_expiry":24}'::jsonb, 'Configurable delivery window days, dispatch deadlines, code lifetime grace, and reminders', 'system'),
+    ('dispute_policy_config', '{"timezone":"Africa/Lagos","start_hour":8,"end_hour":20,"work_days":[1,2,3,4,5,6]}'::jsonb, 'Business-hour dispute SLA clock configuration', 'system'),
+    ('dispatch_proof_config', '{"require_upload":true,"require_courier_name":true,"require_courier_phone":true,"require_tracking_for_interstate":true}'::jsonb, 'Configurable mandatory proof-of-delivery requirements at dispatch', 'system'),
+    ('order_lifecycle_config', '{"payment_expiry_hours":24,"stuck_settlement_minutes":15,"refund_fee_on_vendor_cancel":true}'::jsonb, 'Unpaid order expiry window, stuck transfer recovery cadence, and cancellation fee rule', 'system'),
+    ('retention_and_storage_config', '{"evidence_retention_days":180,"ip_hash_retention_days":90,"whatsapp_message_log_retention_days":180,"max_image_bytes":10485760,"max_video_bytes":26214400,"signed_url_ttl_seconds":300}'::jsonb, 'NDPA data retention windows and private evidence storage limits', 'system')
 ON CONFLICT (key) DO NOTHING;
 
 -- -------------------------------------------------------------------------
 -- SECTION 7: HARDENED RPC FUNCTIONS (SECURITY DEFINER + search_path)
 -- -------------------------------------------------------------------------
 
--- 7.1 ATOMIC CODE ATTEMPT COUNTER & RELEASE PREPARATION
+-- 7.1 ATOMIC CODE ATTEMPT COUNTER & RELEASE PREPARATION (WITH PAYOUT SAFETY & COOLING WINDOW)
 CREATE OR REPLACE FUNCTION public.rpc_verify_and_prepare_release(
     p_transaction_id UUID,
     p_hmac_hash TEXT,
-    p_max_attempts INT DEFAULT 5
+    p_max_attempts INT DEFAULT 5,
+    p_cooling_hours INT DEFAULT 0
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -462,7 +650,29 @@ DECLARE
     v_new_attempts INT;
     v_is_locked BOOLEAN;
     v_vendor_payout_amount NUMERIC(15, 2);
+    v_payouts_enabled BOOLEAN := TRUE;
+    v_allowlist_mode BOOLEAN := FALSE;
+    v_setting JSONB;
+    v_cooling INT := GREATEST(0, COALESCE(p_cooling_hours, 0));
+    v_available_at TIMESTAMPTZ;
 BEGIN
+    SELECT value INTO v_setting FROM public.system_settings WHERE key = 'payouts_enabled';
+    IF FOUND AND v_setting IS NOT NULL AND jsonb_typeof(v_setting) = 'boolean' THEN
+        v_payouts_enabled := (v_setting::text)::boolean;
+    END IF;
+    IF NOT v_payouts_enabled THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Payouts are currently paused by an operations safety switch.',
+            'status_code', 503
+        );
+    END IF;
+
+    SELECT value INTO v_setting FROM public.system_settings WHERE key = 'vendor_allowlist_mode';
+    IF FOUND AND v_setting IS NOT NULL AND jsonb_typeof(v_setting) = 'boolean' THEN
+        v_allowlist_mode := (v_setting::text)::boolean;
+    END IF;
+
     SELECT * INTO v_tx
     FROM public.transactions
     WHERE id = p_transaction_id
@@ -484,6 +694,22 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Invalid state: transaction is ' || v_tx.status, 'status_code', 400);
     END IF;
 
+    IF COALESCE(v_tx.order_blocked, false) THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', COALESCE(v_tx.order_block_reason, 'Transaction is blocked pending security investigation. Payout blocked.'),
+            'status_code', 423
+        );
+    END IF;
+
+    IF COALESCE(v_tx.review_hold, false) THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', COALESCE(v_tx.review_hold_reason, 'Transaction is on manual risk review hold. Admin clearance required before payout.'),
+            'status_code', 423
+        );
+    END IF;
+
     IF v_tx.code_locked OR v_tx.failed_code_attempts >= p_max_attempts THEN
         RETURN jsonb_build_object(
             'success', false,
@@ -494,7 +720,7 @@ BEGIN
     END IF;
 
     IF v_tx.code_expires_at IS NOT NULL AND v_now > v_tx.code_expires_at THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Release code has expired. Dispute arbitration required.', 'status_code', 410);
+        RETURN jsonb_build_object('success', false, 'error', 'Release code has expired while funds stay safely held. Buyer can request a fresh code via the resend flow.', 'status_code', 410);
     END IF;
 
     IF v_tx.anchor_deposit_id IS NULL THEN
@@ -515,13 +741,22 @@ BEGIN
 
     SELECT * INTO v_vendor
     FROM public.vendors
-    WHERE id = v_tx.vendor_id;
+    WHERE id = v_tx.vendor_id
+    FOR UPDATE;
 
     IF NOT FOUND THEN
         RETURN jsonb_build_object(
             'success', false,
             'error', 'Vendor record not found for transaction vendor_id.',
             'status_code', 422
+        );
+    END IF;
+
+    IF COALESCE(v_vendor.is_suspended, false) THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Vendor account is suspended pending compliance review. Payout blocked.',
+            'status_code', 423
         );
     END IF;
 
@@ -533,11 +768,28 @@ BEGIN
         );
     END IF;
 
-    IF NOT v_vendor.is_allowlisted THEN
+    IF v_allowlist_mode AND NOT COALESCE(v_vendor.is_allowlisted, false) THEN
         RETURN jsonb_build_object(
             'success', false,
             'error', 'Vendor is not on the active launch allowlist. Payout blocked.',
             'status_code', 422
+        );
+    END IF;
+
+    IF NOT COALESCE(v_vendor.payout_account_verified, false) OR NOT COALESCE(v_vendor.settlement_account_name_matched, false) THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Vendor settlement bank account name enquiry is unverified or mismatched with KYC legal name. Payout blocked.',
+            'status_code', 422
+        );
+    END IF;
+
+    IF v_vendor.payout_hold_until IS NOT NULL AND v_now < v_vendor.payout_hold_until THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Payouts are temporarily held due to a recent settlement bank account change.',
+            'payout_hold_until', v_vendor.payout_hold_until,
+            'status_code', 423
         );
     END IF;
 
@@ -552,16 +804,50 @@ BEGIN
     v_vendor_payout_amount := v_tx.total_amount - v_tx.protection_fee;
 
     IF v_tx.release_code_hash = p_hmac_hash THEN
+        IF v_tx.payout_available_at IS NULL AND v_cooling > 0 THEN
+            v_available_at := v_now + (v_cooling::text || ' hours')::interval;
+            UPDATE public.transactions
+            SET
+                code_verified_at = COALESCE(code_verified_at, v_now),
+                payout_available_at = v_available_at,
+                cooling_window_hours = v_cooling,
+                failed_code_attempts = 0,
+                updated_at = v_now
+            WHERE id = p_transaction_id;
+
+            RETURN jsonb_build_object(
+                'success', true,
+                'cooling_active', true,
+                'cooling_window_hours', v_cooling,
+                'payout_available_at', v_available_at,
+                'transaction_id', v_tx.id,
+                'status_code', 202
+            );
+        END IF;
+
+        IF v_tx.payout_available_at IS NOT NULL AND v_now < v_tx.payout_available_at THEN
+            RETURN jsonb_build_object(
+                'success', true,
+                'cooling_active', true,
+                'cooling_window_hours', COALESCE(v_tx.cooling_window_hours, v_cooling),
+                'payout_available_at', v_tx.payout_available_at,
+                'transaction_id', v_tx.id,
+                'status_code', 202
+            );
+        END IF;
+
         UPDATE public.transactions
         SET
             status = 'RELEASING',
             releasing_at = v_now,
+            code_verified_at = COALESCE(code_verified_at, v_now),
             failed_code_attempts = 0,
             updated_at = v_now
         WHERE id = p_transaction_id;
 
         RETURN jsonb_build_object(
             'success', true,
+            'cooling_active', false,
             'transaction_id', v_tx.id,
             'item_price', v_tx.item_price,
             'delivery_fee', v_tx.delivery_fee,
@@ -611,6 +897,7 @@ DECLARE
     v_tx RECORD;
     v_now TIMESTAMPTZ := timezone('utc'::text, now());
     v_payout_amount NUMERIC(15, 2);
+    v_eligible_sale BOOLEAN := FALSE;
 BEGIN
     SELECT * INTO v_tx
     FROM public.transactions
@@ -683,7 +970,42 @@ BEGIN
             jsonb_build_object('fee', v_tx.protection_fee, 'transfer_id', p_transfer_id)
         ) ON CONFLICT (idempotency_key) DO NOTHING;
 
-        RETURN jsonb_build_object('success', true, 'status', 'RELEASED');
+        IF v_tx.vendor_id IS NOT NULL THEN
+            SELECT
+                (
+                    v_tx.disputed_at IS NULL
+                    AND v_tx.dispute_reason IS NULL
+                    AND NOT EXISTS (
+                        SELECT 1 FROM public.dispute_resolutions dr WHERE dr.transaction_id = p_transaction_id
+                    )
+                    AND NOT (
+                        COALESCE(v_tx.risk_signals, '[]'::jsonb) @> '[{"code":"SHARED_PHONE_VENDOR_BUYER"}]'::jsonb
+                        OR COALESCE(v_tx.risk_signals, '[]'::jsonb) @> '[{"code":"SHARED_DEVICE_OR_IP"}]'::jsonb
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1 FROM public.vendors v
+                        WHERE v.id = v_tx.vendor_id
+                          AND (
+                              (v_tx.buyer_phone_hash IS NOT NULL AND v.phone_hash IS NOT NULL AND v_tx.buyer_phone_hash = v.phone_hash)
+                              OR (v_tx.buyer_ip_hash IS NOT NULL AND ((v.signup_ip_hash IS NOT NULL AND v_tx.buyer_ip_hash = v.signup_ip_hash) OR (v_tx.creator_ip_hash IS NOT NULL AND v_tx.buyer_ip_hash = v_tx.creator_ip_hash)))
+                              OR (v_tx.buyer_device_hash IS NOT NULL AND ((v.signup_device_hash IS NOT NULL AND v_tx.buyer_device_hash = v.signup_device_hash) OR (v_tx.creator_device_hash IS NOT NULL AND v_tx.buyer_device_hash = v_tx.creator_device_hash)))
+                          )
+                    )
+                )
+            INTO v_eligible_sale;
+
+            IF v_eligible_sale THEN
+                UPDATE public.vendors
+                SET
+                    successful_sales_count = COALESCE(successful_sales_count, 0) + 1,
+                    completed_orders_count = COALESCE(completed_orders_count, 0) + 1,
+                    first_order_at = COALESCE(first_order_at, v_now),
+                    updated_at = v_now
+                WHERE id = v_tx.vendor_id;
+            END IF;
+        END IF;
+
+        RETURN jsonb_build_object('success', true, 'status', 'RELEASED', 'vendor_sales_incremented', COALESCE(v_eligible_sale, false));
     END IF;
 
     RETURN jsonb_build_object('success', false, 'error', 'Unknown release step: ' || COALESCE(p_step, 'NULL'), 'status_code', 400);
@@ -780,6 +1102,7 @@ BEGIN
 
     IF v_tx.status NOT IN ('AWAITING_PAYMENT', 'PARTIALLY_FUNDED') THEN
         v_deposit_status := CASE
+            WHEN v_tx.status IN ('EXPIRED', 'CANCELLED') THEN 'LATE_AFTER_TERMINAL'
             WHEN v_tx.status IN ('RELEASED', 'REFUNDED') THEN 'LATE_DEPOSIT'
             ELSE 'EXCESS_DEPOSIT'
         END;
@@ -796,6 +1119,17 @@ BEGIN
         SET
             amount_paid = COALESCE(amount_paid, 0) + p_amount_naira,
             excess_amount = COALESCE(excess_amount, 0) + p_amount_naira,
+            review_hold = CASE WHEN v_tx.status IN ('EXPIRED', 'CANCELLED') THEN TRUE ELSE COALESCE(review_hold, FALSE) END,
+            review_hold_reason = CASE
+                WHEN v_tx.status IN ('EXPIRED', 'CANCELLED') THEN 'Late deposit received on ' || v_tx.status || ' order; queued for buyer refund.'
+                ELSE review_hold_reason
+            END,
+            sender_account_number = COALESCE(v_sender_account, sender_account_number),
+            sender_bank_code = COALESCE(v_sender_bank, sender_bank_code),
+            sender_name = COALESCE(v_sender_name, sender_name),
+            refund_destination_account = COALESCE(v_sender_account, refund_destination_account),
+            refund_destination_bank = COALESCE(v_sender_bank, refund_destination_bank),
+            refund_destination_name = COALESCE(v_sender_name, refund_destination_name),
             updated_at = v_now
         WHERE id = v_tx.id;
 
@@ -848,6 +1182,9 @@ BEGIN
             refund_destination_account = COALESCE(v_sender_account, refund_destination_account),
             refund_destination_bank = COALESCE(v_sender_bank, refund_destination_bank),
             refund_destination_name = COALESCE(v_sender_name, refund_destination_name),
+            sender_account_number = COALESCE(v_sender_account, sender_account_number),
+            sender_bank_code = COALESCE(v_sender_bank, sender_bank_code),
+            sender_name = COALESCE(v_sender_name, sender_name),
             updated_at = v_now
         WHERE id = v_tx.id;
 
@@ -870,8 +1207,14 @@ BEGIN
             'success', true,
             'status', 'PARTIALLY_FUNDED',
             'transaction_id', v_tx.id,
+            'vendor_id', v_tx.vendor_id,
             'total_deposited', v_cumulative_deposited,
-            'total_due', v_total_due
+            'total_due', v_total_due,
+            'sender_name', v_sender_name,
+            'sender_account_number', v_sender_account,
+            'sender_bank_code', v_sender_bank,
+            'order_blocked', COALESCE(v_tx.order_blocked, false),
+            'review_hold', COALESCE(v_tx.review_hold, false)
         );
     ELSE
         v_new_status := 'FUNDS_LOCKED';
@@ -886,6 +1229,9 @@ BEGIN
             refund_destination_account = COALESCE(v_sender_account, refund_destination_account),
             refund_destination_bank = COALESCE(v_sender_bank, refund_destination_bank),
             refund_destination_name = COALESCE(v_sender_name, refund_destination_name),
+            sender_account_number = COALESCE(v_sender_account, sender_account_number),
+            sender_bank_code = COALESCE(v_sender_bank, sender_bank_code),
+            sender_name = COALESCE(v_sender_name, sender_name),
             paid_at = COALESCE(v_tx.paid_at, v_now),
             code_expires_at = COALESCE(v_tx.code_expires_at, v_now + interval '72 hours'),
             payment_method = 'VIRTUAL_NUBAN_TRANSFER',
@@ -911,12 +1257,92 @@ BEGIN
             'success', true,
             'status', 'FUNDS_LOCKED',
             'transaction_id', v_tx.id,
+            'vendor_id', v_tx.vendor_id,
             'amount_paid', v_cumulative_deposited,
             'total_deposited', v_cumulative_deposited,
+            'total_due', v_total_due,
             'excess_amount', v_excess_amount,
+            'sender_name', v_sender_name,
+            'sender_account_number', v_sender_account,
+            'sender_bank_code', v_sender_bank,
+            'order_blocked', COALESCE(v_tx.order_blocked, false),
+            'review_hold', COALESCE(v_tx.review_hold, false),
             'needs_code_issue', (v_tx.release_code_hash IS NULL)
         );
     END IF;
+END;
+$$;
+
+-- 7.3B ATOMIC ADMIN CLEAR RISK REVIEW HOLD
+CREATE OR REPLACE FUNCTION public.rpc_admin_clear_risk_hold(
+    p_transaction_id UUID,
+    p_admin_email TEXT,
+    p_reason TEXT,
+    p_unblock BOOLEAN DEFAULT FALSE,
+    p_ip_address TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_tx RECORD;
+    v_now TIMESTAMPTZ := timezone('utc'::text, now());
+    v_cleared_flags INT := 0;
+BEGIN
+    IF TRIM(COALESCE(p_reason, '')) = '' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'A non-empty reason is required to clear a risk hold.', 'status_code', 400);
+    END IF;
+
+    SELECT * INTO v_tx
+    FROM public.transactions
+    WHERE id = p_transaction_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Transaction not found', 'status_code', 404);
+    END IF;
+
+    UPDATE public.transactions
+    SET
+        review_hold = FALSE,
+        review_cleared_by = p_admin_email,
+        review_cleared_at = v_now,
+        review_clear_reason = p_reason,
+        order_blocked = CASE WHEN p_unblock THEN FALSE ELSE order_blocked END,
+        order_block_reason = CASE WHEN p_unblock THEN NULL ELSE order_block_reason END,
+        updated_at = v_now
+    WHERE id = p_transaction_id;
+
+    UPDATE public.risk_flags
+    SET
+        status = 'CLEARED',
+        cleared_by = p_admin_email,
+        cleared_reason = p_reason,
+        cleared_at = v_now,
+        updated_at = v_now
+    WHERE transaction_id = p_transaction_id
+      AND status IN ('OPEN', 'BLOCKED');
+
+    GET DIAGNOSTICS v_cleared_flags = ROW_COUNT;
+
+    INSERT INTO public.admin_audit_log (
+        admin_email, action, target_type, target_id, ip_address, metadata, created_at
+    ) VALUES (
+        p_admin_email, 'ADMIN_CLEAR_RISK_HOLD', 'transaction', p_transaction_id::text, p_ip_address,
+        jsonb_build_object('reason', p_reason, 'unblock', p_unblock, 'cleared_flags_count', v_cleared_flags),
+        v_now
+    );
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'transaction_id', p_transaction_id,
+        'cleared_by', p_admin_email,
+        'cleared_at', v_now,
+        'cleared_flags_count', v_cleared_flags,
+        'unblocked', p_unblock
+    );
 END;
 $$;
 
@@ -1349,6 +1775,121 @@ BEGIN
 END;
 $$;
 
+-- 7.8 ROW-LOCKED ATOMIC DISPUTE RAISE & IMMEDIATE PAYOUT HOLD
+CREATE OR REPLACE FUNCTION public.rpc_raise_dispute_with_lock(
+    p_transaction_id UUID,
+    p_raised_by TEXT,
+    p_scenario_id INT,
+    p_reason TEXT,
+    p_response_deadline_at TIMESTAMPTZ DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_tx public.transactions%ROWTYPE;
+    v_now TIMESTAMPTZ := timezone('utc'::text, now());
+    v_role TEXT := UPPER(COALESCE(p_raised_by, 'BUYER'));
+BEGIN
+    IF v_role NOT IN ('BUYER', 'VENDOR', 'ADMIN', 'SYSTEM') THEN
+        RETURN jsonb_build_object('success', false, 'status_code', 400, 'error', 'Invalid dispute initiator role.');
+    END IF;
+
+    SELECT * INTO v_tx
+    FROM public.transactions
+    WHERE id = p_transaction_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'status_code', 404, 'error', 'Transaction not found.');
+    END IF;
+
+    IF v_tx.status = 'RELEASED' OR v_tx.code_verified_at IS NOT NULL THEN
+        RETURN jsonb_build_object('success', false, 'status_code', 400, 'error', 'Cannot dispute a transaction after the release code has been accepted.');
+    END IF;
+
+    IF v_tx.status = 'DISPUTED' THEN
+        RETURN jsonb_build_object('success', false, 'status_code', 400, 'error', 'Transaction is already in dispute.');
+    END IF;
+
+    IF v_tx.status NOT IN ('FUNDS_LOCKED', 'DISPATCHED') THEN
+        RETURN jsonb_build_object('success', false, 'status_code', 400, 'error', 'Cannot raise dispute in status ' || v_tx.status || '.');
+    END IF;
+
+    UPDATE public.transactions
+    SET
+        status = 'DISPUTED',
+        review_hold = TRUE,
+        review_hold_reason = 'Dispute frozen (Scenario ' || COALESCE(p_scenario_id::text, 'N/A') || ') raised by ' || v_role,
+        disputed_at = v_now,
+        dispute_scenario = COALESCE(p_scenario_id, dispute_scenario),
+        dispute_reason = COALESCE(NULLIF(TRIM(p_reason), ''), dispute_reason),
+        dispute_raised_by = v_role,
+        dispute_response_deadline_at = COALESCE(p_response_deadline_at, v_now + interval '12 hours'),
+        dispute_otp_hash = NULL,
+        dispute_otp_expires_at = NULL,
+        dispute_otp_attempts = 0,
+        updated_at = v_now
+    WHERE id = p_transaction_id;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'status', 'DISPUTED',
+        'review_hold', true,
+        'disputed_at', v_now,
+        'dispute_response_deadline_at', COALESCE(p_response_deadline_at, v_now + interval '12 hours'),
+        'transaction_id', p_transaction_id
+    );
+END;
+$$;
+
+-- 7.9 SHARED DISTRIBUTED SLIDING-WINDOW RATE LIMITER
+CREATE OR REPLACE FUNCTION public.rpc_check_rate_limit(
+    p_key TEXT,
+    p_limit INT DEFAULT 10,
+    p_window_ms BIGINT DEFAULT 900000
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_now TIMESTAMPTZ := timezone('utc'::text, now());
+    v_window INTERVAL := (GREATEST(1000, COALESCE(p_window_ms, 900000)) / 1000.0) * interval '1 second';
+    v_row public.rate_limit_buckets%ROWTYPE;
+    v_allowed BOOLEAN;
+    v_remaining INT;
+BEGIN
+    INSERT INTO public.rate_limit_buckets (key, count, reset_at, updated_at)
+    VALUES (p_key, 1, v_now + v_window, v_now)
+    ON CONFLICT (key) DO UPDATE
+    SET
+        count = CASE
+            WHEN public.rate_limit_buckets.reset_at <= v_now THEN 1
+            ELSE public.rate_limit_buckets.count + 1
+        END,
+        reset_at = CASE
+            WHEN public.rate_limit_buckets.reset_at <= v_now THEN v_now + v_window
+            ELSE public.rate_limit_buckets.reset_at
+        END,
+        updated_at = v_now
+    RETURNING * INTO v_row;
+
+    v_allowed := v_row.count <= GREATEST(1, COALESCE(p_limit, 10));
+    v_remaining := GREATEST(0, GREATEST(1, COALESCE(p_limit, 10)) - v_row.count);
+
+    RETURN jsonb_build_object(
+        'allowed', v_allowed,
+        'count', v_row.count,
+        'remaining', v_remaining,
+        'reset_at', v_row.reset_at
+    );
+END;
+$$;
+
 -- -------------------------------------------------------------------------
 -- SECTION 8: STRICT RLS, RESTRICTIVE DENY POLICIES & ZERO PUBLIC ACCESS
 -- -------------------------------------------------------------------------
@@ -1370,7 +1911,10 @@ DECLARE
         'whatsapp_do_not_contact',
         'whatsapp_message_log',
         'whatsapp_webhook_events',
-        'market_waitlist'
+        'market_waitlist',
+        'risk_flags',
+        'order_evidence_files',
+        'rate_limit_buckets'
     ];
 BEGIN
     FOR r IN (

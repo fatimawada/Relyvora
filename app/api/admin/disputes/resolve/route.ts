@@ -3,11 +3,18 @@ import { getServiceSupabase } from '@/lib/supabaseServer';
 import { verifyAdminSession } from '@/lib/adminAuth';
 import { getClientIp } from '@/lib/rateLimit';
 import { sendSystemAlert } from '@/lib/alerts';
-import { 
-  executeAnchorBookTransfer, 
-  executeAnchorNipTransfer, 
-  RELYVORA_FBO_ACCOUNT_ID, 
-  RELYVORA_REVENUE_ACCOUNT_ID 
+import { logAndAlertAdminAction, validateAdminTypedConfirmation } from '@/lib/adminSafety';
+import {
+  recordDisputeAndDemoteIfNeeded,
+  recordVendorComplianceStrike,
+} from '@/lib/vendorTiers';
+import { resolveVerifiedRefundDestination } from '@/lib/refundDestination';
+import {
+  createAnchorCounterParty,
+  executeAnchorBookTransfer,
+  executeAnchorNipTransfer,
+  RELYVORA_FBO_ACCOUNT_ID,
+  RELYVORA_REVENUE_ACCOUNT_ID,
 } from '@/lib/anchor';
 
 export async function POST(request: NextRequest) {
@@ -16,7 +23,14 @@ export async function POST(request: NextRequest) {
     const auth = await verifyAdminSession(request);
     if (!auth.authorized || !auth.user?.id) {
       return NextResponse.json(
-        { success: false, error: auth.error || 'Unauthorized admin access' },
+        {
+          success: false,
+          error: auth.error || 'Unauthorized admin access',
+          code: auth.code,
+          aal: auth.aal,
+          mfaEnrolled: auth.mfaEnrolled,
+          enrollmentUrl: auth.enrollmentUrl || '/admin/security',
+        },
         { status: auth.statusCode }
       );
     }
@@ -33,6 +47,7 @@ export async function POST(request: NextRequest) {
       overrideConfirmed = false,
       overrideBuyerRefund,
       overrideVendorPayout,
+      typedConfirmation,
     } = body;
 
     if (!transactionId || scenarioId === undefined) {
@@ -53,13 +68,6 @@ export async function POST(request: NextRequest) {
     const supabase = getServiceSupabase();
 
     // 2. PHASE 1: PREPARE DISPUTE RESOLUTION (Atomic Postgres RPC)
-    // Acquires SELECT ... FOR UPDATE on public.transactions,
-    // verifies status is 'DISPUTED' or 'RESOLVING',
-    // computes exact split on the server based on scenario / stored item_price, delivery_fee, protection_fee,
-    // enforces Owner Rule 1: In Scenario 1 (Full Refund), protection_fee is NON-REFUNDABLE (buyer gets item_price + delivery_fee, Relyvora retains fee),
-    // strictly validates: buyer + vendor + fee = amount_paid - excess_amount,
-    // enforces Owner Rule 2: verified refund destination check,
-    // transitions status to 'RESOLVING', sets resolving_at.
     const { data: prepResult, error: prepError } = await supabase.rpc('rpc_admin_prepare_dispute_resolution', {
       p_transaction_id: transactionId,
       p_scenario_number: scenarioNum,
@@ -100,31 +108,88 @@ export async function POST(request: NextRequest) {
       existing_payout_transfer_id: existingPayoutId,
     } = prepResult;
 
-    // 3. PHASE 2: TWO-PHASE SETTLEMENT MONEY MOVEMENT
-    // Uses per-leg idempotency keys and retries ONLY the missing leg.
+    const confirmAction =
+      resolutionAction === 'FULL_REFUND_BUYER' || resolutionAction === 'FULL_REFUND' || resolutionAction === 'REFUND'
+        ? 'REFUND'
+        : resolutionAction === 'FULL_PAYOUT_VENDOR' || resolutionAction === 'FULL_RELEASE' || resolutionAction === 'RELEASE'
+          ? 'RELEASE'
+          : 'SPLIT';
+
+    const totalSettlementNgn = Number(buyerAmt || 0) + Number(vendorAmt || 0);
+    const confirmCheck = await validateAdminTypedConfirmation({
+      action: confirmAction,
+      transactionId,
+      amountNgn: totalSettlementNgn,
+      typedConfirmation,
+    });
+
+    if (!confirmCheck.valid) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'TYPED_CONFIRMATION_REQUIRED',
+          expectedPhrase: confirmCheck.expectedPhrase,
+          error: confirmCheck.error,
+        },
+        { status: 400 }
+      );
+    }
+
+    // 3. Enforce verified refund destination before initiating any buyer refund leg
     let refundTransferId = existingRefundId || null;
     let payoutTransferId = existingPayoutId || null;
-
     const isLive = process.env.PAYMENTS_MODE === 'live';
 
-    // 3a. Execute Buyer Refund Leg (if buyerAmt > 0 and not already executed)
     if (buyerAmt > 0 && !refundTransferId) {
+      const { data: txForRefund } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('id', transactionId)
+        .single();
+
+      const resolvedDest = await resolveVerifiedRefundDestination(
+        txForRefund || {
+          id: transactionId,
+          refund_destination_account: refundDestAcc,
+          refund_destination_bank: refundDestBank,
+        },
+        supabase
+      );
+
+      if (!resolvedDest.verified || !resolvedDest.accountNumber || !resolvedDest.bankCode) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: 'REFUND_DESTINATION_UNVERIFIED',
+            error:
+              'Verified buyer refund destination is missing. Ask the buyer to submit and OTP-verify their Nigerian NUBAN on /order/' +
+              transactionId +
+              ' before executing any refund.',
+          },
+          { status: 422 }
+        );
+      }
+
       const buyerIdempotencyKey = `dispute_refund_${transactionId}`;
       if (isLive) {
         try {
-          // Outward NIP Transfer to verified buyer sender account (Owner Rule 2)
-          // In production, resolves destination bank code & counterparty
+          const cpResult = await createAnchorCounterParty({
+            bankCode: resolvedDest.bankCode,
+            accountNumber: resolvedDest.accountNumber,
+            accountName: resolvedDest.accountName || 'Verified Buyer',
+            verifyName: false,
+          });
+
           const nipResult = await executeAnchorNipTransfer({
-            amount: Math.round(buyerAmt * 100), // Anchor uses Kobo
+            amount: Math.round(buyerAmt * 100),
             sourceAccountId: RELYVORA_FBO_ACCOUNT_ID,
-            counterPartyId: refundDestAcc, // counterparty mapped to verified sender account
+            counterPartyId: cpResult.counterPartyId,
             reason: `Relyvora Escrow Dispute Refund (${transactionId.substring(0, 8)})`,
             reference: buyerIdempotencyKey,
           });
           refundTransferId = nipResult.transferId;
         } catch (legErr: any) {
           console.error(`Buyer refund transfer failed for ${transactionId}:`, legErr);
-          // Transaction remains in 'RESOLVING' for retry of missing leg
           return NextResponse.json({
             success: false,
             status: 'RESOLVING',
@@ -133,11 +198,9 @@ export async function POST(request: NextRequest) {
           }, { status: 502 });
         }
       } else {
-        // Sandbox Simulation
         refundTransferId = `sandbox_refund_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       }
 
-      // Persist successful buyer transfer ID immediately
       await supabase.from('transactions').update({ refund_transfer_id: refundTransferId }).eq('id', transactionId);
     }
 
@@ -146,8 +209,6 @@ export async function POST(request: NextRequest) {
       const vendorIdempotencyKey = `dispute_payout_${transactionId}`;
       if (isLive) {
         try {
-          // BookTransfer from Relyvora Escrow FBO to Vendor Deposit Account
-          // Fetch vendor deposit account from vendors relation
           const { data: txWithVendor } = await supabase
             .from('transactions')
             .select('vendor_id, vendors(anchor_deposit_account_id)')
@@ -166,7 +227,6 @@ export async function POST(request: NextRequest) {
           payoutTransferId = bookResult.transferId;
         } catch (legErr: any) {
           console.error(`Vendor payout transfer failed for ${transactionId}:`, legErr);
-          // Transaction remains in 'RESOLVING' for retry of missing leg
           return NextResponse.json({
             success: false,
             status: 'RESOLVING',
@@ -175,18 +235,13 @@ export async function POST(request: NextRequest) {
           }, { status: 502 });
         }
       } else {
-        // Sandbox Simulation
         payoutTransferId = `sandbox_payout_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       }
 
-      // Persist successful vendor transfer ID immediately
       await supabase.from('transactions').update({ payout_transfer_id: payoutTransferId }).eq('id', transactionId);
     }
 
     // 4. PHASE 3: FINALIZE DISPUTE RESOLUTION (Atomic Postgres RPC)
-    // Transitions to 'REFUNDED' or 'RELEASED', inserts into dispute_resolutions,
-    // appends to transaction_ledger with the REAL Anchor transfer IDs,
-    // writes immutable admin_audit_log entry.
     const { data: finalResult, error: finalError } = await supabase.rpc('rpc_admin_finalize_dispute_resolution', {
       p_transaction_id: transactionId,
       p_scenario_number: scenarioNum,
@@ -216,7 +271,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // 5. Send Alert via Resend
+    // 5. Alert, audit log, vendor dispute demotion, and Scenario 6 compliance strike
     sendSystemAlert({
       type: 'NEW_DISPUTE',
       severity: 'WARNING',
@@ -234,6 +289,54 @@ export async function POST(request: NextRequest) {
       },
     }).catch(() => {});
 
+    await logAndAlertAdminAction({
+      adminEmail: verifiedAdminEmail,
+      action: `DISPUTE_FINALIZE_${resolutionAction}`,
+      targetType: 'transaction',
+      targetId: transactionId,
+      ipAddress: clientIp,
+      alertTitle: `Admin Resolved Dispute: Scenario ${scenarioNum} (${scenarioName})`,
+      severity: totalSettlementNgn >= 1_000_000 ? 'CRITICAL' : 'WARNING',
+      skipAuditInsert: true,
+      metadata: {
+        scenarioNumber: scenarioNum,
+        scenarioName,
+        resolutionAction,
+        buyerRefundAmount: buyerAmt,
+        vendorPayoutAmount: vendorAmt,
+        relyvoraFee: feeAmt,
+        refundTransferId,
+        payoutTransferId,
+        notes: resolutionNotes,
+      },
+      supabaseClient: supabase,
+    }).catch(() => {});
+
+    const { data: resolvedTxMeta } = await supabase
+      .from('transactions')
+      .select('vendor_id')
+      .eq('id', transactionId)
+      .maybeSingle();
+
+    await recordDisputeAndDemoteIfNeeded({
+      vendorId: resolvedTxMeta?.vendor_id,
+      transactionId,
+      reason: `Dispute resolved: Scenario ${scenarioNum} (${scenarioName})`,
+      supabaseClient: supabase,
+    }).catch(() => {});
+
+    let complianceStrikeResult = null;
+    if (scenarioNum === 6 && resolutionAction === 'FULL_REFUND_BUYER' && resolvedTxMeta?.vendor_id) {
+      complianceStrikeResult = await recordVendorComplianceStrike({
+        vendorId: resolvedTxMeta.vendor_id,
+        transactionId,
+        reason: 'Scenario 6: Vendor Failure to Deliver resolved with full buyer refund',
+        adminEmail: verifiedAdminEmail,
+        ipAddress: clientIp,
+        supabaseClient: supabase,
+      }).catch(() => null);
+    }
+
     return NextResponse.json({
       success: true,
       transactionId,
@@ -248,6 +351,7 @@ export async function POST(request: NextRequest) {
         refundTransferId,
         payoutTransferId,
       },
+      ...(complianceStrikeResult ? { complianceStrikeResult } : {}),
       message: `Dispute successfully settled and finalized under Scenario ${scenarioNum}: ${scenarioName}.`,
     });
   } catch (err: any) {

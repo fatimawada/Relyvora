@@ -2,65 +2,62 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { 
-  createTransaction, 
-  getTransactions 
+import {
+  createTransaction,
+  getTransactions,
 } from '@/lib/supabase';
 import { Transaction, VendorMetrics } from '@/lib/types';
 import { calculatePricing, formatNaira, MINIMUM_PROTECTION_FEE } from '@/lib/pricing';
 import { isLiveMode } from '@/lib/paymentsMode';
 import { StatusBadge } from '@/components/StatusBadge';
 import { AnchorBrandText } from '@/components/common/AnchorBrandText';
-import { 
-  Store, 
-  Sparkles, 
-  ShieldCheck, 
-  Link2, 
-  Copy, 
-  Check, 
-  Share2, 
-  Lock, 
-  Wallet, 
-  Package, 
-  ArrowUpRight, 
+import { ProductFooter } from '@/components/ProductFooter';
+import {
+  Sparkles,
+  ShieldCheck,
+  Link2,
+  Copy,
+  Check,
+  Lock,
+  Wallet,
+  Package,
+  ArrowUpRight,
   MessageCircle,
   ExternalLink,
   RefreshCw,
   Info,
-  Clock,
-  Database,
   Star,
-  Lightbulb
+  Lightbulb,
+  Truck,
+  XCircle,
 } from 'lucide-react';
 
 export default function VendorDashboardPage() {
   const [vendorHandle, setVendorHandle] = useState('');
   const [itemName, setItemName] = useState('');
   const [itemPriceInput, setItemPriceInput] = useState('');
+  const [deliveryType, setDeliveryType] = useState<'same_city' | 'interstate'>('same_city');
   const [buyerPhone, setBuyerPhone] = useState('');
   const [buyerWhatsappConsent, setBuyerWhatsappConsent] = useState(false);
   const [buyerNotes, setBuyerNotes] = useState('');
-  
+
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [generatedTx, setGeneratedTx] = useState<Transaction | null>(null);
   const [whatsappNotice, setWhatsappNotice] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [isUsingFallback, setIsUsingFallback] = useState(false);
   const liveMode = isLiveMode();
 
-  // Compute live fee preview
   const pricing = useMemo(() => {
     return calculatePricing(itemPriceInput);
   }, [itemPriceInput]);
 
-  // Load transactions from Supabase
   const loadTransactions = async () => {
     setIsLoading(true);
-    const { data, isLocalFallback } = await getTransactions();
+    const { data } = await getTransactions();
     setTransactions(data);
-    setIsUsingFallback(Boolean(isLocalFallback));
     setIsLoading(false);
   };
 
@@ -68,7 +65,6 @@ export default function VendorDashboardPage() {
     loadTransactions();
   }, []);
 
-  // Calculate dynamic metrics from transaction list
   const metrics: VendorMetrics = useMemo(() => {
     let lockedInEscrow = 0;
     let availablePayout = 0;
@@ -96,7 +92,6 @@ export default function VendorDashboardPage() {
     };
   }, [transactions]);
 
-  // Handle Generate Escrow Link
   const handleGenerateLink = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!itemName.trim() || pricing.itemPrice <= 0) return;
@@ -106,7 +101,6 @@ export default function VendorDashboardPage() {
     try {
       const activeVendorHandle = vendorHandle.trim() || '@LagosHairPlug';
 
-      // 1. Try server-side route handler with service role (and Anchor Virtual NUBAN in live mode)
       try {
         const res = await fetch('/api/escrow/create-link', {
           method: 'POST',
@@ -115,6 +109,7 @@ export default function VendorDashboardPage() {
             itemName: itemName.trim(),
             itemPrice: pricing.itemPrice,
             deliveryFee: pricing.deliveryFee,
+            deliveryType,
             vendorHandle: activeVendorHandle,
             buyerPhone: buyerPhone.trim() || null,
             buyerWhatsappConsent,
@@ -139,7 +134,6 @@ export default function VendorDashboardPage() {
         console.warn('Network issue reaching /api/escrow/create-link, using fallback:', serverErr);
       }
 
-      // 2. Client fallback for local caching / demo resilience
       const { data, error } = await createTransaction({
         item_name: itemName.trim(),
         item_price: pricing.itemPrice,
@@ -160,6 +154,38 @@ export default function VendorDashboardPage() {
       }
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleCancelOrder = async (tx: Transaction) => {
+    const reason = window.prompt(
+      `Cancel order "${tx.item_name}" before dispatch? Enter a short reason (min 3 characters):`,
+      'Out of stock / vendor cancellation'
+    );
+    if (!reason || reason.trim().length < 3) return;
+
+    setCancellingId(tx.id);
+    try {
+      const res = await fetch('/api/escrow/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactionId: tx.id,
+          cancelledBy: 'VENDOR',
+          reason: reason.trim(),
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        alert(json.error || 'Could not cancel order.');
+      } else {
+        alert(json.message || 'Order cancelled cleanly.');
+        await loadTransactions();
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Network error cancelling order.');
+    } finally {
+      setCancellingId(null);
     }
   };
 
@@ -250,7 +276,7 @@ export default function VendorDashboardPage() {
                   <AnchorBrandText>Anchor virtual NUBAN accounts</AnchorBrandText> for live collection and automated NIP settlement.
                 </>
               ) : (
-                'Sandbox environment active. Complete vendor verification during invite-only onboarding to activate live commercial bank payouts.'
+                'Sandbox environment active. Complete vendor KYC onboarding to activate live commercial bank payouts.'
               )}
             </p>
           </div>
@@ -267,7 +293,6 @@ export default function VendorDashboardPage() {
 
       {/* Quick Metrics Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Locked in Escrow */}
         <div className="bg-surface p-5 rounded-2xl border border-border shadow-xs relative overflow-hidden transition-colors">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-muted uppercase tracking-wider">
@@ -288,7 +313,6 @@ export default function VendorDashboardPage() {
           </div>
         </div>
 
-        {/* Available for Payout */}
         <div className="bg-surface p-5 rounded-2xl border border-border shadow-xs relative overflow-hidden transition-colors">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-muted uppercase tracking-wider">
@@ -308,7 +332,6 @@ export default function VendorDashboardPage() {
           </div>
         </div>
 
-        {/* Active Orders */}
         <div className="bg-surface p-5 rounded-2xl border border-border shadow-xs relative overflow-hidden transition-colors">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-muted uppercase tracking-wider">
@@ -331,7 +354,6 @@ export default function VendorDashboardPage() {
 
       {/* Main Grid: Generator & Details */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start">
-        {/* Left Column: The Link Generator Form */}
         <div className="lg:col-span-7 bg-surface p-6 sm:p-7 rounded-3xl border border-border shadow-xs space-y-6 transition-colors">
           <div>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-accent/10 text-accent mb-2">
@@ -390,6 +412,44 @@ export default function VendorDashboardPage() {
                   placeholder="e.g. 45000"
                   className="w-full bg-site border border-border rounded-xl pl-8 pr-3.5 py-2.5 text-xs sm:text-sm font-semibold text-main placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
                 />
+              </div>
+            </div>
+
+            {/* Delivery Window Type Selector */}
+            <div>
+              <label className="block text-xs font-bold text-main uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                <Truck className="w-3.5 h-3.5 text-accent" />
+                <span>Delivery Window Type:</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setDeliveryType('same_city')}
+                  className={`p-3 rounded-xl border text-left text-xs transition-all cursor-pointer ${
+                    deliveryType === 'same_city'
+                      ? 'bg-accent/10 border-accent text-main'
+                      : 'bg-site border-border text-muted hover:border-accent/40'
+                  }`}
+                >
+                  <span className="font-bold text-main block">Same-City Dispatch</span>
+                  <span className="text-[11px] text-muted block mt-0.5">
+                    Up to 3 days delivery + 3 days grace
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeliveryType('interstate')}
+                  className={`p-3 rounded-xl border text-left text-xs transition-all cursor-pointer ${
+                    deliveryType === 'interstate'
+                      ? 'bg-accent/10 border-accent text-main'
+                      : 'bg-site border-border text-muted hover:border-accent/40'
+                  }`}
+                >
+                  <span className="font-bold text-main block">Interstate Waybill</span>
+                  <span className="text-[11px] text-muted block mt-0.5">
+                    Up to 7 days delivery + 3 days grace (waybill required)
+                  </span>
+                </button>
               </div>
             </div>
 
@@ -548,7 +608,6 @@ export default function VendorDashboardPage() {
                 </div>
               </div>
 
-              {/* Action buttons */}
               <div className="pt-1">
                 <Link
                   href={`/pay/${generatedTx.id}`}
@@ -563,7 +622,7 @@ export default function VendorDashboardPage() {
           )}
         </div>
 
-        {/* Right Column: Why Nigerian Vendors Trust Relyvora */}
+        {/* Right Column: Vendor Advantage */}
         <div className="lg:col-span-5 space-y-4">
           <div className="bg-navy-950 text-white p-6 rounded-3xl space-y-4 shadow-sm relative overflow-hidden border border-border">
             <div className="relative z-10 space-y-3">
@@ -590,7 +649,6 @@ export default function VendorDashboardPage() {
             <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-accent/10 rounded-full blur-2xl" />
           </div>
 
-          {/* Sandbox-only Quick link to tracker demo */}
           {!liveMode && (
             <div className="bg-surface p-5 rounded-2xl border border-border text-xs text-muted space-y-2 transition-colors">
               <div className="flex items-center gap-1.5 font-bold text-main">
@@ -693,6 +751,17 @@ export default function VendorDashboardPage() {
                     </td>
                     <td className="py-3.5 px-4 sm:px-6 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-2">
+                        {['AWAITING_PAYMENT', 'FUNDS_LOCKED'].includes(tx.status) && (
+                          <button
+                            type="button"
+                            onClick={() => handleCancelOrder(tx)}
+                            disabled={cancellingId === tx.id}
+                            className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 hover:bg-rose-500/20 transition-colors inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span>{cancellingId === tx.id ? 'Cancelling...' : 'Cancel'}</span>
+                          </button>
+                        )}
                         {tx.status === 'AWAITING_PAYMENT' ? (
                           <Link
                             href={`/pay/${tx.id}`}
@@ -719,6 +788,8 @@ export default function VendorDashboardPage() {
           </div>
         )}
       </div>
+
+      <ProductFooter />
     </div>
   );
 }

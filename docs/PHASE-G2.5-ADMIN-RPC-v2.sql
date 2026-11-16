@@ -90,6 +90,14 @@ ALTER TABLE public.deposits
     ADD COLUMN IF NOT EXISTS sender_bank_code TEXT,
     ADD COLUMN IF NOT EXISTS sender_name TEXT;
 
+-- 1.4b Vendors PII Scrub (KYC fields forwarded transiently to Anchor only)
+ALTER TABLE IF EXISTS public.vendors
+    DROP COLUMN IF EXISTS date_of_birth,
+    DROP COLUMN IF EXISTS gender,
+    DROP COLUMN IF EXISTS business_address,
+    DROP COLUMN IF EXISTS id_type,
+    DROP COLUMN IF EXISTS id_number;
+
 -- 1.5 WhatsApp Opt-Out / Do-Not-Contact Registry (HMAC-hashed phone, never plaintext phone)
 CREATE TABLE IF NOT EXISTS public.whatsapp_do_not_contact (
     phone_hash TEXT PRIMARY KEY,

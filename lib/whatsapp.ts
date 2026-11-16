@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { sendSystemAlert } from '@/lib/alerts';
 import { isLiveMode } from '@/lib/paymentsMode';
+import { getHotSettings } from '@/lib/safetyLimits';
 
 export type WhatsappDeliveryStatus =
   | 'not_sent'
@@ -17,16 +18,28 @@ export interface WhatsappTemplateDefinition {
   name: string;
   category: 'UTILITY' | 'AUTHENTICATION';
   language: string;
+  messageSendTtlSeconds?: number;
+  addSecurityRecommendation?: boolean;
+  codeExpirationMinutes?: number | null;
   bodyText: string;
   buttons?: Array<{
-    type: 'QUICK_REPLY' | 'URL';
+    type: 'QUICK_REPLY' | 'URL' | 'OTP';
+    otpType?: 'COPY_CODE';
     text: string;
     urlExample?: string;
   }>;
 }
 
 export const WHATSAPP_TEMPLATES: Record<
-  'payment_link_v1' | 'release_code_v1' | 'verification_otp_v1',
+  | 'payment_link_v1'
+  | 'release_code_v1'
+  | 'order_dispatched_v1'
+  | 'delivery_reminder_v1'
+  | 'dispute_opened_v1'
+  | 'verification_otp_v1'
+  | 'vendor_phone_verify_v1'
+  | 'settlement_change_confirm_v1'
+  | 'payout_cooling_notice_v1',
   WhatsappTemplateDefinition
 > = {
   payment_link_v1: {
@@ -47,10 +60,62 @@ export const WHATSAPP_TEMPLATES: Record<
   },
   release_code_v1: {
     name: 'release_code_v1',
+    category: 'AUTHENTICATION',
+    language: 'en',
+    messageSendTtlSeconds: -1, // 30-day Meta max TTL (prevents 10-minute default drop on offline Nigerian phones)
+    addSecurityRecommendation: false,
+    codeExpirationMinutes: null,
+    bodyText: '*{{1}}* is your verification code.',
+    buttons: [
+      {
+        type: 'OTP',
+        otpType: 'COPY_CODE',
+        text: 'Copy code',
+      },
+    ],
+  },
+  order_dispatched_v1: {
+    name: 'order_dispatched_v1',
     category: 'UTILITY',
     language: 'en',
     bodyText:
-      'Your payment for *{{1}}* ({{2}}) is locked in Relyvora escrow.\n\nYour 6-digit delivery release code is: *{{3}}*\n\nGive this code to the dispatch rider ONLY after you inspect and accept the item. Never share this code with the vendor before delivery.',
+      'Good news: {{1}} marked your order *{{2}}* (Ref: {{4}}) as dispatched with {{3}}. Inspect your package before handing over your 6-digit release code.',
+    buttons: [
+      {
+        type: 'URL',
+        text: 'Track Order',
+        urlExample: 'https://ng.relyvora.com/order/{{1}}',
+      },
+    ],
+  },
+  delivery_reminder_v1: {
+    name: 'delivery_reminder_v1',
+    category: 'UTILITY',
+    language: 'en',
+    bodyText:
+      'Reminder for *{{1}}* from {{2}}: your delivery inspection window ends in {{3}}. If your order has arrived intact, share your 6-digit code with the rider; if anything is wrong or missing, open your order page immediately.',
+    buttons: [
+      { type: 'QUICK_REPLY', text: 'Report Problem' },
+      {
+        type: 'URL',
+        text: 'View Order',
+        urlExample: 'https://ng.relyvora.com/order/{{1}}',
+      },
+    ],
+  },
+  dispute_opened_v1: {
+    name: 'dispute_opened_v1',
+    category: 'UTILITY',
+    language: 'en',
+    bodyText:
+      'Relyvora escrow update for *{{1}}*: {{2}}. Please review the timeline and submit any response or evidence on your order page before {{3}}.',
+    buttons: [
+      {
+        type: 'URL',
+        text: 'Open Dispute View',
+        urlExample: 'https://ng.relyvora.com/order/{{1}}',
+      },
+    ],
   },
   verification_otp_v1: {
     name: 'verification_otp_v1',
@@ -58,6 +123,30 @@ export const WHATSAPP_TEMPLATES: Record<
     language: 'en',
     bodyText:
       '{{1}} is your Relyvora verification code for {{2}}. This code expires in 10 minutes. Do not share it with anyone.',
+  },
+  vendor_phone_verify_v1: {
+    name: 'vendor_phone_verify_v1',
+    category: 'UTILITY',
+    language: 'en',
+    bodyText:
+      'Hello {{1}}, please confirm this WhatsApp number belongs to your Relyvora vendor account ({{2}}).',
+    buttons: [{ type: 'QUICK_REPLY', text: 'Confirm this is my business number' }],
+  },
+  settlement_change_confirm_v1: {
+    name: 'settlement_change_confirm_v1',
+    category: 'UTILITY',
+    language: 'en',
+    bodyText:
+      'Security alert for {{1}}: A request was made to change your Relyvora settlement bank account to ****{{2}} (Bank {{3}}). Tap confirm if you authorized this; payouts will be held for {{4}} hours after confirmation.',
+    buttons: [{ type: 'QUICK_REPLY', text: 'Confirm bank change' }],
+  },
+  payout_cooling_notice_v1: {
+    name: 'payout_cooling_notice_v1',
+    category: 'UTILITY',
+    language: 'en',
+    bodyText:
+      'Your Relyvora release code for *{{1}}* ({{2}}) was entered. Giving the code releases the money. For your protection, payout is held for {{3}} hours until {{4}}. Reply PROBLEM or tap below immediately if anything is wrong with your item.',
+    buttons: [{ type: 'QUICK_REPLY', text: 'PROBLEM' }],
   },
 };
 
@@ -128,6 +217,16 @@ interface GlobalWhatsappStore {
   dncHashes: Map<string, { masked_phone: string; reason: WhatsappDncReason; source_transaction_id?: string | null; created_at: string }>;
   outboundLogs: OutboundLogMemoryEntry[];
   webhookEvents: Set<string>;
+  recentPayloadsByWamid?: Map<
+    string,
+    {
+      payload: MetaTemplatePayload;
+      templateName: string;
+      transactionId?: string;
+      retryCount?: number;
+      storedAt?: number;
+    }
+  >;
 }
 
 const globalForWhatsapp = globalThis as unknown as {
@@ -143,10 +242,14 @@ function getWhatsappStore(): GlobalWhatsappStore {
       dncHashes: new Map(),
       outboundLogs: [],
       webhookEvents: new Set(),
+      recentPayloadsByWamid: new Map(),
     };
   }
   if (!globalForWhatsapp.__relyvoraWhatsappStore.buyerPhoneVerifications) {
     globalForWhatsapp.__relyvoraWhatsappStore.buyerPhoneVerifications = new Map();
+  }
+  if (!globalForWhatsapp.__relyvoraWhatsappStore.recentPayloadsByWamid) {
+    globalForWhatsapp.__relyvoraWhatsappStore.recentPayloadsByWamid = new Map();
   }
   return globalForWhatsapp.__relyvoraWhatsappStore;
 }
@@ -169,6 +272,7 @@ export function resetWhatsappTestState() {
   store.dncHashes.clear();
   store.outboundLogs = [];
   store.webhookEvents.clear();
+  store.recentPayloadsByWamid?.clear();
 }
 
 export function isSchemaMissingError(err: any): boolean {
@@ -836,7 +940,7 @@ export async function selectTransactionsListWithWhatsapp<T extends Record<string
 }
 
 /**
- * Verifies that the triggering vendor is both KYC-verified and allowlisted
+ * Verifies that the triggering vendor is KYC-verified (and allowlisted if vendor_allowlist_mode = true)
  * before permitting any outbound WhatsApp template dispatch.
  */
 export async function verifyVendorEligibleForWhatsapp(
@@ -871,10 +975,22 @@ export async function verifyVendorEligibleForWhatsapp(
   if (!vendor) {
     return { eligible: false, error: 'Vendor account could not be verified for outbound WhatsApp.' };
   }
-  if (vendor.kyc_status !== 'verified' || vendor.is_allowlisted !== true) {
+  if (vendor.kyc_status !== 'verified') {
     return {
       eligible: false,
-      error: 'Only KYC-verified, allowlisted vendors can trigger outbound WhatsApp messages.',
+      error: 'Only KYC-verified vendors can trigger outbound WhatsApp messages.',
+    };
+  }
+
+  const hotSettings = await getHotSettings();
+  const allowlistMode =
+    hotSettings.vendor_allowlist_mode !== undefined
+      ? Boolean(hotSettings.vendor_allowlist_mode === true || hotSettings.vendor_allowlist_mode === 'true')
+      : false;
+  if (allowlistMode && vendor.is_allowlisted !== true) {
+    return {
+      eligible: false,
+      error: 'Only allowlisted vendors can trigger outbound WhatsApp messages while allowlist mode is active.',
     };
   }
   return { eligible: true };
@@ -930,19 +1046,50 @@ export function applyWhatsappVerificationRedaction<T extends Record<string, any>
 /**
  * Low-level Meta WhatsApp Cloud API dispatcher.
  */
+function rememberDispatchedPayload(
+  messageId: string | undefined,
+  payload: MetaTemplatePayload,
+  meta: {
+    transactionId?: string;
+    templateName: string;
+    isRetry?: boolean;
+  }
+) {
+  if (!messageId || meta.isRetry) return;
+  const store = getWhatsappStore();
+  if (!store.recentPayloadsByWamid) {
+    store.recentPayloadsByWamid = new Map();
+  }
+  store.recentPayloadsByWamid.set(messageId, {
+    payload,
+    transactionId: meta.transactionId,
+    templateName: meta.templateName,
+    storedAt: Date.now(),
+  });
+  if (store.recentPayloadsByWamid.size > 500) {
+    const oldestKey = store.recentPayloadsByWamid.keys().next().value;
+    if (oldestKey) store.recentPayloadsByWamid.delete(oldestKey);
+  }
+}
+
 async function dispatchMetaWhatsappTemplate(
   payload: MetaTemplatePayload,
   meta: {
     transactionId?: string;
     templateName: string;
+    isRetry?: boolean;
   }
 ): Promise<WhatsappTransportResult> {
   const store = getWhatsappStore();
   if (store.transportOverride) {
-    return store.transportOverride(payload, {
+    const res = await store.transportOverride(payload, {
       ...meta,
       phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || 'test_phone_id',
     });
+    if (res.ok) {
+      rememberDispatchedPayload(res.messageId, payload, meta);
+    }
+    return res;
   }
 
   const accessToken = (process.env.WHATSAPP_ACCESS_TOKEN || '').trim();
@@ -955,6 +1102,7 @@ async function dispatchMetaWhatsappTemplate(
       console.log(
         `[WHATSAPP SANDBOX] Template=${meta.templateName} To=${maskWhatsappNumber(payload.to)} Tx=${meta.transactionId || 'n/a'} MessageId=${simId}`
       );
+      rememberDispatchedPayload(simId, payload, meta);
       return { ok: true, messageId: simId, status: 'sent' };
     }
     return {
@@ -983,6 +1131,7 @@ async function dispatchMetaWhatsappTemplate(
 
     const messageId = data?.messages?.[0]?.id || `wamid_${crypto.randomBytes(8).toString('hex')}`;
     const msgStatus = data?.messages?.[0]?.message_status === 'accepted' ? 'queued' : 'sent';
+    rememberDispatchedPayload(messageId, payload, meta);
     return { ok: true, messageId, status: msgStatus };
   } catch (err: any) {
     return { ok: false, error: err?.message || 'WhatsApp network error', status: 'failed' };
@@ -1246,14 +1395,20 @@ export async function sendReleaseCodeWhatsappTemplate(
     to: e164,
     type: 'template',
     template: {
-      name: 'release_code_v1',
-      language: { code: 'en' },
+      name: WHATSAPP_TEMPLATES.release_code_v1.name,
+      language: { code: WHATSAPP_TEMPLATES.release_code_v1.language },
       components: [
         {
           type: 'body',
           parameters: [
-            { type: 'text', text: params.itemName || 'Escrow Order' },
-            { type: 'text', text: params.vendorDisplayName || 'Vendor' },
+            { type: 'text', text: params.releaseCode },
+          ],
+        },
+        {
+          type: 'button',
+          sub_type: 'url',
+          index: '0',
+          parameters: [
             { type: 'text', text: params.releaseCode },
           ],
         },
@@ -1298,7 +1453,7 @@ export async function sendOtpWhatsappTemplate(
     transactionId: string;
     buyerPhone: string;
     otp: string;
-    purpose: 'dispute' | 'reissue';
+    purpose: 'dispute' | 'reissue' | 'refund_account';
   },
   supabaseClient?: ReturnType<typeof getServiceSupabase>
 ): Promise<{ success: boolean; maskedPhone: string; error?: string }> {
@@ -1313,7 +1468,12 @@ export async function sendOtpWhatsappTemplate(
     return { success: false, maskedPhone, error: 'Recipient opted out on WhatsApp.' };
   }
 
-  const label = params.purpose === 'dispute' ? 'freezing your escrow order' : 'reissuing your release code';
+  const label =
+    params.purpose === 'dispute'
+      ? 'freezing your escrow order'
+      : params.purpose === 'refund_account'
+        ? 'confirming your Relyvora refund bank account'
+        : 'reissuing your release code';
   const metaPayload: MetaTemplatePayload = {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -1424,4 +1584,678 @@ export async function claimWhatsappWebhookEvent(
 
   store.webhookEvents.add(eventKey);
   return true;
+}
+
+/**
+ * Dispatches WhatsApp verification confirmation request for a vendor's business number.
+ */
+export async function sendVendorPhoneVerifyWhatsapp(
+  params: {
+    vendorId: string;
+    vendorDisplayName: string;
+    vendorPhone: string;
+    maskedAccountHint?: string;
+  },
+  supabaseClient?: ReturnType<typeof getServiceSupabase>
+): Promise<{ success: boolean; status: WhatsappDeliveryStatus; messageId?: string; error?: string }> {
+  const e164 = normalizeWhatsappPhone(params.vendorPhone);
+  if (!e164) {
+    return { success: false, status: 'failed', error: 'Invalid vendor WhatsApp phone number.' };
+  }
+
+  if (!isPhoneAllowedByStagingList(e164)) {
+    return {
+      success: false,
+      status: 'failed',
+      error: 'Vendor phone is not in staging WHATSAPP_ALLOWED_RECIPIENTS.',
+    };
+  }
+
+  const dnc = await isPhoneOnDoNotContact(e164, supabaseClient);
+  if (dnc.blocked) {
+    return { success: false, status: 'failed', error: `Recipient opted out (${dnc.reason}).` };
+  }
+
+  const payload: MetaTemplatePayload = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: e164.replace(/^\+/, ''),
+    type: 'template',
+    template: {
+      name: 'vendor_phone_verify_v1',
+      language: { code: 'en' },
+      components: [
+        {
+          type: 'body',
+          parameters: [
+            { type: 'text', text: params.vendorDisplayName },
+            { type: 'text', text: params.maskedAccountHint || 'Vendor Onboarding' },
+          ],
+        },
+        {
+          type: 'button',
+          sub_type: 'quick_reply',
+          index: '0',
+          parameters: [{ type: 'payload', payload: `CONFIRM_VENDOR_PHONE:${params.vendorId}` }],
+        },
+      ],
+    },
+  };
+
+  const result = await dispatchMetaWhatsappTemplate(payload, {
+    templateName: 'vendor_phone_verify_v1',
+  });
+
+  await logWhatsappOutbound(
+    {
+      messageId: result.messageId || `vphone_${crypto.randomBytes(6).toString('hex')}`,
+      vendorId: params.vendorId,
+      vendorHandle: params.vendorDisplayName,
+      e164Phone: e164,
+      templateName: 'vendor_phone_verify_v1',
+      status: result.ok ? result.status || 'sent' : 'failed',
+      errorCode: result.ok ? null : result.error || 'META_API_ERROR',
+    },
+    supabaseClient
+  );
+
+  return {
+    success: result.ok,
+    status: result.ok ? result.status || 'sent' : 'failed',
+    messageId: result.messageId,
+    error: result.error,
+  };
+}
+
+/**
+ * Dispatches WhatsApp confirmation required before changing a vendor's settlement bank account.
+ */
+export async function sendSettlementChangeConfirmWhatsapp(
+  params: {
+    vendorId: string;
+    vendorDisplayName: string;
+    vendorPhone: string;
+    newAccountLast4: string;
+    newBankCode: string;
+    waitHours: number;
+  },
+  supabaseClient?: ReturnType<typeof getServiceSupabase>
+): Promise<{ success: boolean; status: WhatsappDeliveryStatus; messageId?: string; error?: string }> {
+  const e164 = normalizeWhatsappPhone(params.vendorPhone);
+  if (!e164) {
+    return { success: false, status: 'failed', error: 'Invalid vendor WhatsApp phone number.' };
+  }
+
+  if (!isPhoneAllowedByStagingList(e164)) {
+    return {
+      success: false,
+      status: 'failed',
+      error: 'Vendor phone is not in staging WHATSAPP_ALLOWED_RECIPIENTS.',
+    };
+  }
+
+  const dnc = await isPhoneOnDoNotContact(e164, supabaseClient);
+  if (dnc.blocked) {
+    return { success: false, status: 'failed', error: `Recipient opted out (${dnc.reason}).` };
+  }
+
+  const payload: MetaTemplatePayload = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: e164.replace(/^\+/, ''),
+    type: 'template',
+    template: {
+      name: 'settlement_change_confirm_v1',
+      language: { code: 'en' },
+      components: [
+        {
+          type: 'body',
+          parameters: [
+            { type: 'text', text: params.vendorDisplayName },
+            { type: 'text', text: params.newAccountLast4 },
+            { type: 'text', text: params.newBankCode },
+            { type: 'text', text: String(params.waitHours) },
+          ],
+        },
+        {
+          type: 'button',
+          sub_type: 'quick_reply',
+          index: '0',
+          parameters: [{ type: 'payload', payload: `CONFIRM_SETTLEMENT_CHANGE:${params.vendorId}` }],
+        },
+      ],
+    },
+  };
+
+  const result = await dispatchMetaWhatsappTemplate(payload, {
+    templateName: 'settlement_change_confirm_v1',
+  });
+
+  await logWhatsappOutbound(
+    {
+      messageId: result.messageId || `bankchg_${crypto.randomBytes(6).toString('hex')}`,
+      vendorId: params.vendorId,
+      vendorHandle: params.vendorDisplayName,
+      e164Phone: e164,
+      templateName: 'settlement_change_confirm_v1',
+      status: result.ok ? result.status || 'sent' : 'failed',
+      errorCode: result.ok ? null : result.error || 'META_API_ERROR',
+    },
+    supabaseClient
+  );
+
+  return {
+    success: result.ok,
+    status: result.ok ? result.status || 'sent' : 'failed',
+    messageId: result.messageId,
+    error: result.error,
+  };
+}
+
+/**
+ * Notifies the buyer when their release code was entered on an order subject to a cooling window,
+ * giving them a one-tap "PROBLEM" button (or "PROBLEM" reply) to immediately freeze payout.
+ */
+export async function sendCoolingWindowWhatsappNotice(
+  params: {
+    transactionId: string;
+    buyerPhone: string;
+    itemName: string;
+    totalAmount: number;
+    coolingHours: number;
+    payoutAvailableAt: string;
+    vendorId?: string | null;
+    vendorHandle?: string | null;
+  },
+  supabaseClient?: ReturnType<typeof getServiceSupabase>
+): Promise<{ success: boolean; status: WhatsappDeliveryStatus; messageId?: string; error?: string }> {
+  const e164 = normalizeWhatsappPhone(params.buyerPhone);
+  if (!e164) {
+    return { success: false, status: 'failed', error: 'No buyer phone available for cooling notice.' };
+  }
+
+  if (!isPhoneAllowedByStagingList(e164)) {
+    return {
+      success: false,
+      status: 'failed',
+      error: 'Buyer phone is not in staging WHATSAPP_ALLOWED_RECIPIENTS.',
+    };
+  }
+
+  const dnc = await isPhoneOnDoNotContact(e164, supabaseClient);
+  if (dnc.blocked) {
+    return { success: false, status: 'failed', error: `Recipient opted out (${dnc.reason}).` };
+  }
+
+  const payload: MetaTemplatePayload = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: e164.replace(/^\+/, ''),
+    type: 'template',
+    template: {
+      name: 'payout_cooling_notice_v1',
+      language: { code: 'en' },
+      components: [
+        {
+          type: 'body',
+          parameters: [
+            { type: 'text', text: params.itemName },
+            { type: 'text', text: formatNairaForTemplate(params.totalAmount) },
+            { type: 'text', text: String(params.coolingHours) },
+            { type: 'text', text: params.payoutAvailableAt },
+          ],
+        },
+        {
+          type: 'button',
+          sub_type: 'quick_reply',
+          index: '0',
+          parameters: [{ type: 'payload', payload: `PROBLEM_ORDER:${params.transactionId}` }],
+        },
+      ],
+    },
+  };
+
+  const result = await dispatchMetaWhatsappTemplate(payload, {
+    transactionId: params.transactionId,
+    templateName: 'payout_cooling_notice_v1',
+  });
+
+  await logWhatsappOutbound(
+    {
+      messageId: result.messageId || `cool_${crypto.randomBytes(6).toString('hex')}`,
+      transactionId: params.transactionId,
+      vendorId: params.vendorId,
+      vendorHandle: params.vendorHandle,
+      e164Phone: e164,
+      templateName: 'payout_cooling_notice_v1',
+      status: result.ok ? result.status || 'sent' : 'failed',
+      errorCode: result.ok ? null : result.error || 'META_API_ERROR',
+    },
+    supabaseClient
+  );
+
+  return {
+    success: result.ok,
+    status: result.ok ? result.status || 'sent' : 'failed',
+    messageId: result.messageId,
+    error: result.error,
+  };
+}
+
+/**
+ * Tier 1 Item 1: Exact Cloud API template upsert setting `message_send_ttl_seconds: -1` (30 days)
+ * on the `release_code_v1` AUTHENTICATION template so codes are not dropped when offline.
+ */
+export function buildMetaReleaseCodeTemplatePayload() {
+  return {
+    name: WHATSAPP_TEMPLATES.release_code_v1.name,
+    category: 'AUTHENTICATION',
+    language: 'en',
+    message_send_ttl_seconds: -1,
+    components: [
+      {
+        type: 'BODY',
+        add_security_recommendation: false,
+      },
+      {
+        type: 'BUTTONS',
+        buttons: [
+          {
+            type: 'OTP',
+            otp_type: 'COPY_CODE',
+            text: 'Copy code',
+          },
+        ],
+      },
+    ],
+  };
+}
+
+export async function upsertMetaReleaseCodeTemplateTtl(params?: {
+  wabaId?: string;
+  accessToken?: string;
+  apiVersion?: string;
+}): Promise<{ ok: boolean; status?: number; templateId?: string; payload: ReturnType<typeof buildMetaReleaseCodeTemplatePayload>; error?: string }> {
+  const wabaId = (params?.wabaId || process.env.WHATSAPP_WABA_ID || '').trim();
+  const accessToken = (params?.accessToken || process.env.WHATSAPP_ACCESS_TOKEN || '').trim();
+  const apiVersion = (params?.apiVersion || process.env.WHATSAPP_API_VERSION || 'v21.0').trim();
+  const payload = buildMetaReleaseCodeTemplatePayload();
+
+  if (!wabaId || !accessToken) {
+    return {
+      ok: false,
+      payload,
+      error: 'WHATSAPP_WABA_ID and WHATSAPP_ACCESS_TOKEN are required to publish template updates to Meta Graph API.',
+    };
+  }
+
+  try {
+    const res = await fetch(`https://graph.facebook.com/${apiVersion}/${wabaId}/message_templates`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        ok: false,
+        status: res.status,
+        payload,
+        error: data?.error?.message || `Meta template API HTTP ${res.status}`,
+      };
+    }
+    return { ok: true, status: res.status, templateId: data?.id, payload };
+  } catch (err: any) {
+    return { ok: false, payload, error: err?.message || 'Network error calling Meta template API' };
+  }
+}
+
+/**
+ * Tier 1 Item 20: Sends `order_dispatched_v1` (UTILITY) when vendor submits proof of dispatch.
+ */
+export async function sendOrderDispatchedWhatsapp(
+  params: {
+    transactionId: string;
+    buyerPhone: string;
+    vendorDisplayName: string;
+    itemName: string;
+    courierLabel: string;
+    trackingRef: string;
+    vendorId?: string | null;
+  },
+  supabaseClient?: ReturnType<typeof getServiceSupabase>
+): Promise<{ success: boolean; status: WhatsappDeliveryStatus; messageId?: string; error?: string }> {
+  const e164 = normalizeWhatsappPhone(params.buyerPhone);
+  if (!e164) {
+    return { success: false, status: 'failed', error: 'No buyer phone available.' };
+  }
+  if (!isPhoneAllowedByStagingList(e164)) {
+    return { success: false, status: 'failed', error: 'Buyer phone not in staging WHATSAPP_ALLOWED_RECIPIENTS.' };
+  }
+  const dnc = await isPhoneOnDoNotContact(e164, supabaseClient);
+  if (dnc.blocked) {
+    return { success: false, status: 'failed', error: `Recipient opted out (${dnc.reason}).` };
+  }
+
+  const payload: MetaTemplatePayload = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: e164.replace(/^\+/, ''),
+    type: 'template',
+    template: {
+      name: 'order_dispatched_v1',
+      language: { code: 'en' },
+      components: [
+        {
+          type: 'body',
+          parameters: [
+            { type: 'text', text: params.vendorDisplayName },
+            { type: 'text', text: params.itemName },
+            { type: 'text', text: params.courierLabel },
+            { type: 'text', text: params.trackingRef || params.transactionId.slice(0, 8) },
+          ],
+        },
+        {
+          type: 'button',
+          sub_type: 'url',
+          index: '0',
+          parameters: [{ type: 'text', text: params.transactionId }],
+        },
+      ],
+    },
+  };
+
+  const result = await dispatchMetaWhatsappTemplate(payload, {
+    transactionId: params.transactionId,
+    templateName: 'order_dispatched_v1',
+  });
+
+  await logWhatsappOutbound(
+    {
+      messageId: result.messageId || `disp_${crypto.randomBytes(6).toString('hex')}`,
+      transactionId: params.transactionId,
+      vendorId: params.vendorId,
+      vendorHandle: params.vendorDisplayName,
+      e164Phone: e164,
+      templateName: 'order_dispatched_v1',
+      status: result.ok ? result.status || 'sent' : 'failed',
+      errorCode: result.ok ? null : result.error || 'META_API_ERROR',
+    },
+    supabaseClient
+  );
+
+  return {
+    success: result.ok,
+    status: result.ok ? result.status || 'sent' : 'failed',
+    messageId: result.messageId,
+    error: result.error,
+  };
+}
+
+/**
+ * Tier 1 Item 20: Sends `delivery_reminder_v1` (UTILITY) ~24h before delivery window closes.
+ */
+export async function sendDeliveryReminderWhatsapp(
+  params: {
+    transactionId: string;
+    buyerPhone: string;
+    itemName: string;
+    vendorDisplayName: string;
+    hoursLeftText: string;
+    vendorId?: string | null;
+  },
+  supabaseClient?: ReturnType<typeof getServiceSupabase>
+): Promise<{ success: boolean; status: WhatsappDeliveryStatus; messageId?: string; error?: string }> {
+  const e164 = normalizeWhatsappPhone(params.buyerPhone);
+  if (!e164) {
+    return { success: false, status: 'failed', error: 'No buyer phone available.' };
+  }
+  if (!isPhoneAllowedByStagingList(e164)) {
+    return { success: false, status: 'failed', error: 'Buyer phone not in staging WHATSAPP_ALLOWED_RECIPIENTS.' };
+  }
+  const dnc = await isPhoneOnDoNotContact(e164, supabaseClient);
+  if (dnc.blocked) {
+    return { success: false, status: 'failed', error: `Recipient opted out (${dnc.reason}).` };
+  }
+
+  const payload: MetaTemplatePayload = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: e164.replace(/^\+/, ''),
+    type: 'template',
+    template: {
+      name: 'delivery_reminder_v1',
+      language: { code: 'en' },
+      components: [
+        {
+          type: 'body',
+          parameters: [
+            { type: 'text', text: params.itemName },
+            { type: 'text', text: params.vendorDisplayName },
+            { type: 'text', text: params.hoursLeftText },
+          ],
+        },
+        {
+          type: 'button',
+          sub_type: 'quick_reply',
+          index: '0',
+          parameters: [{ type: 'payload', payload: `DISPUTE_ORDER:${params.transactionId}` }],
+        },
+        {
+          type: 'button',
+          sub_type: 'url',
+          index: '1',
+          parameters: [{ type: 'text', text: params.transactionId }],
+        },
+      ],
+    },
+  };
+
+  const result = await dispatchMetaWhatsappTemplate(payload, {
+    transactionId: params.transactionId,
+    templateName: 'delivery_reminder_v1',
+  });
+
+  await logWhatsappOutbound(
+    {
+      messageId: result.messageId || `rem_${crypto.randomBytes(6).toString('hex')}`,
+      transactionId: params.transactionId,
+      vendorId: params.vendorId,
+      vendorHandle: params.vendorDisplayName,
+      e164Phone: e164,
+      templateName: 'delivery_reminder_v1',
+      status: result.ok ? result.status || 'sent' : 'failed',
+      errorCode: result.ok ? null : result.error || 'META_API_ERROR',
+    },
+    supabaseClient
+  );
+
+  return {
+    success: result.ok,
+    status: result.ok ? result.status || 'sent' : 'failed',
+    messageId: result.messageId,
+    error: result.error,
+  };
+}
+
+/**
+ * Tier 1 Item 20: Sends `dispute_opened_v1` (UTILITY) to counterparty when a dispute opens or receives a response.
+ */
+export async function sendDisputeOpenedOrUpdatedWhatsapp(
+  params: {
+    transactionId: string;
+    recipientPhone: string;
+    itemName: string;
+    updateSummary: string;
+    deadlineText: string;
+    vendorId?: string | null;
+    vendorHandle?: string | null;
+  },
+  supabaseClient?: ReturnType<typeof getServiceSupabase>
+): Promise<{ success: boolean; status: WhatsappDeliveryStatus; messageId?: string; error?: string }> {
+  const e164 = normalizeWhatsappPhone(params.recipientPhone);
+  if (!e164) {
+    return { success: false, status: 'failed', error: 'No counterparty phone available.' };
+  }
+  if (!isPhoneAllowedByStagingList(e164)) {
+    return { success: false, status: 'failed', error: 'Recipient phone not in staging WHATSAPP_ALLOWED_RECIPIENTS.' };
+  }
+  const dnc = await isPhoneOnDoNotContact(e164, supabaseClient);
+  if (dnc.blocked) {
+    return { success: false, status: 'failed', error: `Recipient opted out (${dnc.reason}).` };
+  }
+
+  const payload: MetaTemplatePayload = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: e164.replace(/^\+/, ''),
+    type: 'template',
+    template: {
+      name: 'dispute_opened_v1',
+      language: { code: 'en' },
+      components: [
+        {
+          type: 'body',
+          parameters: [
+            { type: 'text', text: params.itemName },
+            { type: 'text', text: params.updateSummary },
+            { type: 'text', text: params.deadlineText },
+          ],
+        },
+        {
+          type: 'button',
+          sub_type: 'url',
+          index: '0',
+          parameters: [{ type: 'text', text: params.transactionId }],
+        },
+      ],
+    },
+  };
+
+  const result = await dispatchMetaWhatsappTemplate(payload, {
+    transactionId: params.transactionId,
+    templateName: 'dispute_opened_v1',
+  });
+
+  await logWhatsappOutbound(
+    {
+      messageId: result.messageId || `dispnote_${crypto.randomBytes(6).toString('hex')}`,
+      transactionId: params.transactionId,
+      vendorId: params.vendorId,
+      vendorHandle: params.vendorHandle,
+      e164Phone: e164,
+      templateName: 'dispute_opened_v1',
+      status: result.ok ? result.status || 'sent' : 'failed',
+      errorCode: result.ok ? null : result.error || 'META_API_ERROR',
+    },
+    supabaseClient
+  );
+
+  return {
+    success: result.ok,
+    status: result.ok ? result.status || 'sent' : 'failed',
+    messageId: result.messageId,
+    error: result.error,
+  };
+}
+
+/**
+ * Tier 1 Item 1: On a failed or undelivered status webhook, retries ONCE if an outbound payload is cached,
+ * increments retry_count, alerts ops, and preserves buyer-facing "Didn't receive your code? Send it again".
+ */
+export async function handleFailedOrUndeliveredWhatsappStatus(
+  params: {
+    wamid: string;
+    transactionId?: string | null;
+    errorCode?: string | null;
+    errorTitle?: string | null;
+  },
+  supabaseClient?: ReturnType<typeof getServiceSupabase>
+): Promise<{ retried: boolean; retryMessageId?: string; retryError?: string }> {
+  const supabase = supabaseClient || getServiceSupabase();
+  const store = getWhatsappStore();
+  const cached = store.recentPayloadsByWamid?.get(params.wamid);
+  const txId = params.transactionId || cached?.transactionId || null;
+
+  let alreadyRetried = Boolean(cached && (cached.retryCount || 0) >= 1);
+  try {
+    const { data: existingLog } = await supabase
+      .from('whatsapp_message_log')
+      .select('retry_count')
+      .eq('message_id', params.wamid)
+      .maybeSingle();
+    if (Number(existingLog?.retry_count || 0) >= 1) {
+      alreadyRetried = true;
+    }
+  } catch {
+    // ignore if unmigrated
+  }
+
+  let retried = false;
+  let retryMessageId: string | undefined;
+  let retryError: string | undefined;
+
+  if (cached && !alreadyRetried) {
+    cached.retryCount = 1;
+    store.recentPayloadsByWamid?.set(params.wamid, cached);
+
+    const retryRes = await dispatchMetaWhatsappTemplate(cached.payload, {
+      transactionId: txId || undefined,
+      templateName: cached.templateName,
+      isRetry: true,
+    });
+    retried = true;
+    retryMessageId = retryRes.messageId;
+    retryError = retryRes.error;
+
+    await supabase
+      .from('whatsapp_message_log')
+      .update({ retry_count: 1 })
+      .eq('message_id', params.wamid)
+      .then(() => {}, () => {});
+
+    const e164 = normalizeWhatsappPhone(cached.payload.to) || cached.payload.to;
+    await logWhatsappOutbound(
+      {
+        messageId: retryRes.messageId || `retry_${crypto.randomBytes(6).toString('hex')}`,
+        transactionId: txId,
+        e164Phone: e164,
+        templateName: cached.templateName,
+        status: retryRes.ok ? retryRes.status || 'sent' : 'failed',
+        errorCode: retryRes.ok ? null : retryRes.error || 'RETRY_FAILED',
+      },
+      supabase
+    );
+  }
+
+  if (txId) {
+    await updateTransactionWhatsappState(
+      txId,
+      {
+        whatsapp_delivery_status: retried && retryMessageId ? 'sent' : 'failed',
+      },
+      supabase
+    );
+  }
+
+  await sendSystemAlert({
+    type: 'WEBHOOK_FAILURE',
+    severity: 'CRITICAL',
+    title: `WhatsApp Delivery Failed/Undelivered (${cached?.templateName || 'template'})`,
+    transactionId: txId || undefined,
+    details: {
+      failedWamid: params.wamid,
+      templateName: cached?.templateName || 'unknown',
+      errorCode: params.errorCode || 'undelivered',
+      errorTitle: params.errorTitle || 'Recipient unreachable or offline',
+      autoRetriedOnce: retried,
+      retryMessageId: retryMessageId || null,
+      retryError: retryError || null,
+    },
+  }).catch(() => {});
+
+  return { retried, retryMessageId, retryError };
 }

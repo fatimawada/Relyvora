@@ -12,11 +12,25 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
 import { getServiceSupabase } from './supabaseServer';
+import { createRequestSsrClient, extractRequestBearerToken } from './vendorAuth';
+import { getAdminSafetyConfigServer } from './safetyLimits';
+
+export type AdminAuthErrorCode =
+  | 'UNAUTHORIZED'
+  | 'EMAIL_NOT_CONFIRMED'
+  | 'ADMIN_ROLE_REQUIRED'
+  | 'ALLOWLIST_REQUIRED'
+  | 'MFA_NOT_ENROLLED'
+  | 'MFA_AAL2_REQUIRED'
+  | 'SESSION_EXPIRED';
 
 export interface AdminAuthResult {
   authorized: boolean;
+  code?: AdminAuthErrorCode;
+  aal?: string;
+  mfaEnrolled?: boolean;
+  enrollmentUrl?: string;
   user?: {
     id: string;
     email: string;
@@ -26,37 +40,18 @@ export interface AdminAuthResult {
   statusCode: number;
 }
 
-const DEFAULT_SUPABASE_URL = 'https://bepvqjqjybhhpsfbblqk.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJlcHZxanFqeWJoaHBzZmJibHFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2NzY2MjUsImV4cCI6MjEwODI1MjYyNX0.odSrmH_vTuWNS4RRwWhGJ7Q5ifGbk2AolWoS-P7_OXQ';
-
 /**
  * Creates a server-side Supabase client using @supabase/ssr to read incoming request cookies.
  */
 export function createAdminSsrClient(request: NextRequest) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
-
-  return createServerClient(url, key, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll() {
-        // No-op for read operations in route handlers
-      },
-    },
-  });
+  return createRequestSsrClient(request);
 }
 
 /**
  * Extracts Bearer token from Authorization header if present.
  */
 function extractBearerToken(request: NextRequest): string | null {
-  const authHeader = request.headers.get('authorization');
-  if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
-    return authHeader.substring(7).trim();
-  }
-  return null;
+  return extractRequestBearerToken(request);
 }
 
 /**
@@ -67,9 +62,36 @@ function extractBearerToken(request: NextRequest): string | null {
  * - user.id in ADMIN_USER_IDS server-only list
  * - MFA verified at AAL2 (Authenticator Assurance Level 2)
  */
+function decodeJwtPayload(token?: string | null): Record<string, any> | null {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const padded = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const json = Buffer.from(padded, 'base64').toString('utf8');
+    const parsed = JSON.parse(json);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function decodeJwtAal(token?: string | null): string | undefined {
+  const payload = decodeJwtPayload(token);
+  return typeof payload?.aal === 'string' ? payload.aal : undefined;
+}
+
+export async function verifyAdminIdentityForMfaSetup(
+  request: NextRequest,
+  supabaseOverride?: any
+): Promise<AdminAuthResult> {
+  return verifyAdminSession(request, supabaseOverride, { requireAal2: false });
+}
+
 export async function verifyAdminSession(
   request: NextRequest, 
-  supabaseOverride?: any
+  supabaseOverride?: any,
+  options?: { requireAal2?: boolean }
 ): Promise<AdminAuthResult> {
   // 1. Internal machine / CLI automation via server-only ADMIN_SECRET_KEY
   const adminSecretHeader = request.headers.get('x-admin-key');
@@ -78,6 +100,9 @@ export async function verifyAdminSession(
     return {
       authorized: true,
       statusCode: 200,
+      aal: 'aal2',
+      mfaEnrolled: true,
+      enrollmentUrl: '/admin/security',
       user: {
         id: '00000000-0000-0000-0000-000000000000',
         email: 'system-admin@relyvora.com',
@@ -163,40 +188,127 @@ export async function verifyAdminSession(
   }
 
   // 6. Mandatory Multi-Factor Authentication (MFA / AAL2) Check
-  // Check assurance level via auth.mfa or session / factors
-  let aalLevel = user.app_metadata?.aal || 'aal1';
+  // Never upgrade aalLevel solely from user.factors; require verified AAL2 on active session/JWT.
+  const jwtToken = extractBearerToken(request);
+  const jwtAal = decodeJwtAal(jwtToken);
+  let aalLevel: string = (user as any).aal || jwtAal || user.app_metadata?.aal || 'aal1';
 
-  // If client provides mfa helper or user factors
-  if (user.factors && Array.isArray(user.factors)) {
-    const hasVerifiedTotp = user.factors.some((f: any) => f.status === 'verified');
-    if (hasVerifiedTotp) {
-      aalLevel = 'aal2';
-    }
-  }
+  let mfaEnrolled = Array.isArray(user.factors)
+    ? user.factors.some((f: any) => f.status === 'verified')
+    : false;
 
-  // Check if ssrClient has mfa assurance check
+  // Check if ssrClient has MFA assurance check (authoritative when cookie session is active)
   if (ssrClient.auth?.mfa?.getAuthenticatorAssuranceLevel) {
     try {
       const aalRes = await ssrClient.auth.mfa.getAuthenticatorAssuranceLevel();
       if (aalRes.data?.currentLevel) {
         aalLevel = aalRes.data.currentLevel;
       }
+      if (aalRes.data?.nextLevel === 'aal2') {
+        mfaEnrolled = true;
+      }
     } catch {
       // ignore
     }
   }
 
+  if (!mfaEnrolled && ssrClient.auth?.mfa?.listFactors) {
+    try {
+      const factorsRes = await ssrClient.auth.mfa.listFactors();
+      const verifiedFactors = [
+        ...(Array.isArray(factorsRes?.data?.totp) ? factorsRes.data.totp : []),
+        ...(Array.isArray(factorsRes?.data?.all) ? factorsRes.data.all : []),
+      ];
+      if (verifiedFactors.some((f: any) => f.status === 'verified')) {
+        mfaEnrolled = true;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (aalLevel === 'aal2') {
+    mfaEnrolled = true;
+  }
+
+  if (options?.requireAal2 === false) {
+    return {
+      authorized: true,
+      statusCode: 200,
+      aal: aalLevel,
+      mfaEnrolled,
+      enrollmentUrl: '/admin/security',
+      user: {
+        id: user.id,
+        email: user.email || '',
+        aal: aalLevel,
+      },
+    };
+  }
+
   if (aalLevel !== 'aal2') {
+    const code: AdminAuthErrorCode = mfaEnrolled ? 'MFA_AAL2_REQUIRED' : 'MFA_NOT_ENROLLED';
     return {
       authorized: false,
       statusCode: 403,
-      error: 'Forbidden: MFA (AAL2) verification required for admin operations. Please authenticate with your TOTP factor.',
+      code,
+      aal: aalLevel,
+      mfaEnrolled,
+      enrollmentUrl: '/admin/security',
+      user: {
+        id: user.id,
+        email: user.email || '',
+        aal: aalLevel,
+      },
+      error: mfaEnrolled
+        ? 'Forbidden: MFA verification (AAL2) is required. Please verify your TOTP code at /admin/security.'
+        : 'Forbidden: TOTP MFA enrollment is required. Please enroll an authenticator app at /admin/security.',
     };
+  }
+
+  // 7. Short Admin Session Freshness Enforcement (configurable session_max_age_minutes)
+  let sessionJwtPayload = decodeJwtPayload(jwtToken);
+  if (!sessionJwtPayload && ssrClient.auth?.getSession) {
+    try {
+      const sessRes = await ssrClient.auth.getSession();
+      sessionJwtPayload = decodeJwtPayload(sessRes?.data?.session?.access_token);
+    } catch {
+      // ignore session lookup failure
+    }
+  }
+  const issuedAtSec =
+    typeof (user as any).session_issued_at === 'number'
+      ? (user as any).session_issued_at
+      : typeof sessionJwtPayload?.iat === 'number'
+        ? sessionJwtPayload.iat
+        : undefined;
+
+  if (typeof issuedAtSec === 'number' && Number.isFinite(issuedAtSec)) {
+    const adminSafety = await getAdminSafetyConfigServer();
+    const maxAgeSec = Math.max(60, Math.round(adminSafety.session_max_age_minutes * 60));
+    const ageSec = Math.floor(Date.now() / 1000) - issuedAtSec;
+    if (ageSec > maxAgeSec) {
+      return {
+        authorized: false,
+        statusCode: 401,
+        code: 'SESSION_EXPIRED',
+        aal: aalLevel,
+        mfaEnrolled,
+        user: {
+          id: userId,
+          email: userEmail,
+          aal: aalLevel,
+        },
+        error: `Admin session exceeded the ${adminSafety.session_max_age_minutes}-minute maximum age. Please re-authenticate and verify MFA.`,
+      };
+    }
   }
 
   return {
     authorized: true,
     statusCode: 200,
+    aal: aalLevel,
+    mfaEnrolled,
     user: {
       id: userId,
       email: userEmail,

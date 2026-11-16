@@ -1,17 +1,123 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   createAnchorCustomer,
   verifyAnchorCustomer,
   createAnchorDepositAccount,
   createAnchorCounterParty,
-  AnchorApiError,
 } from '@/lib/anchor';
 import { isLiveMode } from '@/lib/paymentsMode';
+import { checkSharedRateLimit, getClientIp } from '@/lib/rateLimit';
+import { getServiceSupabase } from '@/lib/supabaseServer';
+import { verifyVendorOnboardingSession } from '@/lib/vendorAuth';
+import { getHotSettings } from '@/lib/safetyLimits';
+import { verifyPublicSignupCaptcha } from '@/lib/captcha';
+import {
+  performAnchorNameEnquiry,
+  setVendorSafetyOverlay,
+  verifySettlementNameMatchesKyc,
+} from '@/lib/payoutSafety';
+import { extractRequestDeviceFingerprints, hashPhoneSignal } from '@/lib/riskEngine';
+import { isSchemaMissingError, sendVendorPhoneVerifyWhatsapp } from '@/lib/whatsapp';
 
-export async function POST(request: Request) {
+const CONSENT_TERMS_VERSION = '2026-11-tier1';
+
+async function checkInviteOnlyAllowlist(
+  supabase: ReturnType<typeof getServiceSupabase>,
+  normalizedEmail: string,
+  cleanStoreName: string,
+  authUserId: string
+): Promise<{
+  allowed: boolean;
+  allowlistMode: boolean;
+  existingVendor: Record<string, any> | null;
+  error?: string;
+}> {
+  const settings = await getHotSettings();
+  const allowlistMode =
+    settings.vendor_allowlist_mode !== undefined
+      ? Boolean(settings.vendor_allowlist_mode === true || settings.vendor_allowlist_mode === 'true')
+      : false;
+
+  const { data: existingVendor } = await supabase
+    .from('vendors')
+    .select('*')
+    .eq('email', normalizedEmail)
+    .maybeSingle();
+
+  if (existingVendor?.user_id && existingVendor.user_id !== authUserId) {
+    return {
+      allowed: false,
+      allowlistMode,
+      existingVendor,
+      error: 'Vendor email is already linked to a different user account.',
+    };
+  }
+
+  if (!allowlistMode) {
+    return { allowed: true, allowlistMode: false, existingVendor };
+  }
+
+  const normalizedHandle = cleanStoreName.trim().toLowerCase().replace(/^@/, '');
+  const envAllowlist = (process.env.VENDOR_ALLOWLIST || '')
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase().replace(/^@/, ''))
+    .filter(Boolean);
+
+  const inEnvAllowlist =
+    envAllowlist.includes(normalizedEmail) ||
+    (normalizedHandle.length > 0 && envAllowlist.includes(normalizedHandle));
+
+  if (existingVendor?.is_allowlisted !== true && !inEnvAllowlist) {
+    return {
+      allowed: false,
+      allowlistMode: true,
+      existingVendor,
+      error:
+        'Vendor onboarding is currently restricted to allowlisted accounts.',
+    };
+  }
+
+  return { allowed: true, allowlistMode: true, existingVendor };
+}
+
+export async function POST(request: NextRequest) {
   try {
+    const supabase = getServiceSupabase();
+
+    // 1. Sliding-window IP rate limit (5 attempts per 15 min, shared DB bucket)
+    const ip = getClientIp(request);
+    const rl = await checkSharedRateLimit(`${ip}:vendor_onboarding`, 5, 15 * 60 * 1000, supabase);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Too many onboarding attempts. Please try again later.' },
+        { status: 429 }
+      );
+    }
+
+    // 2. Require authenticated, email-confirmed vendor session
+    const session = await verifyVendorOnboardingSession(request);
+    if (!session.authorized || !session.user) {
+      return NextResponse.json(
+        { success: false, code: session.code || 'UNAUTHORIZED', error: session.error },
+        { status: session.statusCode }
+      );
+    }
+
+    // 3. Validate input payload cleanly
     const body = await request.json();
-    const { profile, regulatoryKyc } = body;
+    const { profile, regulatoryKyc } = body || {};
+
+    if (body?.acceptedTermsAndProhibitedItems !== true) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'TERMS_ACCEPTANCE_REQUIRED',
+          error:
+            'You must explicitly accept the Relyvora Terms of Service, Privacy Policy, and Prohibited Items Policy before onboarding.',
+        },
+        { status: 400 }
+      );
+    }
 
     if (!profile || !regulatoryKyc) {
       return NextResponse.json(
@@ -33,68 +139,194 @@ export async function POST(request: Request) {
       accountNumber,
     } = regulatoryKyc;
 
-    // Normalizing phone number to international format
-    let cleanPhone = phoneNumber.replace(/\s+/g, '');
+    if (
+      !storeName?.trim() ||
+      !email?.trim() ||
+      !phoneNumber?.trim() ||
+      !legalFirstName?.trim() ||
+      !legalLastName?.trim() ||
+      !dateOfBirth?.trim() ||
+      !['MALE', 'FEMALE', 'OTHER'].includes(String(gender)) ||
+      !address?.trim() ||
+      !['BVN', 'NIN'].includes(String(idType)) ||
+      !/^\d{11}$/.test(String(idNumber || '').trim()) ||
+      !bankCode?.trim() ||
+      !/^\d{10}$/.test(String(accountNumber || '').trim())
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Valid vendor profile, 11-digit BVN/NIN, date of birth, gender, address, and 10-digit settlement NUBAN are required.',
+        },
+        { status: 400 }
+      );
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    if (session.user.email !== normalizedEmail) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'EMAIL_MISMATCH',
+          error: 'Forbidden: Onboarding email must match your signed-in vendor account email.',
+        },
+        { status: 403 }
+      );
+    }
+
+    // 4. Check instant allowlist kill-switch (default open signup = false) + CAPTCHA verification
+    const allowlistCheck = await checkInviteOnlyAllowlist(
+      supabase,
+      normalizedEmail,
+      String(storeName),
+      session.user.id
+    );
+    if (!allowlistCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'VENDOR_NOT_ALLOWLISTED',
+          error: allowlistCheck.error,
+        },
+        { status: 403 }
+      );
+    }
+
+    if (!allowlistCheck.allowlistMode || body.captchaToken !== undefined) {
+      const captchaResult = await verifyPublicSignupCaptcha({
+        token: body.captchaToken,
+        remoteIp: ip,
+      });
+      if (!captchaResult.valid) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: 'CAPTCHA_FAILED',
+            error: captchaResult.error || 'CAPTCHA verification failed.',
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Normalize phone to +234 international format
+    let cleanPhone = String(phoneNumber).replace(/\s+/g, '');
     if (cleanPhone.startsWith('0')) {
       cleanPhone = '+234' + cleanPhone.slice(1);
     }
 
+    // 4b. Anchor bank account name enquiry + mandatory KYC legal name fuzzy-match
+    const submittedAccountNameHint =
+      regulatoryKyc.settlementAccountName ||
+      `${String(legalFirstName).trim()} ${String(legalLastName).trim()}`.trim();
+
+    const enquiry = await performAnchorNameEnquiry({
+      bankCode: String(bankCode).trim(),
+      accountNumber: String(accountNumber).trim(),
+      accountNameHint: submittedAccountNameHint,
+    });
+
+    if (!enquiry.verified || !enquiry.resolvedAccountName) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'PAYOUT_ACCOUNT_ENQUIRY_FAILED',
+          error: enquiry.error || 'Unable to verify settlement bank account name with Anchor.',
+        },
+        { status: 422 }
+      );
+    }
+
+    const nameMatch = await verifySettlementNameMatchesKyc({
+      legalFirstName: String(legalFirstName).trim(),
+      legalLastName: String(legalLastName).trim(),
+      accountName: enquiry.resolvedAccountName,
+    });
+
+    if (!nameMatch.matched) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'SETTLEMENT_NAME_MISMATCH',
+          error: nameMatch.reason,
+          nameMatchScore: nameMatch.score,
+          minScoreRequired: nameMatch.minScoreRequired,
+        },
+        { status: 422 }
+      );
+    }
+
     let customerId: string | null = null;
     let accountId: string | null = null;
+    // Note: kycStatus is strictly computed server-side from Anchor API result; any client field is ignored.
     let kycStatus = 'PENDING';
 
+    // 5. Forward KYC PII strictly to Anchor BaaS in memory (never logged, never stored in Relyvora DB)
     try {
-      // 1. Create Individual Customer in Anchor BaaS
       const customerResult = await createAnchorCustomer({
-        firstName: legalFirstName,
-        lastName: legalLastName,
-        email: email,
+        firstName: String(legalFirstName).trim(),
+        lastName: String(legalLastName).trim(),
+        email: normalizedEmail,
         phoneNumber: cleanPhone,
         address: {
-          addressLine_1: address,
+          addressLine_1: String(address).trim(),
           city: 'Abuja',
           state: 'Abuja (FCT)',
           country: 'NG',
           postalCode: '900001',
         },
       });
-
       customerId = customerResult.customerId;
 
-      // 2. Perform KYC BVN/NIN Verification with Anchor
-      if (customerId && idType === 'BVN') {
+      if (customerId) {
         try {
-          await verifyAnchorCustomer(customerId, idNumber, dateOfBirth, gender);
-          kycStatus = 'VERIFIED';
+          const cleanIdNumber = String(idNumber).trim();
+          const verifyRes = await verifyAnchorCustomer({
+            customerId,
+            level: 'TIER_1',
+            bvn: idType === 'BVN' ? cleanIdNumber : undefined,
+            nin: idType === 'NIN' ? cleanIdNumber : undefined,
+            dateOfBirth: String(dateOfBirth).trim(),
+            gender: String(gender).trim(),
+          });
+          const rawVerifyStatus = String(
+            (verifyRes as any)?.data?.data?.status ||
+              (verifyRes as any)?.data?.data?.attributes?.status ||
+              (verifyRes as any)?.data?.status ||
+              'VERIFIED'
+          ).toUpperCase();
+          kycStatus =
+            rawVerifyStatus === 'PENDING'
+              ? 'PENDING'
+              : rawVerifyStatus === 'REJECTED'
+                ? 'REJECTED'
+                : 'VERIFIED';
         } catch (kycErr: any) {
           if (isLiveMode()) throw kycErr;
-          // In Anchor sandbox, handle sandbox notice gracefully
           kycStatus = 'SANDBOX_KYC_PROVISIONED';
         }
       }
 
-      // 3. Create Deposit Wallet in Anchor
       if (customerId) {
         try {
           const accountResult = await createAnchorDepositAccount({ customerId });
           accountId = accountResult.accountId;
         } catch (accErr: any) {
           if (isLiveMode()) throw accErr;
-          // If sandbox tier restricts wallet creation, use fallback account
           accountId = '179319298037338-anc_acc';
         }
       }
 
-      // 4. Register Settlement Bank Counterparty
       try {
         await createAnchorCounterParty({
-          accountName: `${legalFirstName} ${legalLastName}`,
-          accountNumber: accountNumber,
-          bankCode: bankCode,
+          accountName: enquiry.resolvedAccountName,
+          accountNumber: String(accountNumber).trim(),
+          bankCode: String(bankCode).trim(),
+          verifyName: true,
         });
       } catch (cpErr: any) {
         if (isLiveMode()) throw cpErr;
-        // Counterparty notice handled in sandbox
       }
     } catch (anchorErr: any) {
       if (isLiveMode()) {
@@ -107,35 +339,135 @@ export async function POST(request: Request) {
           { status: 502 }
         );
       }
-      console.warn('Anchor BaaS onboarding warning:', anchorErr.message);
-      // Fallback for simulation when secret key is not in dev
+      console.warn('Anchor BaaS onboarding sandbox fallback:', anchorErr?.message || 'Anchor error');
       customerId = customerId || `cst_${Date.now()}`;
       accountId = accountId || `acc_${Date.now()}`;
       kycStatus = 'VERIFIED';
     }
 
+    // 6. Persist ONLY non-PII operational vendor metadata to public.vendors.
+    const dbKycStatus = kycStatus === 'VERIFIED' ? 'verified' : 'pending';
+    const isExistingAllowlisted = Boolean(allowlistCheck.existingVendor?.is_allowlisted);
+    const fps = await extractRequestDeviceFingerprints(request, body.deviceFingerprint);
+    const phoneHash = hashPhoneSignal(cleanPhone);
+
+    const baseUpsertPayload = {
+      user_id: session.user.id,
+      store_name: String(storeName).trim(),
+      email: normalizedEmail,
+      phone_number: cleanPhone,
+      legal_first_name: String(legalFirstName).trim(),
+      legal_last_name: String(legalLastName).trim(),
+      settlement_bank_code: String(bankCode).trim(),
+      settlement_account_number: String(accountNumber).trim(),
+      settlement_account_name: enquiry.resolvedAccountName,
+      anchor_customer_id: customerId,
+      anchor_deposit_account_id: accountId,
+      kyc_status: dbKycStatus,
+      is_allowlisted: allowlistCheck.allowlistMode ? true : isExistingAllowlisted,
+    };
+
+    let { data: savedVendor, error: upsertError } = await supabase
+      .from('vendors')
+      .upsert(baseUpsertPayload, { onConflict: 'email' })
+      .select('id, store_name, kyc_status, is_allowlisted')
+      .single();
+
+    if (upsertError?.code === '23503' && !isLiveMode()) {
+      const retry = await supabase
+        .from('vendors')
+        .upsert({ ...baseUpsertPayload, user_id: null }, { onConflict: 'email' })
+        .select('id, store_name, kyc_status, is_allowlisted')
+        .single();
+      savedVendor = retry.data;
+      upsertError = retry.error;
+    }
+
+    if (upsertError || !savedVendor) {
+      console.error('Failed to persist vendor onboarding record:', upsertError?.message);
+      return NextResponse.json(
+        { success: false, error: 'Failed to save vendor onboarding profile.' },
+        { status: 500 }
+      );
+    }
+
+    const acceptedNowIso = new Date().toISOString();
+    const extVendorPatch = {
+      phone_hash: phoneHash,
+      phone_verified: Boolean(allowlistCheck.existingVendor?.phone_verified),
+      payout_account_verified: true,
+      settlement_account_name_matched: true,
+      settlement_name_match_score: nameMatch.score,
+      tier: allowlistCheck.existingVendor?.tier || 'NEW',
+      successful_sales_count: Math.max(
+        Number(allowlistCheck.existingVendor?.successful_sales_count || 0),
+        Number(allowlistCheck.existingVendor?.completed_orders_count || 0)
+      ),
+      signup_ip_hash: fps.ipHash,
+      signup_ip_expires_at: fps.ipExpiresAt,
+      signup_ua_hash: fps.uaHash,
+      signup_device_hash: fps.deviceHash,
+      terms_accepted_at: acceptedNowIso,
+      terms_version: CONSENT_TERMS_VERSION,
+      prohibited_items_accepted_at: acceptedNowIso,
+      prohibited_items_version: CONSENT_TERMS_VERSION,
+      signup_consent_ip_hash: fps.ipHash,
+      updated_at: acceptedNowIso,
+    };
+
+    const { error: extErr } = await supabase
+      .from('vendors')
+      .update(extVendorPatch)
+      .eq('id', savedVendor.id);
+
+    if (!extErr || isSchemaMissingError(extErr)) {
+      setVendorSafetyOverlay(savedVendor.id, extVendorPatch);
+    }
+
+    let phoneVerificationWhatsappStatus: string = 'already_verified';
+    if (!allowlistCheck.existingVendor?.phone_verified) {
+      const waPhoneRes = await sendVendorPhoneVerifyWhatsapp(
+        {
+          vendorId: savedVendor.id,
+          vendorDisplayName: String(storeName).trim(),
+          vendorPhone: cleanPhone,
+          maskedAccountHint: `******${String(accountNumber).trim().slice(-4)}`,
+        },
+        supabase
+      );
+      phoneVerificationWhatsappStatus = waPhoneRes.status;
+    }
+
+    const maskedAccountNumber = `******${String(accountNumber).trim().slice(-4)}`;
     return NextResponse.json({
       success: true,
       message: 'Vendor onboarding and KYC verification completed successfully.',
       data: {
-        storeName,
-        legalName: `${legalFirstName} ${legalLastName}`,
-        customerId,
-        accountId,
+        vendorId: savedVendor.id,
+        storeName: String(storeName).trim(),
+        legalName: `${String(legalFirstName).trim()} ${String(legalLastName).trim()}`.trim(),
         kycStatus,
+        dbKycStatus,
+        tier: extVendorPatch.tier,
+        termsAcceptedAt: acceptedNowIso,
+        termsVersion: CONSENT_TERMS_VERSION,
+        isAllowlisted: Boolean(savedVendor.is_allowlisted),
+        phoneVerificationWhatsappStatus,
+        nameMatchScore: nameMatch.score,
         settlement: {
-          bankCode,
-          accountNumber,
+          bankCode: String(bankCode).trim(),
+          accountName: enquiry.resolvedAccountName,
+          maskedAccountNumber,
           status: 'ACTIVE',
         },
       },
     });
   } catch (error: any) {
-    console.error('Vendor onboarding error:', error);
+    console.error('Vendor onboarding error:', error?.message || 'Unexpected error');
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Internal Server Error during vendor onboarding.',
+        error: error?.message || 'Internal Server Error during vendor onboarding.',
       },
       { status: 500 }
     );

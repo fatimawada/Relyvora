@@ -3,34 +3,58 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { getTransactionById } from '@/lib/supabase';
 import { isLiveMode } from '@/lib/paymentsMode';
 import { Transaction } from '@/lib/types';
 import { formatNaira } from '@/lib/pricing';
+import { DISPUTE_SCENARIOS } from '@/lib/disputeScenarios';
 import { StatusBadge } from '@/components/StatusBadge';
 import { EscrowStepper } from '@/components/EscrowStepper';
+import { ProductFooter } from '@/components/ProductFooter';
+import { NIGERIAN_BANKS } from '@/components/vendor/VendorOnboardingFlow';
 import confetti from 'canvas-confetti';
-import { 
-  ShieldCheck, 
-  Lock, 
-  KeyRound, 
-  Truck, 
-  AlertTriangle, 
-  Copy, 
-  Check, 
-  Eye, 
-  RefreshCw, 
-  CheckCircle2, 
-  Store, 
-  User, 
+import {
+  ShieldCheck,
+  Lock,
+  KeyRound,
+  Truck,
+  AlertTriangle,
+  Copy,
+  Check,
+  Eye,
+  RefreshCw,
+  CheckCircle2,
+  Store,
+  User,
   ArrowLeft,
   X,
-  Send,
   Sparkles,
-  HelpCircle,
   AlertOctagon,
-  XCircle
+  XCircle,
+  Upload,
+  FileText,
+  Clock,
+  Landmark,
+  ExternalLink,
 } from 'lucide-react';
+
+async function fileToBase64Payload(file: File): Promise<{
+  fileName: string;
+  mimeType: string;
+  base64Data: string;
+}> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      resolve({
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        base64Data: String(reader.result || ''),
+      });
+    };
+    reader.onerror = () => reject(new Error('Failed to read selected file.'));
+    reader.readAsDataURL(file);
+  });
+}
 
 function EscrowTrackerContent() {
   const params = useParams();
@@ -38,19 +62,40 @@ function EscrowTrackerContent() {
   const id = params?.id as string;
   const isNewPayment = searchParams?.get('new_payment') === 'true';
 
-  const [transaction, setTransaction] = useState<Transaction | null>(null);
+  const [transaction, setTransaction] = useState<(Transaction & Record<string, any>) | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [perspective, setPerspective] = useState<'buyer' | 'vendor'>('buyer');
-  
-  // Vendor verification code input
+
+  // Vendor code entry
   const [enteredCode, setEnteredCode] = useState('');
   const [verificationError, setVerificationError] = useState<string | null>(null);
+  const [coolingNotice, setCoolingNotice] = useState<{
+    message: string;
+    payoutAvailableAt?: string | null;
+    coolingWindowHours?: number;
+  } | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
+
+  // Vendor dispatch proof state
+  const [carrierName, setCarrierName] = useState('');
+  const [carrierPhone, setCarrierPhone] = useState('');
+  const [trackingReference, setTrackingReference] = useState('');
+  const [dispatchNotes, setDispatchNotes] = useState('');
+  const [dispatchProofFile, setDispatchProofFile] = useState<File | null>(null);
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [isDispatching, setIsDispatching] = useState(false);
 
-  // Buyer dispute modal & OTP verification state (Addendum Item 7)
+  // Handover proof upload
+  const [handoverFile, setHandoverFile] = useState<File | null>(null);
+  const [isUploadingHandover, setIsUploadingHandover] = useState(false);
+  const [handoverNotice, setHandoverNotice] = useState<string | null>(null);
+
+  // Dispute modal state (buyer & vendor)
   const [isDisputeModalOpen, setIsDisputeModalOpen] = useState(false);
+  const [disputeRole, setDisputeRole] = useState<'BUYER' | 'VENDOR'>('BUYER');
+  const [selectedScenarioId, setSelectedScenarioId] = useState<number>(1);
   const [disputeReason, setDisputeReason] = useState('');
+  const [disputeFile, setDisputeFile] = useState<File | null>(null);
   const [disputeOtp, setDisputeOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [maskedPhone, setMaskedPhone] = useState<string | null>(null);
@@ -58,13 +103,30 @@ function EscrowTrackerContent() {
   const [disputeError, setDisputeError] = useState<string | null>(null);
   const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
 
+  // Post-dispute evidence & response
+  const [extraEvidenceFile, setExtraEvidenceFile] = useState<File | null>(null);
+  const [extraEvidenceNote, setExtraEvidenceNote] = useState('');
+  const [isUploadingEvidence, setIsUploadingEvidence] = useState(false);
+  const [evidenceNotice, setEvidenceNotice] = useState<string | null>(null);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const [responseText, setResponseText] = useState('');
+  const [isSendingResponse, setIsSendingResponse] = useState(false);
+  const [responseNotice, setResponseNotice] = useState<string | null>(null);
+
+  // Refund destination verification state (Buyer OTP)
+  const [refundBankCode, setRefundBankCode] = useState('');
+  const [refundAccNum, setRefundAccNum] = useState('');
+  const [refundOtpSent, setRefundOtpSent] = useState(false);
+  const [refundOtpInput, setRefundOtpInput] = useState('');
+  const [refundStatusMsg, setRefundStatusMsg] = useState<string | null>(null);
+  const [refundErrorMsg, setRefundErrorMsg] = useState<string | null>(null);
+  const [isSubmittingRefund, setIsSubmittingRefund] = useState(false);
+
   // Buyer release code from localStorage (Sandbox mode ONLY)
   const [buyerReleaseCode, setBuyerReleaseCode] = useState<string | null>(null);
-
-  // Copy code feedback
   const [copiedCode, setCopiedCode] = useState(false);
 
-  // Resend Release Code (Buyer One-Time Phone OTP Flow)
+  // Resend Release Code modal
   const [isResendModalOpen, setIsResendModalOpen] = useState(false);
   const [resendOtpSent, setResendOtpSent] = useState(false);
   const [resendOtpInput, setResendOtpInput] = useState('');
@@ -76,7 +138,6 @@ function EscrowTrackerContent() {
 
   const liveMode = isLiveMode() || transaction?.payments_mode === 'live';
 
-  // Restore buyer release code from localStorage or query param ONLY in sandbox mode
   useEffect(() => {
     if (liveMode) {
       setBuyerReleaseCode(null);
@@ -100,36 +161,40 @@ function EscrowTrackerContent() {
     }
   }, [id, searchParams, liveMode]);
 
-  const loadTransaction = async () => {
+  const loadTransaction = async (viewer: 'buyer' | 'vendor' = perspective) => {
     if (!id) return;
     setIsLoading(true);
-    const { data } = await getTransactionById(id);
-    if (data) {
-      setTransaction(data);
+    try {
+      const res = await fetch(
+        `/api/escrow/${encodeURIComponent(id)}?viewer=${viewer.toUpperCase()}`,
+        { cache: 'no-store' }
+      );
+      const json = await res.json();
+      if (json.success && json.transaction) {
+        setTransaction(json.transaction);
+      }
+    } catch {
+      // ignore network error cleanly
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   useEffect(() => {
-    loadTransaction();
-  }, [id]);
+    loadTransaction(perspective);
+  }, [id, perspective]);
 
-  // Trigger celebration if new payment or released
   useEffect(() => {
     if (isNewPayment && transaction?.status === 'FUNDS_LOCKED') {
       try {
-        confetti({
-          particleCount: 60,
-          spread: 70,
-          origin: { y: 0.6 }
-        });
-      } catch (e) {
-        // ignore if not supported in environment
+        confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
+      } catch {
+        // ignore
       }
     }
   }, [isNewPayment, transaction?.status]);
 
-  const activeReleaseCode = liveMode ? null : (buyerReleaseCode || transaction?.release_code || null);
+  const activeReleaseCode = liveMode ? null : buyerReleaseCode || transaction?.release_code || null;
 
   const handleCopyCode = () => {
     if (!activeReleaseCode) return;
@@ -205,10 +270,11 @@ function EscrowTrackerContent() {
         }
         setResendSuccess(
           json.message ||
-            `A new release code was sent to ${json.buyer_phone_masked || transaction.buyer_phone_masked || '******1234'}. Your previous code has been disabled.`
+            `A new release code was sent to ${json.buyer_phone_masked || transaction.buyer_phone_masked || '******1234'}.`
         );
         setResendOtpSent(false);
         setResendOtpInput('');
+        await loadTransaction(perspective);
       } else {
         setResendError(json.error || 'Failed to verify one-time code.');
       }
@@ -219,26 +285,70 @@ function EscrowTrackerContent() {
     }
   };
 
-  // Vendor Action: Mark as Dispatched
-  const handleMarkDispatched = async () => {
+  // Vendor Action: Mark Dispatched with mandatory Proof of Dispatch
+  const handleMarkDispatched = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!transaction || transaction.status !== 'FUNDS_LOCKED') return;
+    setDispatchError(null);
     setIsDispatching(true);
     try {
+      let proofFilePayload = undefined;
+      if (dispatchProofFile) {
+        proofFilePayload = await fileToBase64Payload(dispatchProofFile);
+      }
+
       const res = await fetch('/api/escrow/dispatch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transactionId: transaction.id }),
+        body: JSON.stringify({
+          transactionId: transaction.id,
+          carrierName: carrierName.trim(),
+          carrierPhone: carrierPhone.trim(),
+          trackingReference: trackingReference.trim(),
+          dispatchNotes: dispatchNotes.trim(),
+          proofFile: proofFilePayload,
+        }),
       });
       const json = await res.json();
       if (json.success && json.transaction) {
-        setTransaction(json.transaction);
+        setDispatchProofFile(null);
+        await loadTransaction('vendor');
       } else {
-        alert(`Dispatch update failed: ${json.error || 'Failed to dispatch'}`);
+        setDispatchError(json.error || 'Failed to mark order dispatched.');
       }
     } catch (err: any) {
-      alert(`Network error during dispatch: ${err.message}`);
+      setDispatchError(err?.message || 'Network error during dispatch submission.');
     } finally {
       setIsDispatching(false);
+    }
+  };
+
+  // Vendor Action: Upload Delivery Handover Proof
+  const handleUploadHandoverProof = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transaction || !handoverFile) return;
+    setIsUploadingHandover(true);
+    setHandoverNotice(null);
+    try {
+      const fd = new FormData();
+      fd.append('transactionId', transaction.id);
+      fd.append('uploadedByRole', 'VENDOR');
+      fd.append('evidenceCategory', 'DELIVERY_HANDOVER_PROOF');
+      fd.append('description', 'Delivery rider handover proof / signed waybill');
+      fd.append('file', handoverFile);
+      const res = await fetch('/api/escrow/evidence/upload', { method: 'POST', body: fd });
+      const json = await res.json();
+      if (json.success) {
+        setHandoverNotice('Handover proof uploaded privately.');
+        setHandoverFile(null);
+        await loadTransaction(perspective);
+      } else {
+        alert(json.error || 'Failed to upload handover proof.');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Network error uploading handover proof.');
+    } finally {
+      setIsUploadingHandover(false);
     }
   };
 
@@ -248,7 +358,6 @@ function EscrowTrackerContent() {
     if (!transaction) return;
     setVerificationError(null);
 
-    // Rule: Opening a dispute disables the release code action
     if (transaction.status === 'DISPUTED') {
       setVerificationError('Transaction is in dispute. Release code verification is disabled.');
       return;
@@ -277,29 +386,31 @@ function EscrowTrackerContent() {
       });
 
       const json = await res.json();
-      if (json.success && json.transaction) {
+      if (res.status === 202 || json.coolingActive) {
+        setVerificationError(null);
+        setCoolingNotice({
+          message:
+            json.message ||
+            'Release code verified. Giving the code releases the money; payout enters a short cooling hold.',
+          payoutAvailableAt: json.payoutAvailableAt || null,
+          coolingWindowHours: json.coolingWindowHours,
+        });
+        setEnteredCode('');
+      } else if (json.success && json.transaction) {
+        setCoolingNotice(null);
         setTransaction(json.transaction);
         setEnteredCode('');
         try {
-          confetti({
-            particleCount: 100,
-            spread: 90,
-            origin: { y: 0.5 }
-          });
-        } catch (e) {}
+          confetti({ particleCount: 100, spread: 90, origin: { y: 0.5 } });
+        } catch {
+          // ignore
+        }
       } else {
         if (json.isLocked) {
-          setVerificationError('SECURITY LOCKOUT: 5 incorrect attempts exceeded. Escrow is now locked to protect against brute-force.');
-          if (json.transaction) {
-            setTransaction(json.transaction);
-          } else {
-            setTransaction(prev => prev ? { ...prev, code_locked: true, failed_code_attempts: 5 } : null);
-          }
+          setVerificationError('SECURITY LOCKOUT: 5 incorrect attempts exceeded. Escrow is now locked.');
+          setTransaction((prev) => (prev ? { ...prev, code_locked: true, failed_code_attempts: 5 } : null));
         } else if (json.remainingAttempts !== undefined) {
-          setVerificationError(`Invalid 6-digit release code. ${json.remainingAttempts} attempt(s) remaining before security lockout.`);
-          if (json.transaction) {
-            setTransaction(json.transaction);
-          }
+          setVerificationError(`Invalid 6-digit release code. ${json.remainingAttempts} attempt(s) remaining.`);
         } else {
           setVerificationError(json.error || 'Invalid 6-digit release code.');
         }
@@ -311,7 +422,7 @@ function EscrowTrackerContent() {
     }
   };
 
-  // Buyer Action: Send OTP to Phone (Addendum Item 7)
+  // Buyer Action: Send Dispute OTP
   const handleSendDisputeOtp = async () => {
     if (!transaction || !disputeReason.trim()) {
       setDisputeError('Please describe the reason for your dispute first.');
@@ -332,7 +443,7 @@ function EscrowTrackerContent() {
         setOtpSent(true);
         setMaskedPhone(json.maskedPhone || 'your registered phone');
         if (json.sandbox_otp) {
-          setDisputeOtp(json.sandbox_otp); // Auto-populate in sandbox
+          setDisputeOtp(json.sandbox_otp);
         }
       } else {
         setDisputeError(json.error || 'Failed to send verification code.');
@@ -344,17 +455,19 @@ function EscrowTrackerContent() {
     }
   };
 
-  // Buyer Action: Freeze Escrow & Open Dispute with Verified OTP
+  // Buyer or Vendor: Open Dispute with Scenario + Optional Evidence
   const handleOpenDispute = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!transaction || !disputeReason.trim()) return;
 
-    if (!otpSent) {
-      handleSendDisputeOtp();
+    const useVerifiedWa = Boolean(disputeRole === 'BUYER' && transaction.buyer_phone_verified && !otpSent);
+
+    if (disputeRole === 'BUYER' && !useVerifiedWa && !otpSent) {
+      await handleSendDisputeOtp();
       return;
     }
 
-    if (!disputeOtp || disputeOtp.trim().length !== 6) {
+    if (disputeRole === 'BUYER' && !useVerifiedWa && disputeOtp.trim().length !== 6) {
       setDisputeError('Please enter the 6-digit verification code sent to your phone.');
       return;
     }
@@ -362,24 +475,30 @@ function EscrowTrackerContent() {
     setIsSubmittingDispute(true);
     setDisputeError(null);
     try {
+      const evidenceFiles = disputeFile ? [await fileToBase64Payload(disputeFile)] : [];
       const res = await fetch('/api/escrow/dispute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           transactionId: transaction.id,
           disputeReason: disputeReason.trim(),
-          otp: disputeOtp.trim(),
+          scenarioId: selectedScenarioId,
+          raisedByRole: disputeRole,
+          useVerifiedWhatsapp: useVerifiedWa,
+          otp: useVerifiedWa ? undefined : disputeOtp.trim(),
+          evidenceFiles,
         }),
       });
 
       const json = await res.json();
-      if (json.success && json.transaction) {
-        setTransaction(json.transaction);
+      if (json.success) {
         setIsDisputeModalOpen(false);
         setOtpSent(false);
         setDisputeOtp('');
+        setDisputeFile(null);
+        await loadTransaction(perspective);
       } else {
-        setDisputeError(json.error || 'Dispute verification failed.');
+        setDisputeError(json.error || 'Dispute submission failed.');
         if (json.requiresOtpRequest) {
           setOtpSent(false);
         }
@@ -391,7 +510,150 @@ function EscrowTrackerContent() {
     }
   };
 
-  if (isLoading) {
+  // Post-Dispute Evidence Upload
+  const handleUploadDisputeEvidence = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transaction || !extraEvidenceFile) return;
+    setIsUploadingEvidence(true);
+    setEvidenceError(null);
+    setEvidenceNotice(null);
+    try {
+      const fd = new FormData();
+      fd.append('transactionId', transaction.id);
+      fd.append('uploadedByRole', perspective.toUpperCase());
+      fd.append('evidenceCategory', 'DISPUTE_EVIDENCE');
+      if (transaction.dispute_scenario) fd.append('scenarioId', String(transaction.dispute_scenario));
+      if (extraEvidenceNote.trim()) fd.append('description', extraEvidenceNote.trim());
+      fd.append('file', extraEvidenceFile);
+
+      const res = await fetch('/api/escrow/evidence/upload', { method: 'POST', body: fd });
+      const json = await res.json();
+      if (json.success) {
+        setEvidenceNotice('Evidence uploaded securely to private storage.');
+        setExtraEvidenceFile(null);
+        setExtraEvidenceNote('');
+        await loadTransaction(perspective);
+      } else {
+        setEvidenceError(json.error || 'Upload rejected.');
+      }
+    } catch (err: any) {
+      setEvidenceError(err?.message || 'Network error uploading evidence.');
+    } finally {
+      setIsUploadingEvidence(false);
+    }
+  };
+
+  const handleOpenOwnEvidenceFile = async (fileId: string) => {
+    if (!transaction) return;
+    try {
+      const res = await fetch(
+        `/api/escrow/evidence/signed-url?transactionId=${encodeURIComponent(transaction.id)}&fileId=${encodeURIComponent(fileId)}&viewerRole=${perspective.toUpperCase()}`
+      );
+      const json = await res.json();
+      if (json.success && json.signedUrl) {
+        window.open(json.signedUrl, '_blank', 'noopener,noreferrer');
+      } else {
+        alert(json.error || 'Unable to generate temporary download link.');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Network error opening evidence file.');
+    }
+  };
+
+  const handleSubmitDisputeResponse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transaction || responseText.trim().length < 3) return;
+    setIsSendingResponse(true);
+    setResponseNotice(null);
+    try {
+      const res = await fetch('/api/escrow/dispute/respond', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactionId: transaction.id,
+          responderRole: perspective.toUpperCase(),
+          responseText: responseText.trim(),
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setResponseNotice('Response submitted and logged for Trust & Safety review.');
+        setResponseText('');
+        await loadTransaction(perspective);
+      } else {
+        alert(json.error || 'Failed to record dispute response.');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Network error submitting response.');
+    } finally {
+      setIsSendingResponse(false);
+    }
+  };
+
+  const handleSendRefundDestOtp = async () => {
+    if (!transaction) return;
+    setIsSubmittingRefund(true);
+    setRefundErrorMsg(null);
+    setRefundStatusMsg(null);
+    try {
+      const res = await fetch('/api/escrow/refund-destination', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactionId: transaction.id, action: 'send_otp' }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setRefundOtpSent(true);
+        setRefundStatusMsg(`OTP sent to ${json.buyer_phone_masked || transaction.buyer_phone_masked || 'your WhatsApp'}.`);
+        if (!liveMode && json.sandbox_otp) {
+          setRefundOtpInput(json.sandbox_otp);
+        }
+      } else {
+        setRefundErrorMsg(json.error || 'Could not send refund verification OTP.');
+      }
+    } catch (err: any) {
+      setRefundErrorMsg(err?.message || 'Network error requesting OTP.');
+    } finally {
+      setIsSubmittingRefund(false);
+    }
+  };
+
+  const handleSaveRefundDestination = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transaction) return;
+    setIsSubmittingRefund(true);
+    setRefundErrorMsg(null);
+    try {
+      const res = await fetch('/api/escrow/refund-destination', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactionId: transaction.id,
+          action: 'verify_and_save',
+          otp: refundOtpInput.trim(),
+          bankCode: refundBankCode,
+          accountNumber: refundAccNum.trim(),
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setRefundStatusMsg(
+          `Refund destination verified (${json.destination?.maskedAccount || json.maskedAccount || 'saved'}).`
+        );
+        setRefundOtpSent(false);
+        setRefundOtpInput('');
+        await loadTransaction('buyer');
+      } else {
+        setRefundErrorMsg(json.error || 'Failed to verify refund bank account.');
+      }
+    } catch (err: any) {
+      setRefundErrorMsg(err?.message || 'Network error verifying refund bank account.');
+    } finally {
+      setIsSubmittingRefund(false);
+    }
+  };
+
+  if (isLoading && !transaction) {
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center p-4">
         <div className="w-8 h-8 border-3 border-accent border-t-transparent rounded-full animate-spin mb-3" />
@@ -414,14 +676,18 @@ function EscrowTrackerContent() {
     );
   }
 
-  const isDisputed = transaction.status === 'DISPUTED';
+  const isDisputed = transaction.status === 'DISPUTED' || transaction.status === 'RESOLVING';
   const isReleased = transaction.status === 'RELEASED';
+  const isTerminated = ['EXPIRED', 'CANCELLED', 'REFUNDED'].includes(transaction.status);
   const isAwaitingPayment = transaction.status === 'AWAITING_PAYMENT';
   const isCodeLocked = Boolean(transaction.code_locked || (transaction.failed_code_attempts || 0) >= 5);
+  const activeScenario = DISPUTE_SCENARIOS.find((s) => s.id === Number(transaction.dispute_scenario));
+  const showResendPromptBanner =
+    (transaction.whatsapp_delivery_status === 'failed' || Boolean(transaction.code_expired)) &&
+    ['FUNDS_LOCKED', 'DISPATCHED'].includes(transaction.status);
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 sm:py-8 space-y-6 w-full">
-      {/* Top Navigation & Perspective Switcher */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <Link
           href="/vendor"
@@ -431,7 +697,6 @@ function EscrowTrackerContent() {
           <span>Vendor Dashboard</span>
         </Link>
 
-        {/* Dual-Perspective Toggle */}
         <div className="bg-site p-1 rounded-2xl flex items-center self-start sm:self-auto border border-border shadow-xs">
           <button
             type="button"
@@ -460,16 +725,15 @@ function EscrowTrackerContent() {
         </div>
       </div>
 
-      {/* Perspective Info Pill */}
       <div className="bg-accent/10 border border-accent/20 rounded-2xl p-3 flex items-center justify-between text-xs text-main">
         <div className="flex items-center gap-2">
           <Eye className="w-4 h-4 text-accent" />
           <span>
-            Viewing as: <strong>{perspective === 'buyer' ? 'Customer / Buyer' : 'Seller / Vendor'}</strong> (Toggle above to test both sides)
+            Viewing as: <strong>{perspective === 'buyer' ? 'Customer / Buyer' : 'Seller / Vendor'}</strong>
           </span>
         </div>
         <button
-          onClick={loadTransaction}
+          onClick={() => loadTransaction(perspective)}
           className="p-1 hover:bg-accent/15 rounded-lg transition-colors cursor-pointer"
           title="Refresh transaction state"
         >
@@ -477,10 +741,79 @@ function EscrowTrackerContent() {
         </button>
       </div>
 
-      {/* Escrow Stepper */}
       <EscrowStepper status={transaction.status} />
 
-      {/* Order Overview Card */}
+      {/* Failed Delivery / Expired Code Recovery Banner */}
+      {showResendPromptBanner && (
+        <div
+          role="status"
+          className="bg-amber-500/15 border border-amber-500/40 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 dark:text-amber-100"
+        >
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <p className="font-bold">
+                {transaction.code_expired
+                  ? 'Your release code window expired — your money stays safely held in escrow.'
+                  : "Didn't receive your code? Send it again."}
+              </p>
+              <p className="text-[11px] opacity-90">
+                Request a fresh 6-digit release code via verified WhatsApp OTP. Your previous code is disabled immediately.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleStartResendCode}
+            className="shrink-0 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs cursor-pointer"
+          >
+            Didn&apos;t receive your code? Send it again
+          </button>
+        </div>
+      )}
+
+      {/* Active Risk Hold Banner */}
+      {(transaction.order_blocked || transaction.review_hold) && (
+        <div
+          role="status"
+          className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 flex items-start gap-3 text-xs text-rose-800 dark:text-rose-200"
+        >
+          <AlertOctagon className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-bold">
+              {transaction.order_blocked
+                ? 'Escrow Order Blocked Pending Security Investigation'
+                : 'Trust & Safety Review Hold Active — Payout Paused'}
+            </p>
+            <p className="opacity-90">
+              {transaction.order_block_reason ||
+                transaction.review_hold_reason ||
+                'Our risk desk is reviewing this order before payout can be released. Buyer funds remain safe in escrow.'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {(coolingNotice ||
+        (transaction.payout_available_at &&
+          !isReleased &&
+          new Date(transaction.payout_available_at).getTime() > Date.now())) && (
+        <div
+          role="status"
+          className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-start gap-3 text-xs text-amber-900 dark:text-amber-200"
+        >
+          <Lock className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-bold">Payout Cooling Window Active (2-Hour Safety Hold)</p>
+            <p>
+              {coolingNotice?.message ||
+                'Release code verified. Giving the code releases the money; payout enters a safety cooling hold so the buyer can flag any problem.'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Order Overview & Delivery Deadlines */}
       <div className="bg-surface rounded-3xl border border-border p-5 sm:p-6 shadow-xs space-y-4 transition-colors">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
           <div>
@@ -490,10 +823,16 @@ function EscrowTrackerContent() {
             <h2 className="text-xl sm:text-2xl font-heading font-semibold text-main tracking-tight">
               {transaction.item_name}
             </h2>
-            <div className="flex items-center gap-2 mt-1 text-xs text-muted">
+            <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted">
               <span>ID: {transaction.id.slice(0, 8)}...</span>
               <span>•</span>
               <span>Vendor: {transaction.vendor_handle}</span>
+              <span>•</span>
+              <span>
+                {transaction.delivery_type === 'interstate'
+                  ? `Interstate (${transaction.delivery_window_days || 7}d + 3d grace)`
+                  : `Same-City (${transaction.delivery_window_days || 3}d + 3d grace)`}
+              </span>
             </div>
           </div>
           <div className="self-start sm:self-auto flex flex-col sm:items-end">
@@ -506,7 +845,38 @@ function EscrowTrackerContent() {
           </div>
         </div>
 
-        {/* If awaiting payment */}
+        {/* Delivery & Dispatch Deadlines Row */}
+        {!isAwaitingPayment && !isTerminated && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-[11px]">
+            <div className={`p-2.5 rounded-xl border ${transaction.is_dispatch_overdue ? 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-300' : 'bg-site border-border text-muted'}`}>
+              <span className="font-bold block text-main">Dispatch Deadline</span>
+              <span>
+                {transaction.dispatched_at
+                  ? `Dispatched ${new Date(transaction.dispatched_at).toLocaleDateString('en-NG')}`
+                  : transaction.dispatch_deadline_at
+                    ? new Date(transaction.dispatch_deadline_at).toLocaleString('en-NG', { dateStyle: 'short', timeStyle: 'short' })
+                    : 'Within 3 days of payment'}
+              </span>
+            </div>
+            <div className="p-2.5 rounded-xl border bg-site border-border text-muted">
+              <span className="font-bold block text-main">Delivery Target</span>
+              <span>
+                {transaction.delivery_deadline_at
+                  ? new Date(transaction.delivery_deadline_at).toLocaleDateString('en-NG', { dateStyle: 'medium' })
+                  : `${transaction.delivery_window_days || 3} days from payment`}
+              </span>
+            </div>
+            <div className="p-2.5 rounded-xl border bg-site border-border text-muted">
+              <span className="font-bold block text-main">Code Window (with Grace)</span>
+              <span>
+                {transaction.code_expires_at
+                  ? new Date(transaction.code_expires_at).toLocaleDateString('en-NG', { dateStyle: 'medium' })
+                  : 'Active while in escrow'}
+              </span>
+            </div>
+          </div>
+        )}
+
         {isAwaitingPayment && (
           <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 text-center space-y-2">
             <p className="text-xs text-amber-800 dark:text-amber-300 font-medium">
@@ -521,10 +891,149 @@ function EscrowTrackerContent() {
           </div>
         )}
 
+        {isTerminated && (
+          <div className="bg-site border border-border rounded-2xl p-5 text-center space-y-2">
+            <XCircle className="w-8 h-8 text-muted mx-auto" />
+            <h3 className="text-sm font-heading font-semibold text-main">
+              Order Status: {transaction.status}
+            </h3>
+            <p className="text-xs text-muted">
+              {transaction.cancellation_reason || 'This escrow order has reached a terminal state.'}
+            </p>
+          </div>
+        )}
+
+        {/* Shared Dispute Arbitration, Evidence & Response Section */}
+        {isDisputed && (
+          <div className="bg-rose-500/5 border border-rose-500/30 rounded-2xl p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-rose-700 dark:text-rose-400 font-bold text-sm">
+                <AlertOctagon className="w-5 h-5 shrink-0" />
+                <span>
+                  Dispute Open
+                  {activeScenario ? ` — Scenario ${activeScenario.id}: ${activeScenario.name}` : ''}
+                </span>
+              </div>
+              {transaction.dispute_sla && (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/15 border border-rose-500/30 text-[11px] font-heading tabular-nums font-bold text-rose-700 dark:text-rose-300">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>SLA Remaining (08:00–20:00 WAT, Mon–Sat): {transaction.dispute_sla.formattedRemaining}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-surface p-3.5 rounded-xl border border-rose-500/20 text-xs space-y-1">
+              <span className="font-bold text-main block">
+                Opened by {transaction.dispute_raised_by || 'BUYER'}:
+              </span>
+              <p className="text-muted">&quot;{transaction.dispute_reason || 'Order disputed'}&quot;</p>
+              {transaction.counterparty_response_text && (
+                <p className="pt-2 border-t border-border text-main font-medium">
+                  {transaction.counterparty_response_text}
+                </p>
+              )}
+            </div>
+
+            {/* Private Evidence Summary — Counterparty Count Only */}
+            <div className="bg-surface p-3.5 rounded-xl border border-border text-xs space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-bold text-main flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-accent" />
+                  <span>Private Dispute Evidence</span>
+                </span>
+                <span className="text-[11px] font-semibold text-muted">
+                  Counterparty evidence files submitted:{' '}
+                  <strong className="text-main">
+                    {transaction.evidence_summary?.counterpartyDisputeEvidenceCount ?? 0}
+                  </strong>{' '}
+                  (private to Relyvora Trust &amp; Safety admins)
+                </span>
+              </div>
+
+              {Array.isArray(transaction.evidence_summary?.ownFiles) &&
+                transaction.evidence_summary.ownFiles.length > 0 && (
+                  <div className="space-y-1.5">
+                    <span className="text-[11px] font-semibold text-muted block">Your uploaded files:</span>
+                    {transaction.evidence_summary.ownFiles.map((f: any) => (
+                      <div
+                        key={f.id}
+                        className="flex items-center justify-between gap-2 bg-site px-3 py-1.5 rounded-lg border border-border"
+                      >
+                        <span className="truncate text-[11px] font-medium text-main">
+                          {f.original_filename || f.evidence_category} ({f.mime_type})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenOwnEvidenceFile(f.id)}
+                          className="text-[11px] font-semibold text-accent hover:underline inline-flex items-center gap-1 cursor-pointer shrink-0"
+                        >
+                          <span>View</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+              <form onSubmit={handleUploadDisputeEvidence} className="pt-2 border-t border-border space-y-2">
+                <span className="text-[11px] font-bold text-main block">
+                  Upload Evidence ({perspective.toUpperCase()} — JPG/PNG/WEBP/PDF max 10MB, MP4 max 25MB):
+                </span>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf"
+                    onChange={(e) => setExtraEvidenceFile(e.target.files?.[0] || null)}
+                    className="flex-1 text-xs text-main"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Short caption (optional)"
+                    value={extraEvidenceNote}
+                    onChange={(e) => setExtraEvidenceNote(e.target.value)}
+                    className="flex-1 bg-site border border-border rounded-lg px-2.5 py-1.5 text-xs text-main"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isUploadingEvidence || !extraEvidenceFile}
+                    className="px-3.5 py-1.5 rounded-lg bg-accent text-[#071229] font-bold text-xs cursor-pointer disabled:opacity-50"
+                  >
+                    {isUploadingEvidence ? 'Uploading...' : 'Upload'}
+                  </button>
+                </div>
+                {evidenceNotice && <p className="text-[11px] text-emerald-600 font-semibold">{evidenceNotice}</p>}
+                {evidenceError && <p className="text-[11px] text-rose-600 font-semibold">{evidenceError}</p>}
+              </form>
+
+              <form onSubmit={handleSubmitDisputeResponse} className="pt-2 border-t border-border space-y-2">
+                <label className="text-[11px] font-bold text-main block">
+                  Submit Written Response ({perspective.toUpperCase()}):
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Add your explanation or tracking confirmation..."
+                    value={responseText}
+                    onChange={(e) => setResponseText(e.target.value)}
+                    className="flex-1 bg-site border border-border rounded-lg px-3 py-1.5 text-xs text-main"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isSendingResponse || responseText.trim().length < 3}
+                    className="px-3.5 py-1.5 rounded-lg bg-surface border border-border hover:bg-site text-main font-bold text-xs cursor-pointer disabled:opacity-50"
+                  >
+                    {isSendingResponse ? 'Saving...' : 'Submit Response'}
+                  </button>
+                </div>
+                {responseNotice && <p className="text-[11px] text-emerald-600 font-semibold">{responseNotice}</p>}
+              </form>
+            </div>
+          </div>
+        )}
+
         {/* PERSPECTIVE 1: BUYER VIEW */}
-        {perspective === 'buyer' && !isAwaitingPayment && (
+        {perspective === 'buyer' && !isAwaitingPayment && !isTerminated && (
           <div className="space-y-6 pt-2">
-            {/* The 6-Digit Release Code Section (Prominent Post-Payment Display) */}
             {!isReleased && !isDisputed && (
               <div className="bg-navy-950 text-white rounded-3xl p-6 sm:p-7 shadow-xl relative overflow-hidden border border-border">
                 <div className="relative z-10 space-y-4 text-center sm:text-left">
@@ -533,9 +1042,7 @@ function EscrowTrackerContent() {
                       <KeyRound className="w-3.5 h-3.5 text-accent" />
                       <span>Delivery Release Code</span>
                     </div>
-                    <span className="text-xs text-slate-400">
-                      Step 3 of 4: Doorstep Handover
-                    </span>
+                    <span className="text-xs text-slate-400">Step 3 of 4: Doorstep Handover</span>
                   </div>
 
                   {liveMode ? (
@@ -556,11 +1063,8 @@ function EscrowTrackerContent() {
                           className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-2 border border-white/20 transition-all cursor-pointer"
                         >
                           <RefreshCw className="w-3.5 h-3.5 text-accent" />
-                          <span>Resend code</span>
+                          <span>Didn&apos;t receive your code? Send it again</span>
                         </button>
-                        <span className="text-[11px] text-slate-400">
-                          Reissuing sends a new code to your phone and invalidates the old code.
-                        </span>
                       </div>
                     </div>
                   ) : (
@@ -574,16 +1078,16 @@ function EscrowTrackerContent() {
                         </div>
 
                         <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2">
-                          {activeReleaseCode ? (
+                          {activeReleaseCode && (
                             <button
                               type="button"
                               onClick={handleCopyCode}
                               className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center justify-center gap-2 border border-white/20 transition-all cursor-pointer"
                             >
                               {copiedCode ? <Check className="w-4 h-4 text-accent" /> : <Copy className="w-4 h-4" />}
-                              <span>{copiedCode ? 'Copied to Clipboard' : 'Copy Code'}</span>
+                              <span>{copiedCode ? 'Copied' : 'Copy Code'}</span>
                             </button>
-                          ) : null}
+                          )}
                           <button
                             type="button"
                             onClick={handleStartResendCode}
@@ -594,15 +1098,6 @@ function EscrowTrackerContent() {
                           </button>
                         </div>
                       </div>
-
-                      {!activeReleaseCode && (
-                        <div className="bg-white/10 border border-white/20 rounded-xl p-3 text-xs text-slate-200 flex items-start gap-2">
-                          <Lock className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-                          <div>
-                            Your release code was sent to {transaction.buyer_phone_masked || '******1234'} on WhatsApp.
-                          </div>
-                        </div>
-                      )}
                     </>
                   )}
 
@@ -610,70 +1105,148 @@ function EscrowTrackerContent() {
                     <div className="bg-rose-500/20 border border-rose-400/40 rounded-xl p-3 text-xs text-rose-200 flex items-start gap-2">
                       <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                       <div>
-                        <strong>Security Notice:</strong> Escrow release has been temporarily locked due to 5 incorrect code attempts by the vendor/rider. Your funds remain held safely in escrow.
+                        <strong>Security Notice:</strong> Escrow release locked after 5 incorrect attempts. Your funds remain safe.
                       </div>
                     </div>
                   )}
 
-                  {/* Warning Notice with Clear Handover Instruction */}
                   <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 text-left flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
                     <div className="space-y-1">
                       <p className="text-xs text-amber-200 leading-relaxed font-semibold">
-                        IMPORTANT DELIVERY CHECK:
+                        IMPORTANT DELIVERY CHECK: Giving the code releases the money
                       </p>
                       <p className="text-xs text-amber-200/90 leading-relaxed">
-                        Give the code to the dispatch rider only after you have opened the package and checked the items. Entering this code releases the escrow funds to the vendor.
+                        The release code is sent only to the buyer. Give the code to the dispatch rider only after you have opened the package and checked the items.
                       </p>
                     </div>
                   </div>
                 </div>
-
                 <div className="absolute -right-12 -bottom-12 w-48 h-48 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
               </div>
             )}
 
-            {/* If Released */}
             {isReleased && (
               <div className="bg-accent/10 border border-accent/30 rounded-2xl p-5 text-center space-y-2">
                 <CheckCircle2 className="w-10 h-10 text-accent mx-auto" />
                 <h3 className="text-base font-heading font-semibold text-main">Order Completed &amp; Funds Released</h3>
                 <p className="text-xs text-muted max-w-md mx-auto">
-                  The delivery release code was verified. Funds of {formatNaira(Number(transaction.item_price))} have been moved to the vendor&apos;s payout balance. Thank you for protecting your shopping with Relyvora!
+                  The delivery release code was verified and funds of {formatNaira(Number(transaction.item_price))} were moved to the vendor.
                 </p>
               </div>
             )}
 
-            {/* If Disputed */}
-            {isDisputed && (
-              <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-5 space-y-2">
-                <div className="flex items-center gap-2 text-rose-700 dark:text-rose-400 font-bold text-sm">
-                  <AlertOctagon className="w-5 h-5 text-rose-600 dark:text-rose-400" />
-                  <span>Dispute Opened — Reason Logged</span>
+            {/* Buyer Verified Refund Account Section (WhatsApp OTP + Anchor Name Enquiry) */}
+            {!isReleased && (
+              <div className="bg-site border border-border rounded-2xl p-5 space-y-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Landmark className="w-4 h-4 text-accent" />
+                    <h3 className="text-sm font-heading font-semibold text-main">
+                      Verified Buyer Refund Bank Account
+                    </h3>
+                  </div>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                      transaction.refund_destination_verified
+                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                        : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30'
+                    }`}
+                  >
+                    {transaction.refund_destination_verified
+                      ? `Verified: ${transaction.refund_destination_masked || 'On file'}`
+                      : 'Not yet confirmed'}
+                  </span>
                 </div>
-                <p className="text-xs text-main bg-surface p-3 rounded-xl border border-rose-500/30 font-medium">
-                  &quot;{transaction.dispute_reason || 'Buyer reported item mismatch / damage.'}&quot;
+                <p className="text-xs text-muted">
+                  Refunds strictly go only to the originating sender account or a Nigerian NUBAN you verify via WhatsApp OTP.
                 </p>
-                <p className="text-[11px] text-rose-600 dark:text-rose-400">
-                  A Relyvora dispute agent is reviewing this transaction. Release codes are frozen.
-                </p>
+
+                {refundStatusMsg && (
+                  <p className="text-xs text-emerald-700 dark:text-emerald-300 font-semibold">{refundStatusMsg}</p>
+                )}
+                {refundErrorMsg && (
+                  <p className="text-xs text-rose-600 dark:text-rose-400 font-semibold">{refundErrorMsg}</p>
+                )}
+
+                <form onSubmit={handleSaveRefundDestination} className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-end">
+                  <div>
+                    <label className="block text-[11px] font-bold text-main mb-1">Bank</label>
+                    <select
+                      value={refundBankCode}
+                      onChange={(e) => setRefundBankCode(e.target.value)}
+                      className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-main"
+                    >
+                      <option value="">Select bank...</option>
+                      {NIGERIAN_BANKS.map((b) => (
+                        <option key={b.code} value={b.code}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-main mb-1">10-Digit NUBAN</label>
+                    <input
+                      type="text"
+                      maxLength={10}
+                      placeholder="0123456789"
+                      value={refundAccNum}
+                      onChange={(e) => setRefundAccNum(e.target.value.replace(/\D/g, ''))}
+                      className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs font-heading tabular-nums text-main"
+                    />
+                  </div>
+                  {!refundOtpSent ? (
+                    <button
+                      type="button"
+                      onClick={handleSendRefundDestOtp}
+                      disabled={isSubmittingRefund || !refundBankCode || refundAccNum.length !== 10}
+                      className="py-2 px-3 rounded-xl bg-accent text-[#071229] font-bold text-xs cursor-pointer disabled:opacity-50"
+                    >
+                      {isSubmittingRefund ? 'Sending OTP...' : 'Confirm via WhatsApp OTP'}
+                    </button>
+                  ) : (
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        maxLength={6}
+                        placeholder="OTP"
+                        value={refundOtpInput}
+                        onChange={(e) => setRefundOtpInput(e.target.value.replace(/\D/g, ''))}
+                        className="w-24 bg-surface border border-border rounded-xl px-2 py-2 text-xs font-heading tabular-nums text-center text-main"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isSubmittingRefund || refundOtpInput.length !== 6}
+                        className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 text-white font-bold text-xs cursor-pointer disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  )}
+                </form>
               </div>
             )}
 
-            {/* Freeze Escrow & Open Dispute Button */}
+            {/* Buyer Open Dispute Button */}
             {!isReleased && !isDisputed && (
               <div className="pt-2 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="text-xs text-muted text-center sm:text-left">
-                  <span>Received something wrong or damaged?</span>
+                  <span>Received something wrong, late, or damaged?</span>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setIsDisputeModalOpen(true)}
+                  onClick={() => {
+                    setDisputeRole('BUYER');
+                    setSelectedScenarioId(1);
+                    setOtpSent(false);
+                    setDisputeError(null);
+                    setIsDisputeModalOpen(true);
+                  }}
                   className="w-full sm:w-auto px-5 py-3 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-700 dark:text-rose-300 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
                 >
                   <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400" />
-                  <span>Wrong / Fake Item — Freeze Escrow &amp; Open Dispute</span>
-                  <XCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 ml-0.5" />
+                  <span>Wrong / Undelivered — Raise Dispute</span>
                 </button>
               </div>
             )}
@@ -681,15 +1254,17 @@ function EscrowTrackerContent() {
         )}
 
         {/* PERSPECTIVE 2: VENDOR VIEW */}
-        {perspective === 'vendor' && !isAwaitingPayment && (
+        {perspective === 'vendor' && !isAwaitingPayment && !isTerminated && (
           <div className="space-y-6 pt-2">
-            {/* Step: Mark as Dispatched */}
-            <div className="bg-site border border-border rounded-2xl p-5 space-y-3">
+            {/* 1. Proof of Dispatch Form */}
+            <div className="bg-site border border-border rounded-2xl p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-heading font-semibold text-main">1. Dispatch Shipment</h3>
+                  <h3 className="text-sm font-heading font-semibold text-main">
+                    1. Proof of Dispatch &amp; Waybill
+                  </h3>
                   <p className="text-xs text-muted">
-                    Hand package to rider and notify the buyer.
+                    Upload dispatch proof (photo, waybill receipt, or video) and courier details before marking dispatched.
                   </p>
                 </div>
                 {transaction.status === 'DISPATCHED' || isReleased ? (
@@ -701,24 +1276,120 @@ function EscrowTrackerContent() {
               </div>
 
               {transaction.status === 'FUNDS_LOCKED' && (
-                <button
-                  type="button"
-                  onClick={handleMarkDispatched}
-                  disabled={isDispatching}
-                  className="w-full py-3 px-4 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-card disabled:opacity-60 cursor-pointer"
-                >
-                  <Truck className="w-4 h-4 text-[#071229]" />
-                  <span>{isDispatching ? 'Updating status...' : 'Mark as Dispatched / Rider En Route'}</span>
-                </button>
+                <form onSubmit={handleMarkDispatched} className="space-y-3">
+                  {dispatchError && (
+                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-semibold text-rose-700 dark:text-rose-300">
+                      {dispatchError}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      required
+                      placeholder="Courier / Dispatch Rider Name *"
+                      value={carrierName}
+                      onChange={(e) => setCarrierName(e.target.value)}
+                      className="bg-surface border border-border rounded-xl px-3 py-2 text-xs text-main"
+                    />
+                    <input
+                      type="tel"
+                      required
+                      placeholder="Rider / Courier Phone (e.g. 080...) *"
+                      value={carrierPhone}
+                      onChange={(e) => setCarrierPhone(e.target.value)}
+                      className="bg-surface border border-border rounded-xl px-3 py-2 text-xs text-main"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      required={transaction.delivery_type === 'interstate'}
+                      placeholder={
+                        transaction.delivery_type === 'interstate'
+                          ? 'Waybill / Tracking Number (Required for Interstate) *'
+                          : 'Tracking / Waybill Ref (optional)'
+                      }
+                      value={trackingReference}
+                      onChange={(e) => setTrackingReference(e.target.value)}
+                      className="bg-surface border border-border rounded-xl px-3 py-2 text-xs text-main"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Dispatch Notes (optional)"
+                      value={dispatchNotes}
+                      onChange={(e) => setDispatchNotes(e.target.value)}
+                      className="bg-surface border border-border rounded-xl px-3 py-2 text-xs text-main"
+                    />
+                  </div>
+                  <div className="bg-surface border border-border rounded-xl p-3 space-y-1.5">
+                    <label className="block text-[11px] font-bold text-main flex items-center gap-1.5">
+                      <Upload className="w-3.5 h-3.5 text-accent" />
+                      <span>Upload Package Photo, Video or Waybill Receipt *</span>
+                    </label>
+                    <input
+                      type="file"
+                      required
+                      accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf"
+                      onChange={(e) => setDispatchProofFile(e.target.files?.[0] || null)}
+                      className="w-full text-xs text-main"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={isDispatching}
+                    className="w-full py-3 px-4 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-card disabled:opacity-60 cursor-pointer"
+                  >
+                    <Truck className="w-4 h-4 text-[#071229]" />
+                    <span>{isDispatching ? 'Uploading & Updating Dispatch...' : 'Submit Proof & Mark Dispatched'}</span>
+                  </button>
+                </form>
+              )}
+
+              {(transaction.status === 'DISPATCHED' || isReleased) && (
+                <div className="space-y-3 text-xs">
+                  <div className="bg-surface border border-border rounded-xl p-3 flex flex-wrap gap-4 text-muted">
+                    <span>
+                      Courier: <strong className="text-main">{transaction.courier_name || 'Logged'}</strong>
+                    </span>
+                    {transaction.tracking_number && (
+                      <span>
+                        Tracking: <strong className="text-main">{transaction.tracking_number}</strong>
+                      </span>
+                    )}
+                    <span>
+                      Dispatch Proof Files:{' '}
+                      <strong className="text-main">{transaction.evidence_summary?.dispatchProofCount ?? 1}</strong>
+                    </span>
+                  </div>
+
+                  {!isReleased && (
+                    <form onSubmit={handleUploadHandoverProof} className="bg-surface border border-border rounded-xl p-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf"
+                        onChange={(e) => setHandoverFile(e.target.files?.[0] || null)}
+                        className="flex-1 text-xs text-main"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isUploadingHandover || !handoverFile}
+                        className="px-3.5 py-2 rounded-lg bg-site border border-border hover:bg-border/40 text-main font-bold text-xs cursor-pointer disabled:opacity-50"
+                      >
+                        {isUploadingHandover ? 'Uploading...' : 'Add Delivery Handover Proof'}
+                      </button>
+                    </form>
+                  )}
+                  {handoverNotice && <p className="text-[11px] text-emerald-600 font-semibold">{handoverNotice}</p>}
+                </div>
               )}
             </div>
 
-            {/* Step: Code Verification Input */}
+            {/* 2. Code Verification Input */}
             <div className="bg-site border border-border rounded-2xl p-5 space-y-4">
               <div>
                 <h3 className="text-sm font-heading font-semibold text-main">2. Unlock Escrow Payout</h3>
                 <p className="text-xs text-muted mt-0.5">
-                  Ask the buyer or your delivery rider for the 6-digit release code given upon inspection.
+                  Ask the buyer or delivery rider for the 6-digit release code given upon inspection.
                 </p>
               </div>
 
@@ -736,7 +1407,7 @@ function EscrowTrackerContent() {
                     <span>SECURITY LOCKOUT ACTIVATED</span>
                   </div>
                   <p className="text-xs text-rose-700 dark:text-rose-300 leading-relaxed">
-                    This escrow transaction has been locked after 5 consecutive incorrect code attempts to protect against brute-force attacks. Release is frozen. Please contact Relyvora Dispute Mediation.
+                    Locked after 5 incorrect attempts. Please contact Relyvora Support.
                   </p>
                 </div>
               ) : isReleased ? (
@@ -745,68 +1416,74 @@ function EscrowTrackerContent() {
                     <span>Payout Unlocked ({formatNaira(Number(transaction.item_price))})</span>
                     <Sparkles className="w-4 h-4 text-accent" />
                   </div>
-                  <p className="text-[11px] text-muted">
-                    Funds have been credited to your available payout balance.
-                  </p>
                 </div>
               ) : (
                 <form onSubmit={handleVerifyCode} className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-bold text-main uppercase tracking-wide mb-1.5">
-                      Enter Buyer&apos;s 6-Digit Release Code:
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        maxLength={6}
-                        placeholder="e.g. 849201"
-                        value={enteredCode}
-                        onChange={(e) => {
-                          setEnteredCode(e.target.value.replace(/\D/g, ''));
-                          setVerificationError(null);
-                        }}
-                        className="flex-1 bg-surface border border-border rounded-xl px-4 py-3 text-lg font-heading tabular-nums font-bold tracking-widest text-main text-center focus:outline-none focus:ring-2 focus:ring-accent"
-                      />
-                      <button
-                        type="submit"
-                        disabled={isVerifying || enteredCode.trim().length !== 6}
-                        className="px-5 py-3 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-card disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                      >
-                        {isVerifying ? (
-                          <div className="w-4 h-4 border-2 border-[#071229] border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <CheckCircle2 className="w-4 h-4" />
-                        )}
-                        <span>Verify &amp; Release</span>
-                      </button>
-                    </div>
+                  <div className="flex gap-2">
+                    <input
+                      id="vendor-release-code-input"
+                      name="releaseCode"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="e.g. 849201"
+                      value={enteredCode}
+                      onChange={(e) => {
+                        setEnteredCode(e.target.value.replace(/\D/g, ''));
+                        setVerificationError(null);
+                      }}
+                      className="flex-1 bg-surface border border-border rounded-xl px-4 py-3 text-lg font-heading tabular-nums font-bold tracking-widest text-main text-center focus:outline-none focus:ring-2 focus:ring-accent"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isVerifying || enteredCode.trim().length !== 6}
+                      className="px-5 py-3 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-card disabled:opacity-50 cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Verify &amp; Release</span>
+                    </button>
                   </div>
 
                   {verificationError && (
-                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-semibold text-rose-700 dark:text-rose-300 flex items-center gap-2 animate-in fade-in">
+                    <div role="status" className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-semibold text-rose-700 dark:text-rose-300 flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
                       <span>{verificationError}</span>
                     </div>
                   )}
-
-                  <div className="text-[11px] text-muted flex items-center gap-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-accent" />
-                    <span>Doorstep release code verification</span>
-                  </div>
                 </form>
               )}
             </div>
+
+            {/* Vendor Dispute Button (Scenario 2 / Scenario 3 Hostage / Unreachable Buyer) */}
+            {!isReleased && !isDisputed && (
+              <div className="pt-2 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="text-xs text-muted">
+                  <span>Buyer refusing delivery or withholding code after taking item?</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDisputeRole('VENDOR');
+                    setSelectedScenarioId(3);
+                    setOtpSent(false);
+                    setDisputeError(null);
+                    setIsDisputeModalOpen(true);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-800 dark:text-amber-300 font-bold text-xs flex items-center gap-2 cursor-pointer"
+                >
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>Open Vendor Dispute</span>
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Resend Release Code Modal (Buyer Phone One-Time Code Verification) */}
+      {/* Resend Release Code Modal */}
       {isResendModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/80 backdrop-blur-xs">
-          <div
-            className="bg-surface rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-border"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="bg-surface rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-border">
             <div className="bg-navy-950 text-white p-5 flex items-center justify-between border-b border-border">
               <div className="flex items-center gap-2">
                 <KeyRound className="w-5 h-5 text-accent" />
@@ -828,9 +1505,7 @@ function EscrowTrackerContent() {
               {resendSuccess ? (
                 <div className="space-y-4 text-center py-2">
                   <CheckCircle2 className="w-10 h-10 text-accent mx-auto" />
-                  <p className="text-xs sm:text-sm text-main font-medium leading-relaxed">
-                    {resendSuccess}
-                  </p>
+                  <p className="text-xs sm:text-sm text-main font-medium leading-relaxed">{resendSuccess}</p>
                   <button
                     type="button"
                     onClick={() => setIsResendModalOpen(false)}
@@ -843,23 +1518,18 @@ function EscrowTrackerContent() {
                 <>
                   <p className="text-xs text-muted leading-relaxed">
                     Requesting a new release code sends a 6-digit verification code to{' '}
-                    <strong>{resendMaskedPhone || transaction.buyer_phone_masked || '******1234'}</strong>. Any previous release code stops working immediately.
+                    <strong>{resendMaskedPhone || transaction.buyer_phone_masked || '******1234'}</strong>. Any previous code stops working immediately.
                   </p>
-
                   {resendError && (
-                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-semibold text-rose-700 dark:text-rose-300 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
-                      <span>{resendError}</span>
+                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-semibold text-rose-700 dark:text-rose-300">
+                      {resendError}
                     </div>
                   )}
-
                   {isSendingResendOtp ? (
-                    <div className="py-4 text-center text-xs text-muted">
-                      Sending one-time verification code...
-                    </div>
+                    <div className="py-4 text-center text-xs text-muted">Sending one-time verification code...</div>
                   ) : resendOtpSent ? (
-                    <div className="space-y-3">
-                      <label className="block text-xs font-bold text-main uppercase tracking-wide">
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold text-main uppercase">
                         Enter 6-Digit Phone Verification Code:
                       </label>
                       <input
@@ -868,11 +1538,10 @@ function EscrowTrackerContent() {
                         placeholder="000000"
                         value={resendOtpInput}
                         onChange={(e) => setResendOtpInput(e.target.value.replace(/\D/g, ''))}
-                        className="w-full bg-site border border-border rounded-xl p-3 text-center text-xl font-heading tabular-nums font-bold tracking-widest text-main focus:outline-none focus:ring-2 focus:ring-accent"
+                        className="w-full bg-site border border-border rounded-xl p-3 text-center text-xl font-heading tabular-nums font-bold tracking-widest text-main"
                       />
                     </div>
                   ) : null}
-
                   <div className="flex items-center justify-end gap-2 pt-2">
                     <button
                       type="button"
@@ -884,7 +1553,7 @@ function EscrowTrackerContent() {
                     <button
                       type="submit"
                       disabled={isVerifyingResendOtp || !resendOtpSent || resendOtpInput.trim().length !== 6}
-                      className="px-4 py-2.5 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-xs sm:text-sm disabled:opacity-50 cursor-pointer"
+                      className="px-4 py-2.5 rounded-xl bg-accent text-[#071229] font-bold text-xs disabled:opacity-50 cursor-pointer"
                     >
                       {isVerifyingResendOtp ? 'Generating New Code...' : 'Verify & Issue New Code'}
                     </button>
@@ -896,118 +1565,113 @@ function EscrowTrackerContent() {
         </div>
       )}
 
-      {/* Buyer Dispute Modal */}
+      {/* Raise Dispute Modal (Scenario Selector + Evidence Upload) */}
       {isDisputeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/80 backdrop-blur-xs animate-in fade-in duration-200">
-          <div 
-            className="bg-surface rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-border"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/80 backdrop-blur-xs">
+          <div className="bg-surface rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-border">
             <div className="bg-rose-900 text-white p-5 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <AlertOctagon className="w-5 h-5 text-rose-400" />
-                <h3 className="font-heading font-semibold text-base">Freeze Escrow &amp; Dispute</h3>
+                <h3 className="font-heading font-semibold text-base">
+                  {disputeRole === 'VENDOR' ? 'Open Vendor Dispute' : 'Freeze Escrow & Open Dispute'}
+                </h3>
               </div>
-              <button 
-                onClick={() => setIsDisputeModalOpen(false)}
-                className="text-rose-300 hover:text-white cursor-pointer"
-              >
+              <button onClick={() => setIsDisputeModalOpen(false)} className="text-rose-300 hover:text-white cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleOpenDispute} className="p-5 sm:p-6 space-y-4">
-              <p className="text-xs text-muted leading-relaxed">
-                Freezing escrow halts payout immediately. To prevent unauthorized freezes, a 6-digit verification code will be sent to your phone.
-              </p>
-
               {disputeError && (
-                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-semibold text-rose-700 dark:text-rose-300 flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
-                  <span>{disputeError}</span>
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-semibold text-rose-700 dark:text-rose-300">
+                  {disputeError}
                 </div>
               )}
 
               <div>
-                <label className="block text-xs font-bold text-main uppercase tracking-wide mb-1.5">
-                  Reason for dispute:
-                </label>
+                <label className="block text-xs font-bold text-main uppercase mb-1.5">Dispute Category / Scenario:</label>
+                <select
+                  value={selectedScenarioId}
+                  onChange={(e) => setSelectedScenarioId(Number(e.target.value))}
+                  className="w-full bg-site border border-border rounded-xl px-3 py-2.5 text-xs text-main"
+                >
+                  {DISPUTE_SCENARIOS.map((sc) => (
+                    <option key={sc.id} value={sc.id}>
+                      Scenario {sc.id}: {sc.name} ({sc.slaLabel})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-main uppercase mb-1.5">Detailed Reason:</label>
                 <textarea
                   required
                   rows={3}
                   disabled={otpSent}
-                  placeholder="e.g. Received incorrect item / item arrived broken..."
+                  placeholder="Describe the exact issue..."
                   value={disputeReason}
                   onChange={(e) => setDisputeReason(e.target.value)}
-                  className="w-full bg-site border border-border rounded-xl p-3 text-xs sm:text-sm text-main focus:outline-none focus:ring-2 focus:ring-rose-500 disabled:opacity-60"
+                  className="w-full bg-site border border-border rounded-xl p-3 text-xs text-main"
                 />
               </div>
 
-              {otpSent && (
-                <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 space-y-3 animate-in fade-in">
-                  <div>
-                    <label className="block text-xs font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wide mb-1">
-                      Enter 6-Digit Verification Code:
-                    </label>
-                    <p className="text-[11px] text-muted mb-2">
-                      Code sent via SMS to {maskedPhone}.
-                    </p>
-                    <input
-                      type="text"
-                      maxLength={6}
-                      placeholder="e.g. 583921"
-                      value={disputeOtp}
-                      onChange={(e) => setDisputeOtp(e.target.value.replace(/\D/g, ''))}
-                      className="w-full bg-surface border border-rose-500/40 rounded-xl p-3 text-center text-xl font-heading tabular-nums font-bold tracking-widest text-main focus:outline-none focus:ring-2 focus:ring-rose-500"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSendDisputeOtp}
-                    disabled={isSendingOtp}
-                    className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
-                  >
-                    Resend verification code
-                  </button>
+              <div>
+                <label className="block text-xs font-bold text-main uppercase mb-1.5">
+                  Attach Evidence File (optional, private):
+                </label>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf"
+                  onChange={(e) => setDisputeFile(e.target.files?.[0] || null)}
+                  className="w-full text-xs text-main"
+                />
+              </div>
+
+              {disputeRole === 'BUYER' && otpSent && (
+                <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 space-y-2">
+                  <label className="block text-xs font-bold text-rose-700 dark:text-rose-300 uppercase">
+                    Enter 6-Digit Verification Code sent to {maskedPhone}:
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    placeholder="000000"
+                    value={disputeOtp}
+                    onChange={(e) => setDisputeOtp(e.target.value.replace(/\D/g, ''))}
+                    className="w-full bg-surface border border-rose-500/40 rounded-xl p-3 text-center text-xl font-heading tabular-nums font-bold tracking-widest text-main"
+                  />
                 </div>
               )}
 
-              <div className="flex items-center gap-2 justify-end pt-2">
+              <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsDisputeModalOpen(false);
-                    setOtpSent(false);
-                    setDisputeError(null);
-                  }}
+                  onClick={() => setIsDisputeModalOpen(false)}
                   className="px-4 py-2 text-xs font-semibold text-muted hover:text-main cursor-pointer"
                 >
                   Cancel
                 </button>
-                
-                {!otpSent ? (
-                  <button
-                    type="button"
-                    onClick={handleSendDisputeOtp}
-                    disabled={isSendingOtp || !disputeReason.trim()}
-                    className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
-                  >
-                    {isSendingOtp ? 'Sending Code...' : 'Send Phone Verification Code'}
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    disabled={isSubmittingDispute || disputeOtp.trim().length !== 6}
-                    className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
-                  >
-                    {isSubmittingDispute ? 'Freezing Escrow...' : 'Verify & Freeze Escrow'}
-                  </button>
-                )}
+                <button
+                  type="submit"
+                  disabled={isSendingOtp || isSubmittingDispute || !disputeReason.trim()}
+                  className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs cursor-pointer disabled:opacity-50"
+                >
+                  {isSendingOtp
+                    ? 'Sending Code...'
+                    : isSubmittingDispute
+                      ? 'Submitting Dispute...'
+                      : disputeRole === 'BUYER' && !transaction.buyer_phone_verified && !otpSent
+                        ? 'Send Verification Code'
+                        : 'Submit & Freeze Escrow'}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      <ProductFooter />
     </div>
   );
 }

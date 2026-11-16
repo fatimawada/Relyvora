@@ -113,9 +113,115 @@ async function seedStaging() {
           updated_at: now,
         },
         {
-          key: 'vendor_allowlist_mode',
+          key: 'payouts_enabled',
           value: true,
-          description: 'When true, only vendors with is_allowlisted = true can create links',
+          description: 'Master incident kill switch pausing all vendor payouts when false',
+          updated_by: 'seed_staging_script',
+          updated_at: now,
+        },
+        {
+          key: 'vendor_allowlist_mode',
+          value: false,
+          description: 'Instant kill switch: when true, only is_allowlisted vendors can create links',
+          updated_by: 'seed_staging_script',
+          updated_at: now,
+        },
+        {
+          key: 'tier1_order_limit_ngn',
+          value: 2500000,
+          description: 'Tier 1 (NEW vendor) per-order limit in NGN before reaching tier_upgrade_threshold',
+          updated_by: 'seed_staging_script',
+          updated_at: now,
+        },
+        {
+          key: 'tier_upgrade_threshold',
+          value: 5,
+          description: 'Number of successful RELEASED sales required to graduate from Tier 1 order cap to uncapped',
+          updated_by: 'seed_staging_script',
+          updated_at: now,
+        },
+        {
+          key: 'tier_config',
+          value: {
+            tiers: {
+              NEW: { per_order_cap_ngn: 2500000, daily_volume_cap_ngn: 5000000 },
+              ESTABLISHED: { per_order_cap_ngn: 10000000, daily_volume_cap_ngn: 20000000 },
+              TRUSTED: { per_order_cap_ngn: null, daily_volume_cap_ngn: null },
+            },
+            promotion: {
+              established_min_completed_orders: 5,
+              established_min_days_since_first_order: 14,
+              established_max_disputes: 0,
+            },
+          },
+          description: 'Configurable vendor tier limits and automatic promotion rules',
+          updated_by: 'seed_staging_script',
+          updated_at: now,
+        },
+        {
+          key: 'payout_safety_config',
+          value: {
+            name_match_min_score: 0.7,
+            settlement_change_wait_hours: 48,
+            require_whatsapp_confirm_on_bank_change: true,
+          },
+          description: 'Name matching threshold and settlement account change waiting period',
+          updated_by: 'seed_staging_script',
+          updated_at: now,
+        },
+        {
+          key: 'risk_engine_config',
+          value: {
+            review_hold_threshold: 3,
+            block_threshold: 6,
+            amount_review_threshold_ngn: 500000,
+            near_cap_ratio_min: 0.85,
+            velocity_window_minutes: 60,
+            velocity_max_orders: 5,
+            repeat_pair_window_hours: 24,
+            repeat_pair_max_orders: 3,
+            spike_multiplier: 3,
+            spike_min_baseline_ngn: 50000,
+            ip_hash_retention_hours: 72,
+            weights: {
+              ABOVE_REVIEW_AMOUNT: 2,
+              HIGH_VELOCITY_VENDOR: 2,
+              REPEATED_BUYER_VENDOR_PAIR: 2,
+              REPEATED_NEAR_CAP_ORDER: 2,
+              SUDDEN_AMOUNT_SPIKE: 2,
+              SHARED_DEVICE_OR_IP: 3,
+              MISSING_DEPOSIT_SENDER_NAME: 3,
+              DEPOSIT_EXCEEDS_TIER_CAP: 3,
+              SETTLEMENT_HOLD_ACTIVE: 3,
+              SHARED_PHONE_VENDOR_BUYER: 6,
+              SELF_DEALING_NAME_MATCH: 6,
+              SELF_DEALING_ACCOUNT_MATCH: 6,
+            },
+          },
+          description: 'Configurable risk scoring thresholds, windows, retention hours, and signal weights',
+          updated_by: 'seed_staging_script',
+          updated_at: now,
+        },
+        {
+          key: 'cooling_window_config',
+          value: {
+            hours_by_tier: { NEW: 2, ESTABLISHED: 0, TRUSTED: 0 },
+            high_value_cooling_hours: 2,
+            notify_buyer_on_code_use: true,
+          },
+          description: 'Configurable payout cooling delay hours per vendor tier',
+          updated_by: 'seed_staging_script',
+          updated_at: now,
+        },
+        {
+          key: 'admin_safety_config',
+          value: {
+            session_max_age_minutes: 15,
+            high_value_confirm_threshold_ngn: 500000,
+            require_typed_confirmation: true,
+            alert_on_every_admin_action: true,
+          },
+          description: 'Admin session freshness, typed confirmation thresholds, and audit alerting rules',
           updated_by: 'seed_staging_script',
           updated_at: now,
         },
@@ -183,21 +289,34 @@ async function seedStaging() {
   }
 
   // 2. Idempotently upsert deterministic staging vendor @StagingTestVendor
-  const vendorPayload = {
+  const baseVendorPayload = {
     store_name: '@StagingTestVendor',
     email: 'staging-vendor@relyvora.com',
     phone_number: '+2348000000001',
-    legal_first_name: 'Staging',
+    legal_first_name: 'TEST Staging',
     legal_last_name: 'Vendor',
     kyc_status: 'verified',
     is_allowlisted: true,
     anchor_deposit_account_id: 'anc_staging_acc_001',
     settlement_bank_code: '058',
     settlement_account_number: '0123456789',
-    settlement_account_name: 'Staging Test Vendor',
+    settlement_account_name: 'TEST Staging Test Vendor',
     daily_volume_ngn: 0,
     daily_volume_reset_at: now,
     updated_at: now,
+  };
+
+  const extendedVendorFields = {
+    phone_verified: true,
+    phone_verified_at: now,
+    payout_account_verified: true,
+    settlement_account_name_matched: true,
+    settlement_name_match_score: 1.0,
+    tier: 'NEW',
+    successful_sales_count: 0,
+    completed_orders_count: 0,
+    disputes_count: 0,
+    cap_override_unlimited: false,
   };
 
   const { data: existingVendors, error: findErr } = await supabase
@@ -210,26 +329,37 @@ async function seedStaging() {
     throw new Error(`Failed querying vendors: ${findErr.message}`);
   }
 
+  let vendorId: string;
   if (existingVendors && existingVendors.length > 0) {
-    const existingId = existingVendors[0].id;
+    vendorId = existingVendors[0].id;
     const { error: updateErr } = await supabase
       .from('vendors')
-      .update(vendorPayload)
-      .eq('id', existingId);
+      .update(baseVendorPayload)
+      .eq('id', vendorId);
     if (updateErr) {
-      throw new Error(`Failed updating staging vendor ${existingId}: ${updateErr.message}`);
+      throw new Error(`Failed updating staging vendor ${vendorId}: ${updateErr.message}`);
     }
-    console.log(`Updated verified staging vendor @StagingTestVendor (id=${existingId}).`);
+    console.log(`Updated verified staging vendor @StagingTestVendor (id=${vendorId}).`);
   } else {
     const { data: inserted, error: insertErr } = await supabase
       .from('vendors')
-      .insert(vendorPayload)
+      .insert(baseVendorPayload)
       .select('id')
       .single();
     if (insertErr) {
       throw new Error(`Failed inserting staging vendor: ${insertErr.message}`);
     }
-    console.log(`Inserted verified staging vendor @StagingTestVendor (id=${inserted.id}).`);
+    vendorId = inserted.id;
+    console.log(`Inserted verified staging vendor @StagingTestVendor (id=${vendorId}).`);
+  }
+
+  // Opportunistically set new tier/payout-safety columns once STAGING-ADDITIONS.sql is applied
+  const { error: extErr } = await supabase
+    .from('vendors')
+    .update(extendedVendorFields)
+    .eq('id', vendorId);
+  if (extErr && !String(extErr.message || '').includes('schema cache') && extErr.code !== 'PGRST204') {
+    throw new Error(`Failed updating extended vendor fields: ${extErr.message}`);
   }
 }
 

@@ -47,10 +47,10 @@ This document lists every environment variable used across **Preview / Local**, 
 
 | Variable | Scope | Preview / Local | Staging (`staging.relyvora.com`) | Production (`ng.relyvora.com`) |
 | :--- | :--- | :--- | :--- | :--- |
-| `PAYMENTS_MODE` | Server-only config | `sandbox` | `sandbox` (or `live` when testing Anchor webhook flow) | `live` |
-| `NEXT_PUBLIC_PAYMENTS_MODE` | Client & Server UI | `sandbox` | `sandbox` (match `PAYMENTS_MODE`) | `live` |
+| `PAYMENTS_MODE` | Server-only config | `sandbox` | `sandbox` (or `live` when testing Anchor webhook flow) | `sandbox` initially (flip to `live` only for full Anchor GA) |
+| `NEXT_PUBLIC_PAYMENTS_MODE` | Client & Server UI | `sandbox` | `sandbox` (match `PAYMENTS_MODE`) | `sandbox` initially (always match `PAYMENTS_MODE`) |
 | `ANCHOR_BRAND_APPROVED` | Build / Server (`next.config.mjs`) | `false` | `false` | `false` (flip to `true` only after written co-branding approval from Anchor) |
-| `LAUNCH_STATUS` | Build / Server (`next.config.mjs`) | `launching` | `launching` | `launching` (flip to `live` on public GA launch) |
+| `LAUNCH_STATUS` | Build / Server (`next.config.mjs`) | `launching` | `launching` | `launching` initially (flip to `live` on public GA launch) |
 | `CHECKOUT_ENABLED` | Server config | `true` | `true` | `true` (overridden instantly by `public.system_settings.checkout_enabled`) |
 | `MAX_ORDER_NGN` | Server config | Unset (`null` = no cap) | Unset (`null` = no cap) | Unset (`null` = no cap; override via `system_settings` if needed) |
 | `MAX_DAILY_VENDOR_VOLUME_NGN` | Server config | Unset (`null` = no cap) | Unset (`null` = no cap) | Unset (`null` = no cap; override via `system_settings` if needed) |

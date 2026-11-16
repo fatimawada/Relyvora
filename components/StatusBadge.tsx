@@ -1,11 +1,12 @@
 import React from 'react';
 import { TransactionStatus } from '@/lib/types';
-import { 
-  Clock, 
-  Lock, 
-  Truck, 
-  CheckCircle2, 
-  AlertTriangle 
+import {
+  Clock,
+  Lock,
+  Truck,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
 } from 'lucide-react';
 
 interface StatusBadgeProps {
@@ -77,12 +78,33 @@ export function StatusBadge({ status, size = 'md' }: StatusBadgeProps) {
       border: 'border-rose-500/20',
       icon: <AlertTriangle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />,
     },
+    RESOLVING: {
+      label: 'Dispute Settlement Running',
+      bg: 'bg-rose-500/10',
+      text: 'text-rose-700 dark:text-rose-300',
+      border: 'border-rose-500/20',
+      icon: <Clock className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />,
+    },
     REFUNDED: {
       label: 'Refunded to Buyer',
       bg: 'bg-site',
       text: 'text-muted',
       border: 'border-border',
       icon: <CheckCircle2 className="w-3.5 h-3.5 text-muted" />,
+    },
+    EXPIRED: {
+      label: 'Payment Link Expired',
+      bg: 'bg-site',
+      text: 'text-muted',
+      border: 'border-border',
+      icon: <Clock className="w-3.5 h-3.5 text-muted" />,
+    },
+    CANCELLED: {
+      label: 'Order Cancelled',
+      bg: 'bg-rose-500/10',
+      text: 'text-rose-700 dark:text-rose-300',
+      border: 'border-rose-500/20',
+      icon: <XCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />,
     },
   };
 

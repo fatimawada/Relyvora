@@ -3,12 +3,17 @@ import { getServiceSupabase } from '@/lib/supabaseServer';
 import {
   generateCryptographicReleaseCode,
   computeReleaseCodeHmac,
-  verifyReleaseCodeHmac,
-  calculateCodeExpiration,
+  calculateDeliveryWindowCodeExpiration,
 } from '@/lib/releaseCode';
+import { verifyReleaseCodeHmac } from '@/lib/releaseCode';
+import {
+  getDeliveryAndLifecycleConfig,
+  mergeTransactionWithLifecycleOverlay,
+  updateTransactionWithFallback,
+} from '@/lib/orderLifecycle';
 import { sendSystemAlert } from '@/lib/alerts';
 import { isLiveMode } from '@/lib/paymentsMode';
-import { getClientIp, checkRateLimit } from '@/lib/rateLimit';
+import { getClientIp, checkSharedRateLimit } from '@/lib/rateLimit';
 import {
   sendBuyerOtpSms,
   sendReleaseCodeSmsOrWhatsapp,
@@ -20,10 +25,10 @@ import { recordLedgerEntry } from '@/lib/ledger';
  * Release Code Reissue & Recovery Endpoint
  *
  * Supports two authorized paths:
- * 1. Buyer Self-Service Phone OTP ("Resend code" on /order/[id]):
+ * 1. Buyer Self-Service Phone OTP ("Didn't receive your code? Send it again" / resend on /order/[id]):
  *    - action: 'send_otp' -> Sends a 6-digit one-time verification code to the buyer's verified WhatsApp number (rate-limited, audit-logged).
  *    - action: 'verify_and_reissue' -> Verifies OTP, generates a NEW 6-digit release code (old HMAC is immediately invalidated),
- *      delivers the new plaintext code once on WhatsApp, and logs to admin_audit_log.
+ *      computes window+grace lifetime, delivers the new plaintext code once on WhatsApp, and logs to admin_audit_log.
  * 2. Admin Recovery (Authorization: Bearer <ADMIN_API_KEY>):
  *    - Immediately reissues a new release code, delivers out-of-band, and logs to admin_audit_log.
  *
@@ -53,17 +58,17 @@ export async function POST(request: NextRequest) {
     const isLive = isLiveMode();
 
     // Fetch transaction state and delivery contacts
-    const { data: tx, error: fetchErr } = await supabase
+    const { data: rawTx, error: fetchErr } = await supabase
       .from('transactions')
-      .select(
-        'id, status, item_name, total_amount, vendor_handle, buyer_phone, release_code_hash, dispute_otp_hash, dispute_otp_expires_at, dispute_otp_attempts'
-      )
+      .select('*')
       .eq('id', transactionId)
       .single();
 
-    if (fetchErr || !tx) {
+    if (fetchErr || !rawTx) {
       return NextResponse.json({ success: false, error: 'Transaction not found' }, { status: 404 });
     }
+
+    const tx = mergeTransactionWithLifecycleOverlay(rawTx);
 
     if (tx.status !== 'FUNDS_LOCKED' && tx.status !== 'DISPATCHED') {
       return NextResponse.json(
@@ -79,8 +84,8 @@ export async function POST(request: NextRequest) {
     // PATH A: BUYER PHONE OTP STEP 1 (Send One-Time Code to Buyer's Phone)
     // =========================================================================
     if (!isAdminRequest && action === 'send_otp') {
-      const ipRate = checkRateLimit(`${clientIp}:reissue_otp`, 3, 15 * 60 * 1000);
-      const txRate = checkRateLimit(`tx:${tx.id}:reissue_otp`, 3, 15 * 60 * 1000);
+      const ipRate = await checkSharedRateLimit(`${clientIp}:reissue_otp`, 3, 15 * 60 * 1000, supabase);
+      const txRate = await checkSharedRateLimit(`tx:${tx.id}:reissue_otp`, 3, 15 * 60 * 1000, supabase);
       if (!ipRate.allowed || !txRate.allowed) {
         return NextResponse.json(
           {
@@ -163,8 +168,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const ipVerifyRate = checkRateLimit(`${clientIp}:reissue_verify`, 5, 15 * 60 * 1000);
-      const txVerifyRate = checkRateLimit(`tx:${tx.id}:reissue_verify`, 3, 60 * 60 * 1000);
+      const ipVerifyRate = await checkSharedRateLimit(`${clientIp}:reissue_verify`, 5, 15 * 60 * 1000, supabase);
+      const txVerifyRate = await checkSharedRateLimit(`tx:${tx.id}:reissue_verify`, 3, 60 * 60 * 1000, supabase);
       if (!ipVerifyRate.allowed || !txVerifyRate.allowed) {
         return NextResponse.json(
           {
@@ -187,7 +192,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             success: false,
-            error: 'No active verification code found. Click "Resend code" to request a one-time code.',
+            error: 'No active verification code found. Click "Send it again" to request a one-time code.',
             requiresOtpRequest: true,
           },
           { status: 400 }
@@ -245,28 +250,36 @@ export async function POST(request: NextRequest) {
       auditAction = 'BUYER_REISSUE_RELEASE_CODE';
     }
 
-    // Issue NEW cryptographic release code & overwrite HMAC (invalidates any previous code immediately)
+    // Issue NEW cryptographic release code & overwrite HMAC (invalidates any previous code immediately).
+    // Even if previous code expired, buyer retains full protection: money remains held and a fresh window is issued.
+    const cfg = await getDeliveryAndLifecycleConfig(supabase);
+    const deliveryType = tx.delivery_type === 'interstate' ? 'interstate' : 'same_city';
+    const expiryCalc = calculateDeliveryWindowCodeExpiration(deliveryType, cfg.delivery);
+
     const newCode = generateCryptographicReleaseCode();
     const newHmac = computeReleaseCodeHmac(tx.id, newCode);
-    const expiresAt = calculateCodeExpiration(72);
+    const expiresAt = expiryCalc.codeExpiresAt;
     const now = new Date().toISOString();
+    const wasExpired = Boolean(tx.code_expires_at && new Date(tx.code_expires_at).getTime() < Date.now());
 
-    const { error: updateErr } = await supabase
-      .from('transactions')
-      .update({
+    const upd = await updateTransactionWithFallback(
+      tx.id,
+      {
         release_code_hash: newHmac,
         code_expires_at: expiresAt,
+        delivery_deadline_at: expiryCalc.deliveryDeadlineAt,
         failed_code_attempts: 0,
         code_locked: false,
         dispute_otp_hash: null,
         dispute_otp_expires_at: null,
         dispute_otp_attempts: 0,
         updated_at: now,
-      })
-      .eq('id', tx.id);
+      },
+      supabase
+    );
 
-    if (updateErr) {
-      return NextResponse.json({ success: false, error: updateErr.message }, { status: 500 });
+    if (!upd.success) {
+      return NextResponse.json({ success: false, error: upd.error || 'Failed to reissue code' }, { status: 500 });
     }
 
     const maskedPhone = maskPhoneNumber(tx.buyer_phone);
@@ -294,6 +307,8 @@ export async function POST(request: NextRequest) {
           reason,
           buyer_phone_masked: maskedPhone,
           previous_hash_invalidated: Boolean(tx.release_code_hash),
+          previous_code_was_expired: wasExpired,
+          new_code_expires_at: expiresAt,
         },
       })
       .then(() => {}, () => {});
@@ -308,7 +323,7 @@ export async function POST(request: NextRequest) {
         fromAccount: 'Release Code Registry',
         toAccount: maskedPhone,
         idempotencyKey: `ledger_${tx.id}_REISSUE_${Date.now()}`,
-        metadata: { actor: actorLabel, previous_hash_invalidated: Boolean(tx.release_code_hash) },
+        metadata: { actor: actorLabel, previous_hash_invalidated: Boolean(tx.release_code_hash), wasExpired },
       },
       supabase
     ).catch(() => {});
@@ -322,6 +337,7 @@ export async function POST(request: NextRequest) {
         actor: actorLabel,
         reason,
         buyerPhone: tx.buyer_phone,
+        wasExpired,
       },
     }).catch(() => {});
 
@@ -329,6 +345,8 @@ export async function POST(request: NextRequest) {
       success: true,
       message: `A new release code was sent to ${maskedPhone}. Your previous code no longer works.`,
       transactionId: tx.id,
+      code_expires_at: expiresAt,
+      previous_code_expired: wasExpired,
       buyer_phone_masked: maskedPhone,
       ...(isLive ? {} : { sandbox_release_code: newCode }),
     });

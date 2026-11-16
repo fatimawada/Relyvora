@@ -10,7 +10,13 @@ export interface SystemAlert {
     | 'NEW_DISPUTE' 
     | 'SECURITY_LOCKOUT' 
     | 'PAYOUT_FAILURE' 
-    | 'RECONCILIATION_MISMATCH';
+    | 'RECONCILIATION_MISMATCH'
+    | 'RISK_HOLD'
+    | 'ORDER_BLOCKED'
+    | 'ADMIN_ACTION'
+    | 'TIER_CHANGE'
+    | 'SETTLEMENT_CHANGE'
+    | 'INCIDENT_SWITCH';
   severity: 'WARNING' | 'CRITICAL';
   title: string;
   transactionId?: string;
@@ -27,7 +33,15 @@ export async function sendSystemAlert(alert: SystemAlert): Promise<{ success: bo
   const sanitizedDetails: Record<string, any> = {};
   for (const [key, value] of Object.entries(alert.details)) {
     const k = key.toLowerCase();
-    if (k.includes('code') || k.includes('secret') || k.includes('hash') || k.includes('salt') || k.includes('key')) {
+    if (
+      k.includes('code') ||
+      k.includes('secret') ||
+      k.includes('token') ||
+      k.includes('password') ||
+      k.includes('hash') ||
+      k.includes('salt') ||
+      k.includes('key')
+    ) {
       continue; // Strip entirely
     }
     if (k.includes('account') && typeof value === 'string') {

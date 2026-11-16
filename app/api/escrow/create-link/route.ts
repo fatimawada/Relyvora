@@ -3,12 +3,16 @@ import { getServiceSupabase } from '@/lib/supabaseServer';
 import { calculatePricing } from '@/lib/pricing';
 import { isLiveMode, getServerPaymentsMode } from '@/lib/paymentsMode';
 import { createAnchorCollectionAccount, RELYVORA_FBO_ACCOUNT_ID } from '@/lib/anchor';
-import { validateOrderCreationServer } from '@/lib/safetyLimits';
-import { 
-  generateCryptographicReleaseCode, 
-  computeReleaseCodeHmac, 
-  calculateCodeExpiration 
+import { getHotSettings, validateOrderCreationServer } from '@/lib/safetyLimits';
+import {
+  generateCryptographicReleaseCode,
+  computeReleaseCodeHmac,
+  calculateDeliveryWindowCodeExpiration,
 } from '@/lib/releaseCode';
+import {
+  getDeliveryAndLifecycleConfig,
+  updateTransactionWithFallback,
+} from '@/lib/orderLifecycle';
 import {
   applyWhatsappVerificationRedaction,
   maskWhatsappNumber,
@@ -17,6 +21,13 @@ import {
   updateTransactionWhatsappState,
   WhatsappDeliveryStatus,
 } from '@/lib/whatsapp';
+import {
+  evaluateOrderCreationRisk,
+  extractRequestDeviceFingerprints,
+  hashPhoneSignal,
+  hashSignalWithSalt,
+  persistRiskEvaluation,
+} from '@/lib/riskEngine';
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,12 +36,24 @@ export async function POST(request: NextRequest) {
       itemName,
       itemPrice,
       deliveryFee = 0,
+      deliveryType = 'same_city',
       vendorHandle,
       vendorId,
       buyerPhone,
       buyerWhatsappConsent,
       buyerNotes,
+      deviceFingerprint,
+      buyerIpAddress,
+      buyerDeviceFingerprint,
+      buyerUserAgent,
     } = body;
+
+    if (deliveryType !== 'same_city' && deliveryType !== 'interstate') {
+      return NextResponse.json(
+        { success: false, error: "deliveryType must be 'same_city' or 'interstate'." },
+        { status: 400 }
+      );
+    }
 
     const normalizedBuyerPhone = normalizeWhatsappPhone(buyerPhone);
     const hasWhatsappConsent = buyerWhatsappConsent === true;
@@ -50,7 +73,7 @@ export async function POST(request: NextRequest) {
     const serverMode = getServerPaymentsMode();
     const activeHandle = (vendorHandle || '').trim() || '@LagosHairPlug';
 
-    // Phase G1.5: Database-backed hot kill switches, caps & allowlist validation
+    // Phase G1.5 + Open Signup Tier/KYC/Payout Account + Suspension Gates
     const safetyCheck = await validateOrderCreationServer({
       vendorHandle: (vendorId || activeHandle),
       totalAmount: pricing.totalAmount,
@@ -64,16 +87,70 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const supabase = getServiceSupabase();
+    const creatorFps = await extractRequestDeviceFingerprints(request, deviceFingerprint);
+    const buyerIpHash = buyerIpAddress ? hashSignalWithSalt(String(buyerIpAddress)) : null;
+    const buyerDeviceHash = buyerDeviceFingerprint ? hashSignalWithSalt(String(buyerDeviceFingerprint)) : null;
+    const buyerUaHash = buyerUserAgent ? hashSignalWithSalt(String(buyerUserAgent)) : null;
+
+    // Server-side Risk Engine evaluation at order creation
+    const riskEval = await evaluateOrderCreationRisk({
+      vendor: safetyCheck.vendor || { id: vendorId, store_name: activeHandle },
+      totalAmount: pricing.totalAmount,
+      buyerPhone: normalizedBuyerPhone || buyerPhone || null,
+      creatorIpHash: creatorFps.ipHash,
+      creatorUaHash: creatorFps.uaHash,
+      creatorDeviceHash: creatorFps.deviceHash,
+      buyerIpHash,
+      buyerUaHash,
+      buyerDeviceHash,
+      supabaseClient: supabase,
+    });
+
+    if (riskEval.orderBlocked) {
+      await persistRiskEvaluation({
+        vendorId: safetyCheck.vendor?.id || null,
+        vendorHandle: safetyCheck.vendor?.store_name || activeHandle,
+        evaluation: riskEval,
+        metadata: { stage: 'create_link', totalAmount: pricing.totalAmount },
+        supabaseClient: supabase,
+      });
+
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'ORDER_BLOCKED_RISK',
+          error:
+            riskEval.reason ||
+            'Order creation blocked by automated risk controls.',
+          riskScore: riskEval.score,
+          signals: riskEval.signals,
+        },
+        { status: 403 }
+      );
+    }
+
     const txId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `tx-${Date.now()}`;
     const now = new Date().toISOString();
     const isLive = isLiveMode();
+
+    const lcConfig = await getDeliveryAndLifecycleConfig(supabase);
+    const deliveryWindowDays =
+      deliveryType === 'interstate'
+        ? lcConfig.delivery.interstate_days
+        : lcConfig.delivery.same_city_days;
+    const paymentExpiryIso = new Date(
+      Date.now() + lcConfig.lifecycle.payment_expiry_hours * 3600 * 1000
+    ).toISOString();
 
     // Release code generation:
     // In LIVE mode, the 6-digit release code is generated ONLY inside the webhook funding flow once payment arrives.
     // In SANDBOX mode, pre-generating at link creation is permitted for test harness ergonomics.
     const rawCode = isLive ? null : generateCryptographicReleaseCode();
     const hmacHash = rawCode ? computeReleaseCodeHmac(txId, rawCode) : null;
-    const codeExpiresAt = rawCode ? calculateCodeExpiration(72) : null;
+    const codeExpiresAt = rawCode
+      ? calculateDeliveryWindowCodeExpiration(deliveryType, lcConfig.delivery).codeExpiresAt
+      : null;
 
     let virtualNubanId: string | null = null;
     let virtualAccountNumber: string | null = null;
@@ -101,8 +178,6 @@ export async function POST(request: NextRequest) {
         );
       }
     }
-
-    const supabase = getServiceSupabase();
 
     const { data, error } = await supabase
       .from('transactions')
@@ -158,6 +233,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 
+    // Persist delivery window & payment link expiry safely (falls back cleanly pre-migration)
+    await updateTransactionWithFallback(
+      txId,
+      {
+        delivery_type: deliveryType,
+        delivery_window_days: deliveryWindowDays,
+        expires_at: paymentExpiryIso,
+        updated_at: now,
+      },
+      supabase
+    );
+
+    // Persist hashed device/IP/phone signals and any risk review hold evaluation
+    await persistRiskEvaluation({
+      transactionId: txId,
+      vendorId: safetyCheck.vendor?.id || null,
+      vendorHandle: safetyCheck.vendor?.store_name || activeHandle,
+      evaluation: riskEval,
+      extraTxPatch: {
+        buyer_phone_hash: hashPhoneSignal(normalizedBuyerPhone || buyerPhone),
+        creator_ip_hash: creatorFps.ipHash,
+        creator_ip_expires_at: creatorFps.ipExpiresAt,
+        creator_ua_hash: creatorFps.uaHash,
+        creator_device_hash: creatorFps.deviceHash,
+        ...(buyerIpHash ? { buyer_ip_hash: buyerIpHash, buyer_ip_expires_at: creatorFps.ipExpiresAt } : {}),
+        ...(buyerUaHash ? { buyer_ua_hash: buyerUaHash } : {}),
+        ...(buyerDeviceHash ? { buyer_device_hash: buyerDeviceHash } : {}),
+      },
+      metadata: { stage: 'create_link', totalAmount: pricing.totalAmount, deliveryType },
+      supabaseClient: supabase,
+    });
+
     // Initialize WhatsApp verification state (defaults unverified until buyer taps "Confirm this is me")
     await updateTransactionWhatsappState(
       txId,
@@ -175,12 +282,18 @@ export async function POST(request: NextRequest) {
     let whatsappMessageId: string | undefined;
     let whatsappError: string | undefined;
 
-    const isVerifiedAndAllowlisted =
+    const settings = await getHotSettings();
+    const allowlistMode =
+      settings.vendor_allowlist_mode !== undefined
+        ? Boolean(settings.vendor_allowlist_mode === true || settings.vendor_allowlist_mode === 'true')
+        : false;
+    const isVerifiedAndEligible =
       safetyCheck.vendor?.kyc_status === 'verified' &&
-      safetyCheck.vendor?.is_allowlisted === true;
+      safetyCheck.vendor?.is_suspended !== true &&
+      (!allowlistMode || safetyCheck.vendor?.is_allowlisted === true);
 
-    // Auto-send payment_link_v1 ONLY when buyer WhatsApp number + explicit consent checkbox + verified allowlisted vendor
-    if (normalizedBuyerPhone && hasWhatsappConsent && isVerifiedAndAllowlisted) {
+    // Auto-send payment_link_v1 when buyer WhatsApp number + consent checkbox + verified eligible vendor
+    if (normalizedBuyerPhone && hasWhatsappConsent && isVerifiedAndEligible) {
       const waResult = await sendPaymentLinkWhatsappTemplate(
         {
           transactionId: txId,
@@ -199,6 +312,9 @@ export async function POST(request: NextRequest) {
 
     const sanitizedTx = applyWhatsappVerificationRedaction({
       ...data,
+      delivery_type: deliveryType,
+      delivery_window_days: deliveryWindowDays,
+      expires_at: paymentExpiryIso,
       buyer_whatsapp_consent: hasWhatsappConsent,
       buyer_phone_verified: false,
       buyer_phone_verified_at: null,
@@ -207,15 +323,20 @@ export async function POST(request: NextRequest) {
       whatsapp_blocked: false,
       has_buyer_phone: Boolean(normalizedBuyerPhone),
       buyer_phone_masked: normalizedBuyerPhone ? maskWhatsappNumber(normalizedBuyerPhone) : null,
+      risk_score: riskEval.score,
+      review_hold: riskEval.reviewHold,
+      review_hold_reason: riskEval.reason,
+      order_blocked: false,
+      risk_signals: riskEval.signals,
     });
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       transaction: sanitizedTx,
       whatsapp_delivery_status: whatsappStatus,
       ...(whatsappError ? { whatsapp_error: whatsappError } : {}),
       // In sandbox mode only: return raw code to caller for automated test suites
-      ...(isLive ? {} : { sandbox_release_code: rawCode })
+      ...(isLive ? {} : { sandbox_release_code: rawCode }),
     }, { status: 201 });
   } catch (err: any) {
     console.error('Unhandled error in create-link:', err);

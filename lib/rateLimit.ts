@@ -4,6 +4,7 @@
  */
 
 import { NextRequest } from 'next/server';
+import { getServiceSupabase } from '@/lib/supabaseServer';
 
 interface RateLimitRecord {
   count: number;
@@ -40,11 +41,7 @@ export function getClientIp(request: NextRequest): string {
 }
 
 /**
- * Checks and increments rate limit for an identifier (e.g. IP + action).
- * 
- * @param key Unique key, e.g. `${ip}:${action}`
- * @param limit Maximum allowed attempts within window
- * @param windowMs Window duration in milliseconds (default: 15 minutes)
+ * In-memory synchronous sliding-window check (used as fallback when DB unavailable).
  */
 export function checkRateLimit(
   key: string,
@@ -66,4 +63,37 @@ export function checkRateLimit(
 
   record.count += 1;
   return { allowed: true, remaining: limit - record.count, resetAt: record.resetAt };
+}
+
+/**
+ * Shared Supabase-backed sliding-window rate limiter across serverless instances.
+ * Falls back cleanly to local checkRateLimit if pre-migration DB lacks rpc_check_rate_limit.
+ */
+export async function checkSharedRateLimit(
+  key: string,
+  limit: number = 10,
+  windowMs: number = 15 * 60 * 1000,
+  supabaseClient?: ReturnType<typeof getServiceSupabase>
+): Promise<{ allowed: boolean; remaining: number; resetAt: number; source: 'shared_db' | 'memory_fallback' }> {
+  try {
+    const supabase = supabaseClient || getServiceSupabase();
+    const { data, error } = await supabase.rpc('rpc_check_rate_limit', {
+      p_key: key,
+      p_limit: limit,
+      p_window_ms: windowMs,
+    });
+    if (!error && data && typeof data.allowed === 'boolean') {
+      return {
+        allowed: data.allowed,
+        remaining: Number(data.remaining ?? 0),
+        resetAt: data.reset_at ? new Date(data.reset_at).getTime() : Date.now() + windowMs,
+        source: 'shared_db',
+      };
+    }
+  } catch {
+    // Fall back gracefully when RPC is not yet deployed or DB unreachable
+  }
+
+  const mem = checkRateLimit(key, limit, windowMs);
+  return { ...mem, source: 'memory_fallback' };
 }

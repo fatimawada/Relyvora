@@ -29,6 +29,21 @@
 - **Status:** **CONFIRMED (Default: `null` — No Cap)**
 - **Rule:** Both `max_order_ngn` and `max_daily_vendor_volume_ngn` default to `null` in code (`lib/safetyLimits.ts`) and in the `system_settings` seed (`docs/PHASE-G1.5-RLS-v3.sql`). When `null`, the cap check is skipped. Both settings remain instant runtime overrides via `system_settings` or server environment variables without code changes or redeployment. No cap is hard-coded in UI components or copy.
 
+### Decision 5: Protection Fee Refundability on Vendor Post-Payment Cancellation (`refund_fee_on_vendor_cancel`)
+- **Status:** **OPEN (OwnerTodo — Pending Business / Legal Confirmation)**
+- **Question:** When a vendor cancels an order **after payment is received (`FUNDS_LOCKED`) but before dispatch**, should Relyvora refund 100% of `total_amount` including the 3% protection fee, or retain the protection fee to cover Anchor collection/transfer charges?
+- **Current Runtime Default:** `order_lifecycle_config.refund_fee_on_vendor_cancel = true` (100% refund of `total_amount` to verified buyer destination) configurable in `system_settings` without code change.
+
+### Decision 6: Legal Review of Draft Prohibited & Restricted Items Policy (`/prohibited-items`)
+- **Status:** **OPEN (OwnerTodo — Draft Live at `/prohibited-items` Marked Draft)**
+- **Question:** Legal counsel to review and sign off on categories, KYC restrictions, and enforcement remedies listed on `app/prohibited-items/page.tsx`.
+- **Current Launch Handling:** Marked clearly as a `[DRAFT — PENDING LEGAL COUNSEL REVIEW]` policy linked from footer and vendor onboarding, recording `prohibited_items_accepted_at` and version `'2026-11-draft-v1'`.
+
+### Decision 7: Dispute SLA Business Hours (`dispute_policy_config`) & Delivery Windows (`delivery_window_config`)
+- **Status:** **OPEN (Configurable Defaults — Owner Confirmation)**
+- **Question:** Confirm business-hour window (`08:00–20:00` Africa/Lagos, Monday–Saturday) for dispute response SLA timers and default same-city (3 days) / interstate (7 days) delivery windows plus 3-day grace period (max 14 days).
+- **Current Runtime Default:** Stored dynamically in `system_settings` (`dispute_policy_config`, `delivery_window_config`).
+
 ---
 
 ## 2. Completed Owner Decisions Log

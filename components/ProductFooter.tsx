@@ -1,5 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
+import { ArrowRight } from 'lucide-react';
 import { AnchorBrandText } from '@/components/common/AnchorBrandText';
 
 export function ProductFooter() {
@@ -12,16 +13,32 @@ export function ProductFooter() {
             <span>•</span>
             <span className="text-muted">Social Commerce Escrow Infrastructure</span>
           </div>
-          <div className="flex items-center gap-4 text-[11px] text-muted">
-            <Link href="/terms" target="_blank" rel="noopener noreferrer" className="hover:text-main transition-colors">Terms</Link>
-            <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-main transition-colors">Privacy</Link>
-            <Link href="/disputes" target="_blank" rel="noopener noreferrer" className="hover:text-main transition-colors">Disputes</Link>
+          <div className="flex flex-wrap items-center justify-center gap-4 text-[11px] text-muted">
+            <Link href="/terms" target="_blank" rel="noopener noreferrer" className="hover:text-main transition-colors">
+              Terms
+            </Link>
+            <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-main transition-colors">
+              Privacy
+            </Link>
+            <Link href="/prohibited-items" target="_blank" rel="noopener noreferrer" className="hover:text-main transition-colors">
+              Prohibited Items
+            </Link>
+            <Link href="/disputes" target="_blank" rel="noopener noreferrer" className="hover:text-main transition-colors">
+              Disputes
+            </Link>
+            <a href="mailto:support@relyvora.com" className="hover:text-main transition-colors">
+              support@relyvora.com
+            </a>
           </div>
         </div>
         <div className="pt-2 border-t border-border/60 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-muted">
           <span>Relyvora Technologies Limited (RC 9982218). Abuja, Nigeria.</span>
-          <span className="font-medium text-main/80">
+          <span className="inline-flex items-center gap-2 font-medium text-main/80">
             <AnchorBrandText>Payments powered by Anchor</AnchorBrandText>
+            <Link href="/vendor/onboarding" className="inline-flex items-center gap-1 text-accent hover:underline">
+              <span>Sell safely</span>
+              <ArrowRight className="w-3 h-3" />
+            </Link>
           </span>
         </div>
       </div>
