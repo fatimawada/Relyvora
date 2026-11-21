@@ -25,6 +25,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { AnchorBrandText } from '@/components/common/AnchorBrandText';
+import { TurnstileWidget } from '@/components/common/TurnstileWidget';
 import { supabase } from '@/lib/supabase';
 import { NIGERIAN_BANKS } from '@/lib/nigerianBanks';
 
@@ -114,11 +115,14 @@ export function VendorOnboardingFlow() {
   const [currentStep, setCurrentStep] = useState<1 | 2>(1);
   const [step1Data, setStep1Data] = useState<Step1FormData | null>(null);
   const [captchaToken, setCaptchaToken] = useState<string>('');
+  const [captchaResetKey, setCaptchaResetKey] = useState<number>(0);
+  const [step1AuthMode, setStep1AuthMode] = useState<'signup' | 'signin'>('signup');
   const [acceptedTermsAndProhibitedItems, setAcceptedTermsAndProhibitedItems] = useState(false);
   const [emailConfirmationNotice, setEmailConfirmationNotice] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const turnstileSiteKey = (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '').trim();
 
   // Step 1 Form Hook
   const {
@@ -147,47 +151,74 @@ export function VendorOnboardingFlow() {
 
   const selectedIdType = watchStep2('idType');
 
-  // Handle Step 1 Submission (public open signup: confirms CAPTCHA, signs in or signs up + checks email confirmation)
+  // Handle Step 1 Submission (public open signup: confirms CAPTCHA, signs up or signs in + checks email confirmation)
   const onStep1Submit = async (data: Step1FormData) => {
     setIsSubmitting(true);
     setServerError(null);
     setEmailConfirmationNotice(null);
     try {
       if (!captchaToken.trim()) {
-        setServerError('Please complete the CAPTCHA verification check before continuing.');
+        setServerError('Please complete the Cloudflare Turnstile verification check before continuing.');
         return;
       }
 
       const targetEmail = data.email.trim().toLowerCase();
       const { data: sessionData } = await supabase.auth.getSession();
       const activeEmail = sessionData?.session?.user?.email?.trim().toLowerCase();
+      const currentCaptchaToken = captchaToken.trim();
 
       if (!sessionData?.session?.access_token || activeEmail !== targetEmail) {
-        const { error: signInErr } = await supabase.auth.signInWithPassword({
-          email: targetEmail,
-          password: data.password,
-        });
-        if (signInErr) {
-          // Try public open signup if this email does not yet have a session
+        if (step1AuthMode === 'signin') {
+          const { error: signInErr } = await supabase.auth.signInWithPassword({
+            email: targetEmail,
+            password: data.password,
+            options: {
+              captchaToken: currentCaptchaToken,
+            },
+          });
+          setCaptchaToken('');
+          setCaptchaResetKey((k) => k + 1);
+          if (signInErr) {
+            setServerError(
+              signInErr.message || 'Sign-in failed. Please verify your confirmed email and password.'
+            );
+            return;
+          }
+        } else {
           const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
             email: targetEmail,
             password: data.password,
+            options: {
+              captchaToken: currentCaptchaToken,
+            },
           });
+          setCaptchaToken('');
+          setCaptchaResetKey((k) => k + 1);
           if (signUpErr) {
+            if (/already registered|already exists/i.test(signUpErr.message || '')) {
+              setStep1AuthMode('signin');
+              setServerError(
+                'An account with this email already exists. Step 1 is now in Sign-In mode with a refreshed Turnstile challenge — click Continue again to sign in and proceed to KYC.'
+              );
+              return;
+            }
             setServerError(
-              signInErr.message ||
-                signUpErr.message ||
+              signUpErr.message ||
                 'Account sign-up failed. Please verify your confirmed email and password.'
             );
             return;
           }
           if (!signUpData.session) {
+            setStep1AuthMode('signin');
             setEmailConfirmationNotice(
               `Verification link sent to ${targetEmail}. Open the email to confirm your address, then submit again to continue to KYC.`
             );
             return;
           }
         }
+      } else {
+        setCaptchaToken('');
+        setCaptchaResetKey((k) => k + 1);
       }
 
       setStep1Data(data);
@@ -195,6 +226,8 @@ export function VendorOnboardingFlow() {
       // Scroll to top of form
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
+      setCaptchaToken('');
+      setCaptchaResetKey((k) => k + 1);
       setServerError(err?.message || 'Unable to verify vendor session. Please try again.');
     } finally {
       setIsSubmitting(false);
@@ -211,6 +244,9 @@ export function VendorOnboardingFlow() {
         throw new Error(
           'Please accept the Relyvora Terms of Service, Privacy Policy, and Prohibited Items Policy to continue.'
         );
+      }
+      if (turnstileSiteKey && !captchaToken.trim()) {
+        throw new Error('Please complete the Cloudflare Turnstile verification check before activating payouts.');
       }
 
       const { data: sessionData } = await supabase.auth.getSession();
@@ -240,6 +276,8 @@ export function VendorOnboardingFlow() {
       const result = await response.json();
 
       if (!response.ok || !result.success) {
+        setCaptchaToken('');
+        setCaptchaResetKey((k) => k + 1);
         throw new Error(result.error || 'Failed to activate vendor account.');
       }
 
@@ -537,32 +575,33 @@ export function VendorOnboardingFlow() {
               </div>
 
               {/* CAPTCHA / Human Verification Gate */}
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                <label className="block text-xs font-semibold text-slate-800" htmlFor="captchaToken">
-                  Human Verification (CAPTCHA token required)
-                </label>
-                {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY ? (
-                  <input
-                    id="captchaToken"
-                    type="text"
-                    name="captchaToken"
-                    autoComplete="off"
-                    autoCorrect="off"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    placeholder="Paste verified CAPTCHA challenge response token..."
-                    value={captchaToken}
-                    onChange={(e) => {
-                      setCaptchaToken(e.target.value);
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="block text-xs font-semibold text-slate-800">
+                    Human Verification (Cloudflare Turnstile)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep1AuthMode((mode) => (mode === 'signup' ? 'signin' : 'signup'));
                       setServerError(null);
                     }}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900"
-                  />
-                ) : (
-                  <p className="text-xs text-rose-600">
-                    CAPTCHA site key is not configured on this deployment. Public signup is paused until Turnstile/hCaptcha is configured.
-                  </p>
-                )}
+                    className="text-[11px] font-semibold text-emerald-700 hover:underline cursor-pointer"
+                  >
+                    {step1AuthMode === 'signup'
+                      ? 'Already created your login? Switch to Sign-In for KYC'
+                      : 'Creating a new account? Switch to Sign-Up'}
+                  </button>
+                </div>
+                <TurnstileWidget
+                  siteKey={turnstileSiteKey}
+                  resetKey={captchaResetKey}
+                  onVerify={(token) => {
+                    setCaptchaToken(token);
+                    setServerError(null);
+                  }}
+                  onExpire={() => setCaptchaToken('')}
+                />
               </div>
 
               {/* Step 1 Action Button */}
@@ -572,7 +611,15 @@ export function VendorOnboardingFlow() {
                   disabled={isSubmitting}
                   className="w-full py-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all transform active:scale-[0.99]"
                 >
-                  <span>{isSubmitting ? 'Signing in / Creating Account...' : 'Continue to KYC Verification'}</span>
+                  <span>
+                    {isSubmitting
+                      ? step1AuthMode === 'signin'
+                        ? 'Signing in...'
+                        : 'Creating Account...'
+                      : step1AuthMode === 'signin'
+                        ? 'Sign In & Continue to KYC Verification'
+                        : 'Continue to KYC Verification'}
+                  </span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -881,6 +928,22 @@ export function VendorOnboardingFlow() {
                     .
                   </span>
                 </label>
+              </div>
+
+              {/* Step 2 Turnstile Human Verification (fresh token for POST /api/vendor/onboarding) */}
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                <span className="block text-xs font-semibold text-slate-800">
+                  Human Verification (Cloudflare Turnstile)
+                </span>
+                <TurnstileWidget
+                  siteKey={turnstileSiteKey}
+                  resetKey={captchaResetKey}
+                  onVerify={(token) => {
+                    setCaptchaToken(token);
+                    setServerError(null);
+                  }}
+                  onExpire={() => setCaptchaToken('')}
+                />
               </div>
 
               {/* Step 2 Action Buttons */}

@@ -11,6 +11,7 @@ import { calculatePricing, formatNaira, MINIMUM_PROTECTION_FEE } from '@/lib/pri
 import { isLiveMode } from '@/lib/paymentsMode';
 import { StatusBadge } from '@/components/StatusBadge';
 import { AnchorBrandText } from '@/components/common/AnchorBrandText';
+import { TurnstileWidget } from '@/components/common/TurnstileWidget';
 import { ProductFooter } from '@/components/ProductFooter';
 import {
   Sparkles,
@@ -51,9 +52,12 @@ export default function VendorDashboardPage() {
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [loginCaptchaToken, setLoginCaptchaToken] = useState('');
+  const [loginCaptchaResetKey, setLoginCaptchaResetKey] = useState(0);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const liveMode = isLiveMode();
+  const turnstileSiteKey = (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '').trim();
 
   const pricing = useMemo(() => {
     return calculatePricing(itemPriceInput);
@@ -88,20 +92,32 @@ export default function VendorDashboardPage() {
   const handleVendorSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
+    if (turnstileSiteKey && !loginCaptchaToken.trim()) {
+      setLoginError('Please complete the Cloudflare Turnstile verification check before signing in.');
+      return;
+    }
     setIsSigningIn(true);
     try {
       const { error } = await supabase.auth.signInWithPassword({
         email: loginEmail.trim(),
         password: loginPassword,
+        options: loginCaptchaToken.trim()
+          ? { captchaToken: loginCaptchaToken.trim() }
+          : undefined,
       });
       if (error) {
         setLoginError(error.message);
+        setLoginCaptchaToken('');
+        setLoginCaptchaResetKey((k) => k + 1);
       } else {
         setLoginPassword('');
+        setLoginCaptchaToken('');
         await refreshAuthAndTransactions();
       }
     } catch (err: any) {
       setLoginError(err?.message || 'Sign-in failed.');
+      setLoginCaptchaToken('');
+      setLoginCaptchaResetKey((k) => k + 1);
     } finally {
       setIsSigningIn(false);
     }
@@ -305,30 +321,43 @@ export default function VendorDashboardPage() {
               {loginError}
             </div>
           )}
-          <form onSubmit={handleVendorSignIn} className="grid sm:grid-cols-3 gap-3">
-            <input
-              type="email"
-              required
-              placeholder="Vendor email"
-              value={loginEmail}
-              onChange={(e) => setLoginEmail(e.target.value)}
-              className="bg-site border border-border rounded-xl px-3 py-2.5 text-xs text-main"
-            />
-            <input
-              type="password"
-              required
-              placeholder="Password"
-              value={loginPassword}
-              onChange={(e) => setLoginPassword(e.target.value)}
-              className="bg-site border border-border rounded-xl px-3 py-2.5 text-xs text-main"
-            />
-            <button
-              type="submit"
-              disabled={isSigningIn}
-              className="px-4 py-2.5 rounded-xl bg-accent text-[#071229] font-bold text-xs cursor-pointer disabled:opacity-50"
-            >
-              {isSigningIn ? 'Signing in...' : 'Sign In as Vendor'}
-            </button>
+          <form onSubmit={handleVendorSignIn} className="space-y-3">
+            <div className="grid sm:grid-cols-3 gap-3">
+              <input
+                type="email"
+                required
+                placeholder="Vendor email"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                className="bg-site border border-border rounded-xl px-3 py-2.5 text-xs text-main"
+              />
+              <input
+                type="password"
+                required
+                placeholder="Password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                className="bg-site border border-border rounded-xl px-3 py-2.5 text-xs text-main"
+              />
+              <button
+                type="submit"
+                disabled={isSigningIn}
+                className="px-4 py-2.5 rounded-xl bg-accent text-[#071229] font-bold text-xs cursor-pointer disabled:opacity-50"
+              >
+                {isSigningIn ? 'Signing in...' : 'Sign In as Vendor'}
+              </button>
+            </div>
+            <div className="pt-1">
+              <TurnstileWidget
+                siteKey={turnstileSiteKey}
+                resetKey={loginCaptchaResetKey}
+                onVerify={(token) => {
+                  setLoginCaptchaToken(token);
+                  setLoginError(null);
+                }}
+                onExpire={() => setLoginCaptchaToken('')}
+              />
+            </div>
           </form>
         </div>
       )}

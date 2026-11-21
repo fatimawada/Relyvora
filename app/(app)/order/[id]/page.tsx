@@ -10,6 +10,7 @@ import { formatNaira } from '@/lib/pricing';
 import { DISPUTE_SCENARIOS } from '@/lib/disputeScenarios';
 import { StatusBadge } from '@/components/StatusBadge';
 import { EscrowStepper } from '@/components/EscrowStepper';
+import { TurnstileWidget } from '@/components/common/TurnstileWidget';
 import { ProductFooter } from '@/components/ProductFooter';
 import { NIGERIAN_BANKS } from '@/components/vendor/VendorOnboardingFlow';
 import confetti from 'canvas-confetti';
@@ -81,8 +82,11 @@ function EscrowTrackerContent() {
   const [isBuyerAuthBusy, setIsBuyerAuthBusy] = useState(false);
   const [vendorLoginEmail, setVendorLoginEmail] = useState('');
   const [vendorLoginPassword, setVendorLoginPassword] = useState('');
+  const [vendorLoginCaptchaToken, setVendorLoginCaptchaToken] = useState('');
+  const [vendorLoginCaptchaResetKey, setVendorLoginCaptchaResetKey] = useState(0);
   const [vendorLoginErr, setVendorLoginErr] = useState<string | null>(null);
   const [isVendorSigningIn, setIsVendorSigningIn] = useState(false);
+  const turnstileSiteKey = (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '').trim();
 
   // Vendor code entry
   const [enteredCode, setEnteredCode] = useState('');
@@ -289,20 +293,32 @@ function EscrowTrackerContent() {
   const handleVendorOrderSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setVendorLoginErr(null);
+    if (turnstileSiteKey && !vendorLoginCaptchaToken.trim()) {
+      setVendorLoginErr('Please complete the Cloudflare Turnstile verification check before signing in.');
+      return;
+    }
     setIsVendorSigningIn(true);
     try {
       const { error } = await supabase.auth.signInWithPassword({
         email: vendorLoginEmail.trim(),
         password: vendorLoginPassword,
+        options: vendorLoginCaptchaToken.trim()
+          ? { captchaToken: vendorLoginCaptchaToken.trim() }
+          : undefined,
       });
       if (error) {
         setVendorLoginErr(error.message);
+        setVendorLoginCaptchaToken('');
+        setVendorLoginCaptchaResetKey((k) => k + 1);
       } else {
         setVendorLoginPassword('');
+        setVendorLoginCaptchaToken('');
         await loadTransaction();
       }
     } catch (err: any) {
       setVendorLoginErr(err?.message || 'Vendor sign-in failed.');
+      setVendorLoginCaptchaToken('');
+      setVendorLoginCaptchaResetKey((k) => k + 1);
     } finally {
       setIsVendorSigningIn(false);
     }
@@ -947,6 +963,15 @@ function EscrowTrackerContent() {
                 value={vendorLoginPassword}
                 onChange={(e) => setVendorLoginPassword(e.target.value)}
                 className="w-full bg-site border border-border rounded-xl px-3 py-2.5 text-xs text-main"
+              />
+              <TurnstileWidget
+                siteKey={turnstileSiteKey}
+                resetKey={vendorLoginCaptchaResetKey}
+                onVerify={(token) => {
+                  setVendorLoginCaptchaToken(token);
+                  setVendorLoginErr(null);
+                }}
+                onExpire={() => setVendorLoginCaptchaToken('')}
               />
               <button
                 type="submit"

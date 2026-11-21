@@ -479,6 +479,21 @@ async function runSuite() {
         corpHrefInProd === 'https://ng.relyvora.com',
       'staging.relyvora.com rewrites / directly to /ng (Nigeria product app) and keeps all internal routes and links on staging.relyvora.com without redirecting or linking out to ng.relyvora.com'
     );
+
+    const turnstileWidgetSrc = fs.readFileSync('components/common/TurnstileWidget.tsx', 'utf8');
+    const vendorPageSrc = fs.readFileSync('app/(app)/vendor/page.tsx', 'utf8');
+    const onboardingFlowSrc = fs.readFileSync('components/vendor/VendorOnboardingFlow.tsx', 'utf8');
+
+    assert(
+      turnstileWidgetSrc.includes('https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit') &&
+        turnstileWidgetSrc.includes('NEXT_PUBLIC_TURNSTILE_SITE_KEY') &&
+        vendorPageSrc.includes('<TurnstileWidget') &&
+        vendorPageSrc.includes('captchaToken: loginCaptchaToken.trim()') &&
+        onboardingFlowSrc.includes('<TurnstileWidget') &&
+        onboardingFlowSrc.includes('captchaToken: currentCaptchaToken') &&
+        !onboardingFlowSrc.includes('Paste verified CAPTCHA challenge response token'),
+      'Cloudflare Turnstile widget renders on /vendor sign-in and /vendor/onboarding and passes captchaToken into supabase.auth.signInWithPassword / signUp options'
+    );
     void inspectTrustedClientIp;
   } finally {
     globalThis.fetch = origFetch;

@@ -15,6 +15,7 @@ import {
   Lock,
 } from 'lucide-react';
 import { Logo } from '@/components/Logo';
+import { TurnstileWidget } from '@/components/common/TurnstileWidget';
 import { supabase } from '@/lib/supabase';
 
 interface ServerSecurityState {
@@ -52,6 +53,9 @@ export default function AdminSecurityPage() {
   // Sign-in form (when unauthenticated)
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loginCaptchaToken, setLoginCaptchaToken] = useState('');
+  const [loginCaptchaResetKey, setLoginCaptchaResetKey] = useState(0);
+  const turnstileSiteKey = (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '').trim();
 
   // TOTP enrollment state
   const [enrollFactorId, setEnrollFactorId] = useState<string | null>(null);
@@ -130,22 +134,34 @@ export default function AdminSecurityPage() {
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBusy(true);
     setStatusError(null);
     setStatusSuccess(null);
+    if (turnstileSiteKey && !loginCaptchaToken.trim()) {
+      setStatusError('Please complete the Cloudflare Turnstile verification check before signing in.');
+      return;
+    }
+    setBusy(true);
     try {
       const { error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
+        options: loginCaptchaToken.trim()
+          ? { captchaToken: loginCaptchaToken.trim() }
+          : undefined,
       });
       if (error) {
         setStatusError(error.message);
+        setLoginCaptchaToken('');
+        setLoginCaptchaResetKey((k) => k + 1);
         return;
       }
       setPassword('');
+      setLoginCaptchaToken('');
       await loadSecurityStatus();
     } catch (err: any) {
       setStatusError(err?.message || 'Sign-in failed.');
+      setLoginCaptchaToken('');
+      setLoginCaptchaResetKey((k) => k + 1);
     } finally {
       setBusy(false);
     }
@@ -393,6 +409,15 @@ export default function AdminSecurityPage() {
                 className="w-full px-3.5 py-2.5 rounded-btn bg-site border border-border text-sm text-main focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
+            <TurnstileWidget
+              siteKey={turnstileSiteKey}
+              resetKey={loginCaptchaResetKey}
+              onVerify={(token) => {
+                setLoginCaptchaToken(token);
+                setStatusError(null);
+              }}
+              onExpire={() => setLoginCaptchaToken('')}
+            />
             <button
               type="submit"
               disabled={busy}
