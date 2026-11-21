@@ -131,6 +131,17 @@ export interface AnchorCustomerResponse {
   };
 }
 
+export function normalizeAnchorNgState(rawState?: string): string {
+  const cleaned = (rawState || '')
+    .replace(/\([^)]*\)/g, '')
+    .replace(/\bstate\b/gi, '')
+    .trim();
+  if (!cleaned || /^(abuja|fct|federal capital territory)$/i.test(cleaned)) {
+    return 'Lagos';
+  }
+  return cleaned;
+}
+
 /**
  * Endpoint 1: Create an Individual Customer in Anchor.
  * POST /customers
@@ -151,6 +162,13 @@ export async function createAnchorCustomer(
     postalCode: '100001',
   };
 
+  const resolvedAddress: CustomerAddress = input.address
+    ? {
+        ...input.address,
+        state: normalizeAnchorNgState(input.address.state),
+      }
+    : defaultAddress;
+
   const payload = {
     data: {
       type: 'IndividualCustomer',
@@ -164,7 +182,7 @@ export async function createAnchorCustomer(
         },
         email: input.email,
         phoneNumber: formattedPhone,
-        address: input.address || defaultAddress,
+        address: resolvedAddress,
       },
     },
   };

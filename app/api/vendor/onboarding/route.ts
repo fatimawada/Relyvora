@@ -288,10 +288,10 @@ export async function POST(request: NextRequest) {
         phoneNumber: cleanPhone,
         address: {
           addressLine_1: String(address).trim(),
-          city: 'Abuja',
-          state: 'Abuja (FCT)',
+          city: 'Lagos',
+          state: 'Lagos',
           country: 'NG',
-          postalCode: '900001',
+          postalCode: '100001',
         },
       });
       customerId = customerResult.customerId;
