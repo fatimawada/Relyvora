@@ -16,6 +16,7 @@ import { checkSharedRateLimit, getClientIp, inspectTrustedClientIp } from '../li
 import { runServerStartupChecks } from '../lib/startupChecks';
 import { evaluateWhatsappRecipientPolicy, getWhatsappRecipientFilterStatus } from '../lib/whatsapp';
 import { GET as healthGet } from '../app/api/health/route';
+import { middleware, config as middlewareConfig } from '../middleware';
 
 function loadEnvLocal() {
   const envPath = path.resolve(process.cwd(), '.env.local');
@@ -188,6 +189,7 @@ async function runSuite() {
     (process.env as any).NODE_ENV = 'production';
     process.env.VERCEL_ENV = 'production';
     delete process.env.VERCEL;
+    delete process.env.WHATSAPP_ALLOWED_RECIPIENTS;
 
     const alertsBeforeStartupIp = capturedAlerts.length;
     const logsBeforeStartupIp = capturedLogs.length;
@@ -366,6 +368,55 @@ async function runSuite() {
         prStatus.state === 'set_ignored_in_production' &&
         capturedAlerts.length > alertsBeforeWaProd,
       'WHATSAPP_ALLOWED_RECIPIENTS: staging enforces set list & allows unset/empty; production never silently blocks any message and alerts if set'
+    );
+
+    // -------------------------------------------------------------------------
+    // 5. MIDDLEWARE BYPASS FOR /api/webhooks/*, /api/health, /api/cron/*
+    // -------------------------------------------------------------------------
+    console.log('\n--- 5. MIDDLEWARE BYPASS FOR WEBHOOKS, HEALTH & CRON ---');
+    (process.env as any).NODE_ENV = 'production';
+    const matcherSrc = String(middlewareConfig.matcher[0] || '');
+    const matcherRegex = new RegExp(`^${matcherSrc}$`);
+    const bypassPaths = [
+      '/api/webhooks/whatsapp',
+      '/api/webhooks/anchor',
+      '/api/health',
+      '/api/cron/reconcile',
+    ];
+    const hostsToCheck = [
+      'staging.relyvora.com',
+      'relyvora.com',
+      'ng.relyvora.com',
+      'foundation.relyvora.com',
+    ];
+
+    let allBypassClean = true;
+    for (const bypassPath of bypassPaths) {
+      if (matcherRegex.test(bypassPath)) {
+        allBypassClean = false;
+      }
+      for (const host of hostsToCheck) {
+        const mwReq = new NextRequest(`https://${host}${bypassPath}`, {
+          method: 'GET',
+          headers: {
+            host,
+            'user-agent': 'facebookplatform/1.0',
+            'x-vercel-ip-country': 'US',
+          },
+        });
+        const mwRes = middleware(mwReq);
+        if (mwRes.headers.get('location') !== null || mwRes.status !== 200) {
+          allBypassClean = false;
+        }
+      }
+    }
+
+    assert(
+      allBypassClean &&
+        matcherSrc.includes('api/webhooks') &&
+        matcherSrc.includes('api/health') &&
+        matcherSrc.includes('api/cron'),
+      '/api/webhooks/*, /api/health, and /api/cron/* completely bypass middleware matcher and geo/domain redirects across all hosts for US / facebookplatform/1.0'
     );
     void inspectTrustedClientIp;
   } finally {

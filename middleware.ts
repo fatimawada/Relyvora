@@ -6,6 +6,18 @@ export function middleware(request: NextRequest) {
   const host = request.headers.get('host') || '';
   const pathname = url.pathname;
 
+  // 0. Never intercept webhooks, health checks, or cron routes with domain/geo/auth routing
+  if (
+    pathname === '/api/health' ||
+    pathname.startsWith('/api/health/') ||
+    pathname.startsWith('/api/webhooks/') ||
+    pathname === '/api/webhooks' ||
+    pathname.startsWith('/api/cron/') ||
+    pathname === '/api/cron'
+  ) {
+    return NextResponse.next();
+  }
+
   // 1. Detect if request is targeted at the Foundation subdomain (foundation.relyvora.com)
   const isFoundationDomain = host.startsWith('foundation.');
 
@@ -68,7 +80,8 @@ export const config = {
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - robots.txt
+     * - api/webhooks/*, api/health*, api/cron/* (must bypass all domain/geo/auth routing)
      */
-    '/((?!_next/static|_next/image|favicon.ico|robots.txt).*)',
+    '/((?!_next/static|_next/image|favicon.ico|robots.txt|api/webhooks|api/health|api/cron).*)',
   ],
 };
