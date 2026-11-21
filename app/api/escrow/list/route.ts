@@ -116,7 +116,11 @@ export async function GET(request: NextRequest) {
       applyWhatsappVerificationRedaction(row)
     );
 
-    return NextResponse.json({ success: true, transactions: safeTransactions });
+    return NextResponse.json({
+      success: true,
+      transactions: safeTransactions,
+      vendorStoreName: vendorSession.vendor.store_name || null,
+    });
   } catch (err: any) {
     console.error('Unhandled error in get-transactions list:', err);
     return NextResponse.json({ success: false, error: err.message || 'Internal Server Error' }, { status: 500 });

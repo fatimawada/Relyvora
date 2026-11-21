@@ -27,7 +27,11 @@ async function getBrowserAuthHeaders(): Promise<Record<string, string>> {
 /**
  * Fetch authenticated vendor transactions via server route handler (fail-closed, no localStorage fallback).
  */
-export async function getTransactions(vendorHandle?: string): Promise<{ data: Transaction[]; error?: string }> {
+export async function getTransactions(vendorHandle?: string): Promise<{
+  data: Transaction[];
+  vendorStoreName?: string;
+  error?: string;
+}> {
   const url = vendorHandle
     ? `/api/escrow/list?vendorHandle=${encodeURIComponent(vendorHandle)}`
     : '/api/escrow/list';
@@ -38,7 +42,10 @@ export async function getTransactions(vendorHandle?: string): Promise<{ data: Tr
   if (!res.ok || !json.success || !Array.isArray(json.transactions)) {
     return { data: [], error: json.error || `Request failed (HTTP ${res.status})` };
   }
-  return { data: json.transactions as Transaction[] };
+  return {
+    data: json.transactions as Transaction[],
+    vendorStoreName: typeof json.vendorStoreName === 'string' ? json.vendorStoreName : undefined,
+  };
 }
 
 /**

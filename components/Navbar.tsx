@@ -5,8 +5,7 @@ import Link from 'next/link';
 import { Logo } from '@/components/brand/Logo';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { FlagIcon } from '@/components/flags/FlagIcon';
-import { isLiveMode } from '@/lib/paymentsMode';
-import { isStagingHostOrEnv } from '@/lib/appUrls';
+import { isExplicitSandboxUiMode, isStagingHostOrEnv } from '@/lib/appUrls';
 import { Store, ArrowUpRight } from 'lucide-react';
 
 export function Navbar() {
@@ -16,7 +15,7 @@ export function Navbar() {
       ? 'https://relyvora.com'
       : '/';
 
-  const live = isLiveMode() || process.env.NODE_ENV === 'production';
+  const live = !isExplicitSandboxUiMode();
 
   return (
     <header

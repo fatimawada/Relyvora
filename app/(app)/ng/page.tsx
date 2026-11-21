@@ -10,10 +10,10 @@ import {
   MessageCircle,
   KeyRound,
 } from 'lucide-react';
-import { isSandboxMode } from '@/lib/paymentsMode';
+import { isExplicitSandboxUiMode } from '@/lib/appUrls';
 
 export default function NigerianMarketPage() {
-  const sandbox = isSandboxMode() && process.env.NODE_ENV !== 'production';
+  const sandbox = isExplicitSandboxUiMode();
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 sm:py-16 space-y-16 sm:space-y-24">

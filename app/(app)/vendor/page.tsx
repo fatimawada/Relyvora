@@ -8,7 +8,7 @@ import {
 } from '@/lib/supabase';
 import { Transaction, VendorMetrics } from '@/lib/types';
 import { calculatePricing, formatNaira, MINIMUM_PROTECTION_FEE } from '@/lib/pricing';
-import { isLiveMode } from '@/lib/paymentsMode';
+import { isExplicitSandboxUiMode } from '@/lib/appUrls';
 import { StatusBadge } from '@/components/StatusBadge';
 import { AnchorBrandText } from '@/components/common/AnchorBrandText';
 import { TurnstileWidget } from '@/components/common/TurnstileWidget';
@@ -57,8 +57,8 @@ export default function VendorDashboardPage() {
   const [loginCaptchaResetKey, setLoginCaptchaResetKey] = useState(0);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
-  const liveMode = isLiveMode();
-  const isProductionOrLive = liveMode || process.env.NODE_ENV === 'production';
+  const showSandboxUi = isExplicitSandboxUiMode();
+  const isProductionOrLive = !showSandboxUi;
   const turnstileSiteKey = (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '').trim();
 
   const pricing = useMemo(() => {
@@ -82,10 +82,10 @@ export default function VendorDashboardPage() {
         : null;
     setSessionEmail(email);
     if (email) {
-      const { data } = await getTransactions();
+      const { data, vendorStoreName } = await getTransactions();
       setTransactions(data);
       const txHandle = data?.[0]?.vendor_handle?.trim() || null;
-      setSessionStoreHandle(txHandle || metaStore);
+      setSessionStoreHandle(vendorStoreName?.trim() || txHandle || metaStore);
     } else {
       setTransactions([]);
       setSessionStoreHandle(null);

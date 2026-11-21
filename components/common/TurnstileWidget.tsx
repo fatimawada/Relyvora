@@ -159,11 +159,7 @@ export function TurnstileWidget({
   }, [resetKey]);
 
   if (!activeSiteKey) {
-    return (
-      <p className="text-xs text-rose-600">
-        Cloudflare Turnstile site key (NEXT_PUBLIC_TURNSTILE_SITE_KEY) is not configured on this deployment.
-      </p>
-    );
+    return null;
   }
 
   return (

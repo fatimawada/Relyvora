@@ -1,9 +1,9 @@
 import React from 'react';
-import { isLiveMode } from '@/lib/paymentsMode';
+import { isExplicitSandboxUiMode } from '@/lib/appUrls';
 
 export function DemoBanner() {
-  // Hide completely in live mode and on production/deployed builds
-  if (isLiveMode() || process.env.NODE_ENV === 'production') {
+  // Render only when explicitly running on staging.relyvora.com or when sandbox/demo flag is enabled on a non-production host
+  if (!isExplicitSandboxUiMode()) {
     return null;
   }
 

@@ -239,7 +239,7 @@ export function VendorOnboardingFlow() {
     setServerError(null);
     setEmailConfirmationNotice(null);
     try {
-      if (!captchaToken.trim()) {
+      if (turnstileSiteKey && !captchaToken.trim()) {
         setServerError('Please complete the Cloudflare Turnstile verification check before continuing.');
         return;
       }
@@ -1038,21 +1038,25 @@ export function VendorOnboardingFlow() {
                 </label>
               </div>
 
-              {/* Step 2 Turnstile Human Verification (fresh token for POST /api/vendor/onboarding) */}
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                <span className="block text-xs font-semibold text-slate-800">
-                  Human Verification (Cloudflare Turnstile)
-                </span>
-                <TurnstileWidget
-                  siteKey={turnstileSiteKey}
-                  resetKey={captchaResetKey}
-                  onVerify={(token) => {
-                    setCaptchaToken(token);
-                    setServerError(null);
-                  }}
-                  onExpire={() => setCaptchaToken('')}
-                />
-              </div>
+              {turnstileSiteKey && (
+                <>
+                  {/* Step 2 Turnstile Human Verification (fresh token for POST /api/vendor/onboarding) */}
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                    <span className="block text-xs font-semibold text-slate-800">
+                      Human Verification (Cloudflare Turnstile)
+                    </span>
+                    <TurnstileWidget
+                      siteKey={turnstileSiteKey}
+                      resetKey={captchaResetKey}
+                      onVerify={(token) => {
+                        setCaptchaToken(token);
+                        setServerError(null);
+                      }}
+                      onExpire={() => setCaptchaToken('')}
+                    />
+                  </div>
+                </>
+              )}
 
               {/* Step 2 Action Buttons */}
               <div className="pt-4 flex flex-col sm:flex-row items-center gap-3">

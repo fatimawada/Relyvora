@@ -524,8 +524,8 @@ async function runSuite() {
     const prohibitedItemsSrc = fs.readFileSync('app/prohibited-items/page.tsx', 'utf8');
 
     assert(
-      demoBannerSrc.includes("isLiveMode() || process.env.NODE_ENV === 'production'") &&
-        navbarSrc.includes("isLiveMode() || process.env.NODE_ENV === 'production'") &&
+      demoBannerSrc.includes('!isExplicitSandboxUiMode()') &&
+        navbarSrc.includes('!isExplicitSandboxUiMode()') &&
         !vendorPageSrc.includes('@LagosHairPlug') &&
         !vendorPageSrc.includes('Simulated Verified Vendor') &&
         vendorPageSrc.includes('{!isProductionOrLive && (') &&

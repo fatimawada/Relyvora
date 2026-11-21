@@ -57,3 +57,55 @@ export function getNigeriaAppHref(hostname?: string): string {
   }
   return 'https://ng.relyvora.com';
 }
+
+export function isProductionLiveHost(hostname?: string): boolean {
+  const configured = (process.env.NEXT_PUBLIC_APP_URL || '').trim().toLowerCase();
+  const activeHost = (
+    hostname ??
+    (typeof window !== 'undefined' ? window.location.hostname : '')
+  )
+    .trim()
+    .toLowerCase();
+
+  if (
+    activeHost === 'ng.relyvora.com' ||
+    activeHost === 'relyvora.com' ||
+    activeHost === 'www.relyvora.com'
+  ) {
+    return true;
+  }
+  if (
+    !activeHost &&
+    (configured.includes('://ng.relyvora.com') ||
+      configured.includes('://relyvora.com') ||
+      configured.includes('://www.relyvora.com'))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Returns true ONLY when explicitly running on staging.relyvora.com or when
+ * NEXT_PUBLIC_PAYMENTS_MODE / PAYMENTS_MODE is explicitly set to 'sandbox' or 'demo'
+ * and the current host is NOT the live production domain (ng.relyvora.com / relyvora.com).
+ */
+export function isExplicitSandboxUiMode(hostname?: string): boolean {
+  const rawPublic = (process.env.NEXT_PUBLIC_PAYMENTS_MODE || '').trim().toLowerCase();
+  const rawServer = (process.env.PAYMENTS_MODE || '').trim().toLowerCase();
+  if (rawPublic === 'live' || rawServer === 'live') {
+    return false;
+  }
+  if (isProductionLiveHost(hostname)) {
+    return false;
+  }
+  if (isStagingHostOrEnv(hostname)) {
+    return true;
+  }
+  return (
+    rawPublic === 'sandbox' ||
+    rawPublic === 'demo' ||
+    rawServer === 'sandbox' ||
+    rawServer === 'demo'
+  );
+}
