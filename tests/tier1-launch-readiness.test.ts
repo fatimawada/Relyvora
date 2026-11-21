@@ -559,10 +559,11 @@ async function runTier1Suite() {
     const prohibSrc = fs.readFileSync('app/prohibited-items/page.tsx', 'utf8');
     const footerSrc = fs.readFileSync('components/ProductFooter.tsx', 'utf8');
     assert(
-      prohibSrc.includes('Draft Policy') &&
+      prohibSrc.includes('Prohibited Items') &&
+        !prohibSrc.includes('Draft Policy') &&
         footerSrc.includes('/prohibited-items') &&
         footerSrc.includes('support@relyvora.com'),
-      '/prohibited-items draft page and ProductFooter links + support@relyvora.com present'
+      '/prohibited-items policy page (no draft banner) and ProductFooter links + support@relyvora.com present'
     );
 
     // -------------------------------------------------------------------------

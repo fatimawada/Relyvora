@@ -50,6 +50,7 @@ export default function VendorDashboardPage() {
   const [whatsappNotice, setWhatsappNotice] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const [sessionStoreHandle, setSessionStoreHandle] = useState<string | null>(null);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginCaptchaToken, setLoginCaptchaToken] = useState('');
@@ -57,6 +58,7 @@ export default function VendorDashboardPage() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const liveMode = isLiveMode();
+  const isProductionOrLive = liveMode || process.env.NODE_ENV === 'production';
   const turnstileSiteKey = (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '').trim();
 
   const pricing = useMemo(() => {
@@ -72,13 +74,21 @@ export default function VendorDashboardPage() {
   const refreshAuthAndTransactions = async () => {
     setIsLoading(true);
     const { data: sessionData } = await supabase.auth.getSession();
-    const email = sessionData?.session?.user?.email || null;
+    const user = sessionData?.session?.user;
+    const email = user?.email || null;
+    const metaStore =
+      typeof user?.user_metadata?.store_name === 'string' && user.user_metadata.store_name.trim()
+        ? user.user_metadata.store_name.trim()
+        : null;
     setSessionEmail(email);
     if (email) {
       const { data } = await getTransactions();
       setTransactions(data);
+      const txHandle = data?.[0]?.vendor_handle?.trim() || null;
+      setSessionStoreHandle(txHandle || metaStore);
     } else {
       setTransactions([]);
+      setSessionStoreHandle(null);
     }
     setIsLoading(false);
   };
@@ -126,6 +136,7 @@ export default function VendorDashboardPage() {
   const handleVendorSignOut = async () => {
     await supabase.auth.signOut();
     setSessionEmail(null);
+    setSessionStoreHandle(null);
     setTransactions([]);
   };
 
@@ -241,8 +252,14 @@ export default function VendorDashboardPage() {
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
-  const displayHandle = vendorHandle.trim() || '@LagosHairPlug';
-  const avatarInitials = displayHandle.replace('@', '').slice(0, 2).toUpperCase() || 'VN';
+  const displayHandle =
+    vendorHandle.trim() ||
+    sessionStoreHandle ||
+    (sessionEmail ? sessionEmail : 'Relyvora Vendor Portal');
+  const avatarInitials =
+    displayHandle === 'Relyvora Vendor Portal'
+      ? 'RV'
+      : displayHandle.replace('@', '').slice(0, 2).toUpperCase() || 'VN';
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 sm:py-8 space-y-6 sm:space-y-8 w-full">
@@ -259,15 +276,15 @@ export default function VendorDashboardPage() {
               </h1>
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-accent/10 text-accent border border-accent/20">
                 <Sparkles className="w-3 h-3 text-accent" />
-                <span>{liveMode ? 'Verified Vendor' : 'Simulated Verified Vendor'}</span>
+                <span>{sessionEmail ? 'Verified Vendor' : 'Vendor Portal'}</span>
                 <Star className="w-3 h-3 text-accent fill-accent ml-0.5" />
               </span>
             </div>
             <p className="text-xs sm:text-sm text-muted mt-0.5">
-              {liveMode ? (
+              {isProductionOrLive ? (
                 <>
                   Social Commerce Escrow Dashboard •{' '}
-                  <AnchorBrandText>Live Anchor BaaS Settlement</AnchorBrandText>
+                  <AnchorBrandText>Anchor BaaS Settlement</AnchorBrandText>
                 </>
               ) : (
                 'Social Commerce Escrow Dashboard • Sandbox Mode'
@@ -371,21 +388,21 @@ export default function VendorDashboardPage() {
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-base sm:text-lg font-heading font-semibold text-white tracking-tight">
-                {liveMode ? (
-                  <AnchorBrandText>Live Anchor BaaS Payout Rails Activated</AnchorBrandText>
+                {isProductionOrLive ? (
+                  <AnchorBrandText>Regulated Anchor BaaS Payout Rails</AnchorBrandText>
                 ) : (
                   'Activate Live Regulated Settlement'
                 )}
               </h2>
               <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-accent text-[#071229]">
-                {liveMode ? 'LIVE' : 'SANDBOX'}
+                {isProductionOrLive ? 'ESCROW PROTECTED' : 'SANDBOX'}
               </span>
             </div>
             <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl leading-relaxed">
-              {liveMode ? (
+              {isProductionOrLive ? (
                 <>
-                  Your account is connected to{' '}
-                  <AnchorBrandText>Anchor virtual NUBAN accounts</AnchorBrandText> for live collection and automated NIP settlement.
+                  Protected orders use dedicated{' '}
+                  <AnchorBrandText>Anchor virtual NUBAN accounts</AnchorBrandText> for collection and automated NIP settlement after 6-digit release verification.
                 </>
               ) : (
                 'Sandbox environment active. Complete vendor KYC onboarding to activate live commercial bank payouts.'
@@ -398,7 +415,7 @@ export default function VendorDashboardPage() {
           href="/vendor/onboarding"
           className="shrink-0 px-4 py-2.5 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-xs sm:text-sm flex items-center gap-2 shadow-xs transition-colors self-end md:self-auto"
         >
-          <span>{liveMode ? 'View KYC Profile' : 'Complete Verification'}</span>
+          <span>{sessionEmail ? 'View KYC Profile' : 'Complete Verification'}</span>
           <ArrowUpRight className="w-4 h-4" />
         </Link>
       </div>
@@ -489,7 +506,7 @@ export default function VendorDashboardPage() {
                 type="text"
                 value={vendorHandle}
                 onChange={(e) => setVendorHandle(e.target.value)}
-                placeholder="@LagosHairPlug or Store Name"
+                placeholder="e.g. Your Store Name or @handle"
                 className="w-full bg-site border border-border rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-main placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
               />
             </div>
@@ -761,7 +778,7 @@ export default function VendorDashboardPage() {
             <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-accent/10 rounded-full blur-2xl" />
           </div>
 
-          {!liveMode && (
+          {!isProductionOrLive && (
             <div className="bg-surface p-5 rounded-2xl border border-border text-xs text-muted space-y-2 transition-colors">
               <div className="flex items-center gap-1.5 font-bold text-main">
                 <Lightbulb className="w-4 h-4 text-amber-500 shrink-0" />
@@ -805,7 +822,7 @@ export default function VendorDashboardPage() {
             <Package className="w-10 h-10 text-muted mx-auto" />
             <h4 className="text-sm font-heading font-semibold text-main">No transactions recorded yet</h4>
             <p className="text-xs text-muted max-w-sm mx-auto">
-              Use the form above to generate your first Relyvora escrow link and start testing!
+              Use the form above to generate your first protected Relyvora escrow payment link.
             </p>
           </div>
         ) : (
@@ -900,8 +917,6 @@ export default function VendorDashboardPage() {
           </div>
         )}
       </div>
-
-      <ProductFooter />
     </div>
   );
 }

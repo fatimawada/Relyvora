@@ -518,6 +518,20 @@ async function runSuite() {
         callbackLocation === 'https://staging.relyvora.com/vendor/onboarding?confirmed=1',
       '/auth/callback exchanges PKCE code via supabase.auth.exchangeCodeForSession(code), middleware forwards /?code=... to /auth/callback, and signUp passes emailRedirectTo'
     );
+
+    const demoBannerSrc = fs.readFileSync('components/DemoBanner.tsx', 'utf8');
+    const navbarSrc = fs.readFileSync('components/Navbar.tsx', 'utf8');
+    const prohibitedItemsSrc = fs.readFileSync('app/prohibited-items/page.tsx', 'utf8');
+
+    assert(
+      demoBannerSrc.includes("isLiveMode() || process.env.NODE_ENV === 'production'") &&
+        navbarSrc.includes("isLiveMode() || process.env.NODE_ENV === 'production'") &&
+        !vendorPageSrc.includes('@LagosHairPlug') &&
+        !vendorPageSrc.includes('Simulated Verified Vendor') &&
+        vendorPageSrc.includes('{!isProductionOrLive && (') &&
+        !prohibitedItemsSrc.includes('Draft Policy'),
+      'Demo/testing UI (DEMO MODE banner, Simulated Escrow pill, @LagosHairPlug / Simulated Verified Vendor fallback, Sandbox Testing Tip) is hidden in live/production and Draft Policy banner is removed from /prohibited-items'
+    );
     void inspectTrustedClientIp;
   } finally {
     globalThis.fetch = origFetch;

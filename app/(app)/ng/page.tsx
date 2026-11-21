@@ -13,7 +13,7 @@ import {
 import { isSandboxMode } from '@/lib/paymentsMode';
 
 export default function NigerianMarketPage() {
-  const sandbox = isSandboxMode();
+  const sandbox = isSandboxMode() && process.env.NODE_ENV !== 'production';
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 sm:py-16 space-y-16 sm:space-y-24">

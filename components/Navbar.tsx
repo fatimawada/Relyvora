@@ -16,10 +16,14 @@ export function Navbar() {
       ? 'https://relyvora.com'
       : '/';
 
-  const live = isLiveMode();
+  const live = isLiveMode() || process.env.NODE_ENV === 'production';
 
   return (
-    <header className="w-full bg-site/95 backdrop-blur-md border-b border-border sticky top-[33px] sm:top-[37px] z-40 transition-colors">
+    <header
+      className={`w-full bg-site/95 backdrop-blur-md border-b border-border sticky ${
+        live ? 'top-0' : 'top-[33px] sm:top-[37px]'
+      } z-40 transition-colors`}
+    >
       <div className="max-w-5xl mx-auto px-4 h-14 sm:h-16 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link href="/" aria-label="Relyvora home">

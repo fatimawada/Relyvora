@@ -2,8 +2,8 @@ import React from 'react';
 import { isLiveMode } from '@/lib/paymentsMode';
 
 export function DemoBanner() {
-  // Hide completely in live payments mode
-  if (isLiveMode()) {
+  // Hide completely in live mode and on production/deployed builds
+  if (isLiveMode() || process.env.NODE_ENV === 'production') {
     return null;
   }
 

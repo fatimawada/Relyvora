@@ -1,7 +1,7 @@
 import React from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ShieldAlert, ArrowLeft, AlertTriangle, CheckCircle2, Mail } from 'lucide-react';
+import { ShieldAlert, ArrowLeft, CheckCircle2, Mail } from 'lucide-react';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 
@@ -64,19 +64,6 @@ export default function ProhibitedItemsPage() {
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Return to Relyvora Home</span>
             </Link>
-          </div>
-
-          <div className="p-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-            <div className="text-xs sm:text-sm text-main space-y-1">
-              <p className="font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-                Draft Policy — Pending Legal Counsel Sign-Off Prior to Public Launch
-              </p>
-              <p className="text-muted leading-relaxed">
-                This schedule governs acceptable commercial categories processed through Relyvora
-                Technologies Limited (RC 9982218) and regulated Anchor settlement partners.
-              </p>
-            </div>
           </div>
 
           <div className="space-y-4 border-b border-border pb-8">
