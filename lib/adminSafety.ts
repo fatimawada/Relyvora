@@ -1,39 +1,13 @@
 /**
  * Admin Action Safeguards:
  * - Typed confirmation requirement for dispute resolutions / high-value overrides
- * - Mandatory audit logging to public.admin_audit_log (+ in-memory fallback)
+ * - Mandatory audit logging to public.admin_audit_log (strict fail-closed)
  * - Real-time ops alerts via sendSystemAlert on every sensitive admin action
  */
 
 import { getServiceSupabase } from './supabaseServer';
 import { getAdminSafetyConfigServer } from './safetyLimits';
 import { sendSystemAlert } from './alerts';
-
-export interface AdminAuditFallbackEntry {
-  id: string;
-  admin_email: string;
-  action: string;
-  target_type: string;
-  target_id: string;
-  metadata: Record<string, any>;
-  ip_address: string | null;
-  created_at: string;
-}
-
-const globalForAdminSafety = globalThis as unknown as {
-  __relyvoraAdminAuditFallback?: AdminAuditFallbackEntry[];
-};
-
-function getAdminAuditFallbackStore(): AdminAuditFallbackEntry[] {
-  if (!globalForAdminSafety.__relyvoraAdminAuditFallback) {
-    globalForAdminSafety.__relyvoraAdminAuditFallback = [];
-  }
-  return globalForAdminSafety.__relyvoraAdminAuditFallback;
-}
-
-export function getAdminAuditFallbackLogs(limit = 50): AdminAuditFallbackEntry[] {
-  return [...getAdminAuditFallbackStore()].slice(0, limit);
-}
 
 export function expectedAdminConfirmationPhrase(params: {
   action: 'RELEASE' | 'REFUND' | 'SPLIT' | string;
@@ -104,35 +78,25 @@ export async function logAndAlertAdminAction(params: {
   const now = new Date().toISOString();
   const metadata = params.metadata || {};
 
-  const entry: AdminAuditFallbackEntry = {
-    id: `adm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    admin_email: params.adminEmail,
-    action: params.action,
-    target_type: params.targetType,
-    target_id: params.targetId,
-    metadata,
-    ip_address: params.ipAddress || null,
-    created_at: now,
-  };
-
-  const fallback = getAdminAuditFallbackStore();
-  fallback.unshift(entry);
-  if (fallback.length > 200) fallback.length = 200;
-
   if (!params.skipAuditInsert) {
-    try {
-      const supabase = params.supabaseClient || getServiceSupabase();
-      await supabase.from('admin_audit_log').insert({
-        admin_email: params.adminEmail,
-        action: params.action,
-        target_type: params.targetType,
-        target_id: params.targetId,
-        metadata,
-        ip_address: params.ipAddress || null,
-        created_at: now,
-      });
-    } catch (err) {
-      console.warn('Could not write admin_audit_log row:', (err as Error)?.message);
+    const supabase = params.supabaseClient || getServiceSupabase();
+    const { error } = await supabase.from('admin_audit_log').insert({
+      admin_email: params.adminEmail,
+      action: params.action,
+      target_type: params.targetType,
+      target_id: params.targetId,
+      metadata,
+      ip_address: params.ipAddress || null,
+      created_at: now,
+    });
+    if (error) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Admin Audit Log Persistence Failed (Fail Closed)',
+        details: { action: params.action, targetType: params.targetType, error: error.message },
+      }).catch(() => {});
+      throw new Error(`Failed to persist mandatory admin_audit_log entry: ${error.message}`);
     }
   }
 

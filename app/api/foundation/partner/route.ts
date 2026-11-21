@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { getClientIp, checkRateLimit } from '@/lib/rateLimit';
+import { getClientIp, checkSharedRateLimit } from '@/lib/rateLimit';
 
 const partnerInquirySchema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters'),
@@ -8,14 +8,13 @@ const partnerInquirySchema = z.object({
   email: z.string().trim().email('Please provide a valid email address'),
   partnerType: z.enum(['funder', 'corporate', 'mentor']),
   message: z.string().trim().min(10, 'Message must be at least 10 characters'),
-  website: z.string().optional(), // Honeypot
+  website: z.string().optional(),
 });
 
 export async function POST(request: NextRequest) {
   try {
-    // 1. Rate Limiting: 5 submissions per 15 minutes per IP
     const clientIp = getClientIp(request);
-    const rateCheck = checkRateLimit(`${clientIp}:foundation_partner`, 5, 15 * 60 * 1000);
+    const rateCheck = await checkSharedRateLimit(`${clientIp}:foundation_partner`, 5, 15 * 60 * 1000);
     if (!rateCheck.allowed) {
       return NextResponse.json(
         { success: false, error: 'Too many submissions. Please wait 15 minutes before submitting again.' },
@@ -25,13 +24,11 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    // 2. Honeypot Check: If hidden 'website' field is populated, silently return success without sending
     if (body.website && String(body.website).trim().length > 0) {
       console.warn(`[SPAM BLOCKED] Honeypot triggered from IP ${clientIp}`);
       return NextResponse.json({ success: true, message: 'Thank you for your inquiry.' });
     }
 
-    // 3. Zod Validation
     const parsed = partnerInquirySchema.safeParse(body);
     if (!parsed.success) {
       const firstError = parsed.error.issues[0]?.message || 'Invalid form input';
@@ -40,7 +37,6 @@ export async function POST(request: NextRequest) {
 
     const { name, organisation, email, partnerType, message } = parsed.data;
 
-    // 4. Send email via Resend to foundation@relyvora.com
     const apiKey = process.env.RESEND_API_KEY;
     const recipient = 'foundation@relyvora.com';
     const fromEmail = process.env.RESEND_FROM_EMAIL || 'Relyvora Foundation <alerts@relyvora.com>';
@@ -75,27 +71,27 @@ export async function POST(request: NextRequest) {
     `;
 
     if (apiKey) {
-      try {
-        const resendRes = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            from: fromEmail,
-            to: [recipient],
-            reply_to: email,
-            subject,
-            html: htmlBody,
-          }),
-        });
+      const resendRes = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          from: fromEmail,
+          to: [recipient],
+          reply_to: email,
+          subject,
+          html: htmlBody,
+        }),
+      });
 
-        if (!resendRes.ok) {
-          console.warn('Resend API error sending foundation inquiry:', await resendRes.text());
-        }
-      } catch (sendErr) {
-        console.error('Failed to dispatch foundation email:', sendErr);
+      if (!resendRes.ok) {
+        const errText = await resendRes.text();
+        return NextResponse.json(
+          { success: false, error: `Email delivery provider rejected inquiry: ${errText.slice(0, 120)}` },
+          { status: 502 }
+        );
       }
     } else {
       console.log(`[FOUNDATION INQUIRY SIMULATION] To: ${recipient} | Type: ${typeLabel} | From: ${name} (${email})`);
@@ -107,6 +103,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (err: any) {
     console.error('Unhandled error in foundation partner route:', err);
-    return NextResponse.json({ success: false, error: 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ success: false, error: err?.message || 'Internal Server Error' }, { status: 500 });
   }
 }

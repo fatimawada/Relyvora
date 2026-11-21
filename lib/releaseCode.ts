@@ -36,14 +36,11 @@ export interface DeliveryWindowConfig {
  * Throws in production if missing.
  */
 function getReleaseCodePepper(): string {
-  const pepper = process.env.RELEASE_CODE_PEPPER;
+  const pepper = process.env.RELEASE_CODE_PEPPER?.trim();
   if (!pepper) {
-    if (process.env.NODE_ENV === 'production' && process.env.PAYMENTS_MODE === 'live') {
-      throw new Error('CRITICAL SECURITY CONFIGURATION ERROR: RELEASE_CODE_PEPPER is missing.');
-    }
-    return 'relyvora_sandbox_pepper_k9823hfasdf0923';
+    throw new Error('CRITICAL SECURITY CONFIGURATION ERROR: RELEASE_CODE_PEPPER is missing.');
   }
-  return pepper.trim();
+  return pepper;
 }
 
 /**

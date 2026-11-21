@@ -71,8 +71,7 @@ This document lists every environment variable used across **Preview / Local**, 
 | `RELEASE_CODE_PEPPER` | **Server-only SECRET** | 32+ byte random hex string | 32+ byte random hex string (**distinct from prod**) | 64+ char CSPRNG hex secret (**strictly required**) |
 | `WHATSAPP_PHONE_PEPPER` | **Server-only SECRET** | Optional (falls back to `RELEASE_CODE_PEPPER`) | Distinct HMAC key for DNC/log phone hashes | Distinct high-entropy HMAC key for DNC/log phone hashes |
 | `ADMIN_USER_IDS` | **Server-only SECRET** | Comma-separated Staging Admin UUIDs | Staging Admin Supabase User UUIDs | Production Admin Supabase User UUIDs (verified email, MFA AAL2, `app_metadata.role='admin'`) |
-| `ADMIN_SECRET_KEY` | **Server-only SECRET** | Optional CLI/automation secret | Distinct random staging secret | High-entropy random secret for admin server automation |
-| `ADMIN_API_KEY` | **Server-only SECRET** | Optional reissue Bearer secret | Distinct random staging secret | High-entropy random secret for admin code reissue (`POST /api/escrow/reissue-code`) |
+| `BUYER_SESSION_SECRET` | **Server-only SECRET** | 32+ byte random hex string | 32+ byte random hex string | Distinct high-entropy HMAC key for order-bound Buyer Session cookies |
 | `CRON_SECRET` | **Server-only SECRET** | Random dev secret | Distinct random staging secret | Vercel Cron `Authorization: Bearer <CRON_SECRET>` secret protecting `/api/cron/reconcile` |
 
 ### 3.5 Meta WhatsApp Cloud API (Buyer Payment Links, Verification, Release Codes & OTPs)

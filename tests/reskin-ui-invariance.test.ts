@@ -20,6 +20,9 @@ import { TransactionStatus } from '../lib/types';
 import fs from 'fs';
 import { execSync } from 'child_process';
 import ts from 'typescript';
+import { ensureTestSecrets } from './helpers/stagingAuthHelper';
+
+ensureTestSecrets();
 
 let passed = 0;
 let failed = 0;

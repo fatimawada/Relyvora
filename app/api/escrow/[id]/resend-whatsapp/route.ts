@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabaseServer';
-import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
+import { checkSharedRateLimit, getClientIp } from '@/lib/rateLimit';
 import {
   applyWhatsappVerificationRedaction,
   maskWhatsappNumber,
@@ -25,8 +25,9 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Transaction ID is required.' }, { status: 400 });
     }
 
+    const supabase = getServiceSupabase();
     const clientIp = getClientIp(request);
-    const ipLimit = checkRateLimit(`${clientIp}:resend_wa_confirm`, 10, 15 * 60 * 1000);
+    const ipLimit = await checkSharedRateLimit(`${clientIp}:resend_wa_confirm`, 10, 15 * 60 * 1000, supabase);
     if (!ipLimit.allowed) {
       return NextResponse.json(
         { success: false, error: 'Too many confirmation requests from this connection. Try again shortly.' },
@@ -34,7 +35,7 @@ export async function POST(
       );
     }
 
-    const orderLimit = checkRateLimit(`order:${id}:resend_wa_confirm`, 2, 10 * 60 * 1000);
+    const orderLimit = await checkSharedRateLimit(`order:${id}:resend_wa_confirm`, 2, 10 * 60 * 1000, supabase);
     if (!orderLimit.allowed) {
       return NextResponse.json(
         { success: false, error: 'Confirmation message was just sent. Please check WhatsApp or wait a few minutes.' },
@@ -42,14 +43,17 @@ export async function POST(
       );
     }
 
-    const supabase = getServiceSupabase();
     const { data: tx, error: txErr } = await selectTransactionWithWhatsapp<any>(
       supabase,
       id,
       'id, status, item_name, total_amount, vendor_id, vendor_handle, buyer_phone'
     );
 
-    if (txErr || !tx) {
+    if (txErr) {
+      return NextResponse.json({ success: false, error: `Transaction lookup failed: ${txErr.message || String(txErr)}` }, { status: 500 });
+    }
+
+    if (!tx) {
       return NextResponse.json({ success: false, error: 'Transaction not found.' }, { status: 404 });
     }
 

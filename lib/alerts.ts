@@ -16,7 +16,8 @@ export interface SystemAlert {
     | 'ADMIN_ACTION'
     | 'TIER_CHANGE'
     | 'SETTLEMENT_CHANGE'
-    | 'INCIDENT_SWITCH';
+    | 'INCIDENT_SWITCH'
+    | 'SYSTEM_FAILURE';
   severity: 'WARNING' | 'CRITICAL';
   title: string;
   transactionId?: string;

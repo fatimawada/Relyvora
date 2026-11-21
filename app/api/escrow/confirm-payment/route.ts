@@ -4,7 +4,7 @@ import { getServiceSupabase } from '@/lib/supabaseServer';
 import { isLiveMode } from '@/lib/paymentsMode';
 import { isCheckoutEnabledServer } from '@/lib/safetyLimits';
 import { recordLedgerEntry } from '@/lib/ledger';
-import { getClientIp, checkRateLimit } from '@/lib/rateLimit';
+import { getClientIp, checkSharedRateLimit } from '@/lib/rateLimit';
 import { 
   generateCryptographicReleaseCode, 
   computeReleaseCodeHmac, 
@@ -14,21 +14,36 @@ import { SAFE_TRANSACTION_PUBLIC_COLUMNS } from '@/lib/transactionSelect';
 
 export async function POST(request: NextRequest) {
   try {
-    // 1. IP Rate Limiting
-    const clientIp = getClientIp(request);
-    const rateCheck = checkRateLimit(`${clientIp}:confirm_payment`, 10, 15 * 60 * 1000);
-    if (!rateCheck.allowed) {
+    if (process.env.NODE_ENV === 'production' || isLiveMode()) {
       return NextResponse.json(
-        { success: false, error: 'Too many requests. Please wait before attempting again.' },
-        { status: 429 }
+        {
+          success: false,
+          error: 'Simulated payment confirmation is disabled in live/production mode. Payments must be deposited via Providus Virtual NUBAN.',
+        },
+        { status: 403 }
       );
     }
 
     const body = await request.json();
-    const { transactionId, paymentMethod = 'SIMULATED' } = body;
+    const { transactionId, paymentMethod = 'SIMULATED' } = body || {};
 
     if (!transactionId) {
       return NextResponse.json({ success: false, error: 'transactionId is required.' }, { status: 400 });
+    }
+
+    const supabase = getServiceSupabase();
+
+    // 1. Distributed IP + Transaction Rate Limiting (Fail Closed)
+    const clientIp = getClientIp(request);
+    const [ipRateCheck, txRateCheck] = await Promise.all([
+      checkSharedRateLimit(`${clientIp}:confirm_payment`, 10, 15 * 60 * 1000, supabase),
+      checkSharedRateLimit(`tx:${transactionId}:confirm_payment`, 5, 15 * 60 * 1000, supabase),
+    ]);
+    if (!ipRateCheck.allowed || !txRateCheck.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Too many requests. Please wait before attempting again.' },
+        { status: 429 }
+      );
     }
 
     const checkoutEnabled = await isCheckoutEnabledServer();
@@ -49,16 +64,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = getServiceSupabase();
-
     // 2. Fetch current transaction
     const { data: existing, error: fetchErr } = await supabase
       .from('transactions')
       .select('*')
       .eq('id', transactionId)
-      .single();
+      .maybeSingle();
 
-    if (fetchErr || !existing) {
+    if (fetchErr) {
+      return NextResponse.json({ success: false, error: `Transaction lookup failed: ${fetchErr.message}` }, { status: 500 });
+    }
+
+    if (!existing) {
       return NextResponse.json({ success: false, error: 'Transaction not found.' }, { status: 404 });
     }
 

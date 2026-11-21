@@ -16,7 +16,6 @@ import { recordVendorComplianceStrike, setVendorSuspensionState } from '@/lib/ve
 import {
   executeBuyerOrderRefund,
   getDeliveryAndLifecycleConfig,
-  mergeTransactionWithLifecycleOverlay,
   retryStuckSettlementLegs,
 } from '@/lib/orderLifecycle';
 import { clearSafetySettingsCache } from '@/lib/safetyLimits';
@@ -76,15 +75,14 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      const { data: rawTx, error: txErr } = await supabase
+      const { data: tx, error: txErr } = await supabase
         .from('transactions')
         .select('*')
         .eq('id', transactionId)
         .single();
-      if (txErr || !rawTx) {
+      if (txErr || !tx) {
         return NextResponse.json({ success: false, error: 'Transaction not found.' }, { status: 404 });
       }
-      const tx = mergeTransactionWithLifecycleOverlay(rawTx);
       if (tx.status !== 'FUNDS_LOCKED' && tx.status !== 'DISPATCHED') {
         return NextResponse.json(
           { success: false, error: `Cannot reissue code in status '${tx.status}'.` },
@@ -100,7 +98,7 @@ export async function POST(request: NextRequest) {
       const rawCode = generateCryptographicReleaseCode();
       const hmacHash = computeReleaseCodeHmac(tx.id, rawCode);
 
-      await supabase
+      const { error: updCodeErr } = await supabase
         .from('transactions')
         .update({
           release_code_hash: hmacHash,
@@ -110,6 +108,10 @@ export async function POST(request: NextRequest) {
           updated_at: new Date().toISOString(),
         })
         .eq('id', tx.id);
+
+      if (updCodeErr) {
+        return NextResponse.json({ success: false, error: `Failed updating release code: ${updCodeErr.message}` }, { status: 500 });
+      }
 
       const delivery = await sendReleaseCodeSmsOrWhatsapp({
         transactionId: tx.id,
@@ -179,10 +181,10 @@ export async function POST(request: NextRequest) {
         .eq('id', tx.id);
 
       if (updErr) {
-        await supabase
-          .from('transactions')
-          .update({ buyer_phone: e164, updated_at: nowIso })
-          .eq('id', tx.id);
+        return NextResponse.json(
+          { success: false, error: `Failed updating buyer phone: ${updErr.message}` },
+          { status: 500 }
+        );
       }
 
       await logAndAlertAdminAction({
@@ -323,15 +325,14 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const { data: rawTx } = await supabase
+      const { data: tx } = await supabase
         .from('transactions')
         .select('*')
         .eq('id', transactionId)
         .single();
-      if (!rawTx) {
+      if (!tx) {
         return NextResponse.json({ success: false, error: 'Transaction not found.' }, { status: 404 });
       }
-      const tx = mergeTransactionWithLifecycleOverlay(rawTx);
       const amt = Number(amountNgn);
 
       const confirmCheck = await validateAdminTypedConfirmation({

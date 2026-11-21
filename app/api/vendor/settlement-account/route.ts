@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyVendorOnboardingSession } from '@/lib/vendorAuth';
 import { getServiceSupabase } from '@/lib/supabaseServer';
-import { getClientIp, checkRateLimit } from '@/lib/rateLimit';
+import { getClientIp, checkSharedRateLimit } from '@/lib/rateLimit';
+import { sendSystemAlert } from '@/lib/alerts';
 import {
   confirmSettlementAccountChange,
   requestSettlementAccountChange,
@@ -9,23 +10,10 @@ import {
 
 /**
  * POST /api/vendor/settlement-account
- * Initiates a settlement bank account change:
- * - Requires authenticated, email-confirmed vendor session
- * - Performs Anchor bank name enquiry and blocks on KYC legal-name mismatch
- * - Dispatches WhatsApp confirmation to vendor's registered phone (unless disabled in system_settings)
- * - Writes audit log entry
  */
 export async function POST(request: NextRequest) {
   try {
     const ip = getClientIp(request);
-    const rl = checkRateLimit(`${ip}:settlement_change`, 5, 15 * 60 * 1000);
-    if (!rl.allowed) {
-      return NextResponse.json(
-        { success: false, error: 'Too many settlement change attempts. Try again later.' },
-        { status: 429 }
-      );
-    }
-
     const session = await verifyVendorOnboardingSession(request);
     if (!session.authorized || !session.user) {
       return NextResponse.json(
@@ -50,11 +38,21 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getServiceSupabase();
-    const { data: vendor } = await supabase
+    const { data: vendor, error: vendorErr } = await supabase
       .from('vendors')
-      .select('id, user_id, email')
+      .select('id, user_id, email, is_suspended')
       .eq('email', session.user.email.toLowerCase().trim())
       .maybeSingle();
+
+    if (vendorErr) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Settlement Account Vendor Query Failed (Fail Closed)',
+        details: { userId: session.user.id, error: vendorErr.message },
+      }).catch(() => {});
+      return NextResponse.json({ success: false, error: `Vendor lookup failed: ${vendorErr.message}` }, { status: 500 });
+    }
 
     if (!vendor) {
       return NextResponse.json(
@@ -67,6 +65,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: 'Forbidden: Vendor ownership mismatch.' },
         { status: 403 }
+      );
+    }
+
+    if (vendor.is_suspended) {
+      return NextResponse.json(
+        { success: false, error: 'Suspended vendor accounts cannot change settlement bank details.' },
+        { status: 403 }
+      );
+    }
+
+    const [ipRl, vRl] = await Promise.all([
+      checkSharedRateLimit(`${ip}:settlement_change`, 5, 15 * 60 * 1000, supabase),
+      checkSharedRateLimit(`v:${vendor.id}:settlement_change`, 5, 15 * 60 * 1000, supabase),
+    ]);
+    if (!ipRl.allowed || !vRl.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Too many settlement change attempts. Try again later.' },
+        { status: 429 }
       );
     }
 

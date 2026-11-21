@@ -5,7 +5,14 @@
  * PAYMENTS_MODE comes ONLY from server env (PAYMENTS_MODE), never from a row or client.
  */
 
+import {
+  checkPaymentsModeConsistency,
+  assertPaymentsModeConsistency,
+} from './paymentsModeCheck.mjs';
+
 export type PaymentsMode = 'sandbox' | 'live';
+
+export { checkPaymentsModeConsistency, assertPaymentsModeConsistency };
 
 /**
  * Server-side source of truth for payment execution mode.

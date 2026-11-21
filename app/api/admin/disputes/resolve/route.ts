@@ -201,7 +201,16 @@ export async function POST(request: NextRequest) {
         refundTransferId = `sandbox_refund_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       }
 
-      await supabase.from('transactions').update({ refund_transfer_id: refundTransferId }).eq('id', transactionId);
+      const { error: rfUpdErr } = await supabase
+        .from('transactions')
+        .update({ refund_transfer_id: refundTransferId })
+        .eq('id', transactionId);
+      if (rfUpdErr) {
+        return NextResponse.json(
+          { success: false, error: `Failed saving refund transfer reference: ${rfUpdErr.message}` },
+          { status: 500 }
+        );
+      }
     }
 
     // 3b. Execute Vendor Payout Leg (if vendorAmt > 0 and not already executed)
@@ -209,11 +218,15 @@ export async function POST(request: NextRequest) {
       const vendorIdempotencyKey = `dispute_payout_${transactionId}`;
       if (isLive) {
         try {
-          const { data: txWithVendor } = await supabase
+          const { data: txWithVendor, error: vFetchErr } = await supabase
             .from('transactions')
             .select('vendor_id, vendors(anchor_deposit_account_id)')
             .eq('id', transactionId)
             .single();
+
+          if (vFetchErr) {
+            throw new Error(`Vendor deposit lookup failed: ${vFetchErr.message}`);
+          }
 
           const vendorDepositAcc = (txWithVendor?.vendors as any)?.anchor_deposit_account_id || RELYVORA_REVENUE_ACCOUNT_ID;
 
@@ -238,7 +251,16 @@ export async function POST(request: NextRequest) {
         payoutTransferId = `sandbox_payout_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       }
 
-      await supabase.from('transactions').update({ payout_transfer_id: payoutTransferId }).eq('id', transactionId);
+      const { error: poUpdErr } = await supabase
+        .from('transactions')
+        .update({ payout_transfer_id: payoutTransferId })
+        .eq('id', transactionId);
+      if (poUpdErr) {
+        return NextResponse.json(
+          { success: false, error: `Failed saving payout transfer reference: ${poUpdErr.message}` },
+          { status: 500 }
+        );
+      }
     }
 
     // 4. PHASE 3: FINALIZE DISPUTE RESOLUTION (Atomic Postgres RPC)

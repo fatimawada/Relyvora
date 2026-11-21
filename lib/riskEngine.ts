@@ -21,9 +21,10 @@ import {
   computeVendorEffectiveTierLimits,
 } from './safetyLimits';
 import { computeNameSimilarityScore } from './payoutSafety';
-import { isSchemaMissingError, normalizeWhatsappPhone } from './whatsapp';
+import { normalizeWhatsappPhone } from './whatsapp';
 import { isLiveMode } from './paymentsMode';
 import { sendSystemAlert } from './alerts';
+import { getTrustedClientIp } from './rateLimit';
 
 export interface RiskSignalHit {
   code: string;
@@ -41,7 +42,7 @@ export interface RiskEvaluationResult {
   reason: string | null;
 }
 
-export interface RiskFlagFallbackRecord {
+export interface RiskFlagRecord {
   id: string;
   transaction_id: string | null;
   vendor_id: string | null;
@@ -57,55 +58,16 @@ export interface RiskFlagFallbackRecord {
   created_at: string;
 }
 
-const globalForRisk = globalThis as unknown as {
-  __relyvoraRiskFallbackStore?: {
-    txRisk: Map<
-      string,
-      {
-        risk_score: number;
-        risk_signals: RiskSignalHit[];
-        review_hold: boolean;
-        review_hold_reason: string | null;
-        order_blocked: boolean;
-        order_block_reason: string | null;
-        creator_ip_hash?: string | null;
-        creator_ip_expires_at?: string | null;
-        creator_ua_hash?: string | null;
-        creator_device_hash?: string | null;
-        buyer_phone_hash?: string | null;
-      }
-    >;
-    riskFlags: RiskFlagFallbackRecord[];
-  };
-};
-
-function getRiskFallbackStore() {
-  if (!globalForRisk.__relyvoraRiskFallbackStore) {
-    globalForRisk.__relyvoraRiskFallbackStore = {
-      txRisk: new Map(),
-      riskFlags: [],
-    };
-  }
-  return globalForRisk.__relyvoraRiskFallbackStore;
-}
-
-export function resetRiskFallbackStoreForTests(): void {
-  const store = getRiskFallbackStore();
-  store.txRisk.clear();
-  store.riskFlags = [];
-}
-
-export function getTxRiskFallback(txId: string) {
-  return getRiskFallbackStore().txRisk.get(txId);
-}
-
 function getRiskHashSalt(): string {
-  return (
+  const salt =
     process.env.RISK_HASH_SALT ||
+    process.env.RELEASE_CODE_PEPPER ||
     process.env.RELEASE_CODE_HMAC_SECRET ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    'relyvora_risk_signal_default_salt'
-  );
+    process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!salt) {
+    throw new Error('Missing cryptographic salt for risk signal hashing (RISK_HASH_SALT / RELEASE_CODE_PEPPER).');
+  }
+  return salt;
 }
 
 export function hashSignalWithSalt(value?: string | null): string | null {
@@ -133,9 +95,7 @@ export async function extractRequestDeviceFingerprints(
   deviceHash: string | null;
 }> {
   const riskCfg = await getRiskEngineConfigServer();
-  const forwarded = request.headers.get('x-forwarded-for') || '';
-  const realIp = request.headers.get('x-real-ip') || '';
-  const rawIp = forwarded.split(',')[0]?.trim() || realIp.trim() || '';
+  const rawIp = getTrustedClientIp(request) || '';
   const ua = request.headers.get('user-agent') || '';
   const deviceToken =
     explicitDeviceId ||
@@ -279,90 +239,106 @@ export async function evaluateOrderCreationRisk(params: {
   }
 
   // 5. Recent vendor orders: velocity, repeated pairs, structuring near cap, sudden spike
-  try {
-    const maxLookbackHours = Math.max(riskCfg.repeat_pair_window_hours, 24);
-    const lookbackIso = new Date(now.getTime() - maxLookbackHours * 3600_000).toISOString();
+  const maxLookbackHours = Math.max(riskCfg.repeat_pair_window_hours, 24);
+  const lookbackIso = new Date(now.getTime() - maxLookbackHours * 3600_000).toISOString();
 
-    const { data: recentOrders } = await supabase
-      .from('transactions')
-      .select('id, total_amount, buyer_phone, created_at')
-      .eq('vendor_id', params.vendor.id)
-      .gte('created_at', lookbackIso)
-      .order('created_at', { ascending: false })
-      .limit(100);
+  const { data: recentOrders, error: recentErr } = await supabase
+    .from('transactions')
+    .select('id, total_amount, buyer_phone, created_at')
+    .eq('vendor_id', params.vendor.id)
+    .gte('created_at', lookbackIso)
+    .order('created_at', { ascending: false })
+    .limit(100);
 
-    const rows = Array.isArray(recentOrders) ? recentOrders : [];
-    const velocityCutoffMs = now.getTime() - riskCfg.velocity_window_minutes * 60_000;
-    const recentVelocityCount = rows.filter(
-      (r) => new Date(r.created_at).getTime() >= velocityCutoffMs
-    ).length;
+  if (recentErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Risk Velocity Query Failed (Fail Closed)',
+      details: { vendorId: params.vendor.id, error: recentErr.message },
+    }).catch(() => {});
+    throw new Error(`Risk velocity query failed: ${recentErr.message}`);
+  }
 
-    if (recentVelocityCount >= riskCfg.velocity_max_orders) {
+  const rows = Array.isArray(recentOrders) ? recentOrders : [];
+  const velocityCutoffMs = now.getTime() - riskCfg.velocity_window_minutes * 60_000;
+  const recentVelocityCount = rows.filter(
+    (r) => new Date(r.created_at).getTime() >= velocityCutoffMs
+  ).length;
+
+  if (recentVelocityCount >= riskCfg.velocity_max_orders) {
+    signals.push({
+      code: 'HIGH_VELOCITY_VENDOR',
+      weight: weights.HIGH_VELOCITY_VENDOR ?? 2,
+      detail: `Vendor created ${recentVelocityCount} orders in ${riskCfg.velocity_window_minutes} minutes (threshold ${riskCfg.velocity_max_orders}).`,
+    });
+  }
+
+  if (buyerPhoneHash) {
+    const pairCutoffMs = now.getTime() - riskCfg.repeat_pair_window_hours * 3600_000;
+    const samePairCount = rows.filter((r) => {
+      if (new Date(r.created_at).getTime() < pairCutoffMs) return false;
+      const rowHash = hashPhoneSignal(r.buyer_phone);
+      return rowHash === buyerPhoneHash;
+    }).length;
+
+    if (samePairCount >= riskCfg.repeat_pair_max_orders) {
       signals.push({
-        code: 'HIGH_VELOCITY_VENDOR',
-        weight: weights.HIGH_VELOCITY_VENDOR ?? 2,
-        detail: `Vendor created ${recentVelocityCount} orders in ${riskCfg.velocity_window_minutes} minutes (threshold ${riskCfg.velocity_max_orders}).`,
+        code: 'REPEATED_BUYER_VENDOR_PAIR',
+        weight: weights.REPEATED_BUYER_VENDOR_PAIR ?? 2,
+        detail: `Same buyer/vendor phone pair has ${samePairCount} recent orders within ${riskCfg.repeat_pair_window_hours}h.`,
       });
     }
+  }
 
-    if (buyerPhoneHash) {
-      const pairCutoffMs = now.getTime() - riskCfg.repeat_pair_window_hours * 3600_000;
-      const samePairCount = rows.filter((r) => {
-        if (new Date(r.created_at).getTime() < pairCutoffMs) return false;
-        const rowHash = hashPhoneSignal(r.buyer_phone);
-        return rowHash === buyerPhoneHash;
-      }).length;
-
-      if (samePairCount >= riskCfg.repeat_pair_max_orders) {
+  if (limits.perOrderCapNgn !== null) {
+    const nearCapFloor = limits.perOrderCapNgn * riskCfg.near_cap_ratio_min;
+    if (params.totalAmount >= nearCapFloor) {
+      const recentNearCap = rows.filter(
+        (r) => Number(r.total_amount || 0) >= nearCapFloor
+      ).length;
+      if (recentNearCap >= 2) {
         signals.push({
-          code: 'REPEATED_BUYER_VENDOR_PAIR',
-          weight: weights.REPEATED_BUYER_VENDOR_PAIR ?? 2,
-          detail: `Same buyer/vendor phone pair has ${samePairCount} recent orders within ${riskCfg.repeat_pair_window_hours}h.`,
+          code: 'REPEATED_NEAR_CAP_ORDER',
+          weight: weights.REPEATED_NEAR_CAP_ORDER ?? 2,
+          detail: `Multiple orders (>= ${Math.round(riskCfg.near_cap_ratio_min * 100)}% of tier cap) repeated cleanly under ₦${limits.perOrderCapNgn.toLocaleString()}.`,
         });
       }
     }
+  }
 
-    if (limits.perOrderCapNgn !== null) {
-      const nearCapFloor = limits.perOrderCapNgn * riskCfg.near_cap_ratio_min;
-      if (params.totalAmount >= nearCapFloor) {
-        const recentNearCap = rows.filter(
-          (r) => Number(r.total_amount || 0) >= nearCapFloor
-        ).length;
-        if (recentNearCap >= 2) {
-          signals.push({
-            code: 'REPEATED_NEAR_CAP_ORDER',
-            weight: weights.REPEATED_NEAR_CAP_ORDER ?? 2,
-            detail: `Multiple orders (>= ${Math.round(riskCfg.near_cap_ratio_min * 100)}% of tier cap) repeated cleanly under ₦${limits.perOrderCapNgn.toLocaleString()}.`,
-          });
-        }
-      }
+  // Sudden spike vs vendor historical average
+  const { data: historyRows, error: histErr } = await supabase
+    .from('transactions')
+    .select('total_amount')
+    .eq('vendor_id', params.vendor.id)
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  if (histErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Risk Historical Baseline Query Failed (Fail Closed)',
+      details: { vendorId: params.vendor.id, error: histErr.message },
+    }).catch(() => {});
+    throw new Error(`Risk historical baseline query failed: ${histErr.message}`);
+  }
+
+  if (Array.isArray(historyRows) && historyRows.length >= 2) {
+    const avg =
+      historyRows.reduce((s, r) => s + Number(r.total_amount || 0), 0) / historyRows.length;
+    if (
+      avg > 0 &&
+      params.totalAmount >= riskCfg.spike_min_baseline_ngn &&
+      params.totalAmount >= avg * riskCfg.spike_multiplier
+    ) {
+      signals.push({
+        code: 'SUDDEN_AMOUNT_SPIKE',
+        weight: weights.SUDDEN_AMOUNT_SPIKE ?? 2,
+        detail: `Order amount ₦${params.totalAmount.toLocaleString()} is ${(params.totalAmount / avg).toFixed(1)}x vendor's recent average (₦${Math.round(avg).toLocaleString()}).`,
+      });
     }
-
-    // Sudden spike vs vendor historical average
-    const { data: historyRows } = await supabase
-      .from('transactions')
-      .select('total_amount')
-      .eq('vendor_id', params.vendor.id)
-      .order('created_at', { ascending: false })
-      .limit(20);
-
-    if (Array.isArray(historyRows) && historyRows.length >= 2) {
-      const avg =
-        historyRows.reduce((s, r) => s + Number(r.total_amount || 0), 0) / historyRows.length;
-      if (
-        avg > 0 &&
-        params.totalAmount >= riskCfg.spike_min_baseline_ngn &&
-        params.totalAmount >= avg * riskCfg.spike_multiplier
-      ) {
-        signals.push({
-          code: 'SUDDEN_AMOUNT_SPIKE',
-          weight: weights.SUDDEN_AMOUNT_SPIKE ?? 2,
-          detail: `Order amount ₦${params.totalAmount.toLocaleString()} is ${(params.totalAmount / avg).toFixed(1)}x vendor's recent average (₦${Math.round(avg).toLocaleString()}).`,
-        });
-      }
-    }
-  } catch (err) {
-    console.warn('Risk query history warning:', (err as Error)?.message);
   }
 
   return finalizeEvaluation(signals, riskCfg.review_hold_threshold, riskCfg.block_threshold);
@@ -397,23 +373,22 @@ export async function evaluateDepositWebhookRisk(params: {
 
   let vendor: Record<string, any> | null = null;
   if (params.vendorId) {
-    const { data } = await supabase
+    const { data, error: vendorErr } = await supabase
       .from('vendors')
       .select('*')
       .eq('id', params.vendorId)
       .maybeSingle();
-    const overlay =
-      ((globalThis as any).__relyvoraVendorSafetyOverlay as Map<string, any> | undefined)?.get(
-        params.vendorId
-      ) || {};
-    if (data) {
-      vendor = {
-        ...Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)),
-        ...overlay,
-      };
-    } else if (Object.keys(overlay).length > 0) {
-      vendor = overlay;
+    if (vendorErr) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Deposit Webhook Vendor Lookup Failed (Fail Closed)',
+        transactionId: params.transactionId,
+        details: { vendorId: params.vendorId, error: vendorErr.message },
+      }).catch(() => {});
+      throw new Error(`Deposit risk vendor lookup failed: ${vendorErr.message}`);
     }
+    vendor = data || null;
   }
 
   if (vendor) {
@@ -444,7 +419,7 @@ export async function evaluateDepositWebhookRisk(params: {
       const startOfUtcDayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
       const resetAtMs = vendor.daily_volume_reset_at ? new Date(vendor.daily_volume_reset_at).getTime() : 0;
       const startIso = new Date(Math.max(startOfUtcDayMs, resetAtMs)).toISOString();
-      const { data: todayTxs } = await supabase
+      const { data: todayTxs, error: todayErr } = await supabase
         .from('transactions')
         .select('id, total_amount, resolution_notes')
         .eq('vendor_id', params.vendorId)
@@ -452,6 +427,16 @@ export async function evaluateDepositWebhookRisk(params: {
         .gte('created_at', startIso)
         .neq('status', 'CANCELLED')
         .neq('status', 'REFUNDED');
+      if (todayErr) {
+        await sendSystemAlert({
+          type: 'SYSTEM_FAILURE',
+          severity: 'CRITICAL',
+          title: 'Deposit Daily Cap Check Failed (Fail Closed)',
+          transactionId: params.transactionId,
+          details: { vendorId: params.vendorId, error: todayErr.message },
+        }).catch(() => {});
+        throw new Error(`Deposit daily volume query failed: ${todayErr.message}`);
+      }
       existingDailyVolume = (todayTxs || [])
         .filter((row: any) => String(row.resolution_notes || '').toUpperCase() !== 'TEST')
         .reduce((acc: number, row: any) => acc + Number(row.total_amount || 0), 0);
@@ -537,13 +522,34 @@ export async function persistRiskEvaluation(params: {
   const nowIso = new Date().toISOString();
 
   if (params.transactionId) {
-    const store = getRiskFallbackStore();
-    const prevTx = store.txRisk.get(params.transactionId);
-    const mergedReviewHold = Boolean(prevTx?.review_hold) || evaluation.reviewHold;
-    const mergedBlocked = Boolean(prevTx?.order_blocked) || evaluation.orderBlocked;
-    const mergedSignals = [...(prevTx?.risk_signals || []), ...evaluation.signals];
-    const mergedScore = Math.max(prevTx?.risk_score || 0, evaluation.score);
-    const mergedReason = [prevTx?.review_hold_reason, evaluation.reason].filter(Boolean).join(' | ') || null;
+    const { data: existingTx, error: readErr } = await supabase
+      .from('transactions')
+      .select('risk_score, risk_signals, review_hold, review_hold_reason, order_blocked, order_block_reason')
+      .eq('id', params.transactionId)
+      .maybeSingle();
+
+    if (readErr) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Risk State Read Failed Before Persist (Fail Closed)',
+        transactionId: params.transactionId,
+        details: { error: readErr.message },
+      }).catch(() => {});
+      throw new Error(`Failed reading existing transaction risk state: ${readErr.message}`);
+    }
+
+    const prevSignals = Array.isArray(existingTx?.risk_signals) ? existingTx.risk_signals : [];
+    const mergedReviewHold = Boolean(existingTx?.review_hold) || evaluation.reviewHold;
+    const mergedBlocked = Boolean(existingTx?.order_blocked) || evaluation.orderBlocked;
+    const mergedSignals = [...prevSignals, ...evaluation.signals];
+    const mergedScore = Math.max(Number(existingTx?.risk_score || 0), evaluation.score);
+    const mergedReason =
+      [existingTx?.review_hold_reason, evaluation.reason].filter(Boolean).join(' | ') || null;
+    const mergedBlockReason =
+      [existingTx?.order_block_reason, evaluation.orderBlocked ? evaluation.reason : null]
+        .filter(Boolean)
+        .join(' | ') || null;
 
     const txPatch: Record<string, any> = {
       ...(params.extraTxPatch || {}),
@@ -552,34 +558,30 @@ export async function persistRiskEvaluation(params: {
       review_hold: mergedReviewHold,
       review_hold_reason: mergedReason,
       order_blocked: mergedBlocked,
-      order_block_reason: mergedBlocked ? mergedReason : null,
+      order_block_reason: mergedBlocked ? mergedBlockReason : null,
       updated_at: nowIso,
     };
-
-    store.txRisk.set(params.transactionId, {
-      ...(prevTx || {}),
-      risk_score: mergedScore,
-      risk_signals: mergedSignals,
-      review_hold: mergedReviewHold,
-      review_hold_reason: mergedReason,
-      order_blocked: mergedBlocked,
-      order_block_reason: mergedBlocked ? mergedReason : null,
-    });
 
     const { error } = await supabase
       .from('transactions')
       .update(txPatch)
       .eq('id', params.transactionId);
 
-    if (error && !isSchemaMissingError(error)) {
-      console.warn('Risk tx update error:', error.message);
+    if (error) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Failed Updating Transaction Risk Evaluation (Fail Closed)',
+        transactionId: params.transactionId,
+        details: { error: error.message },
+      }).catch(() => {});
+      throw new Error(`Failed updating transaction risk columns: ${error.message}`);
     }
   }
 
   if (evaluation.signals.length > 0 && evaluation.actionTaken !== 'ALLOW') {
     const flagStatus = evaluation.orderBlocked ? 'BLOCKED' : 'OPEN';
-    const flagRecord: RiskFlagFallbackRecord = {
-      id: `rf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    const { error: rfErr } = await supabase.from('risk_flags').insert({
       transaction_id: params.transactionId || null,
       vendor_id: params.vendorId || null,
       score: evaluation.score,
@@ -587,32 +589,20 @@ export async function persistRiskEvaluation(params: {
       action_taken: evaluation.actionTaken,
       signals: evaluation.signals,
       status: flagStatus,
-      cleared_by: null,
-      cleared_reason: null,
-      cleared_at: null,
       metadata: params.metadata || {},
       created_at: nowIso,
-    };
+      updated_at: nowIso,
+    });
 
-    const store = getRiskFallbackStore();
-    store.riskFlags.unshift(flagRecord);
-    if (store.riskFlags.length > 200) store.riskFlags.length = 200;
-
-    try {
-      await supabase.from('risk_flags').insert({
-        transaction_id: flagRecord.transaction_id,
-        vendor_id: flagRecord.vendor_id,
-        score: flagRecord.score,
-        severity: flagRecord.severity,
-        action_taken: flagRecord.action_taken,
-        signals: flagRecord.signals,
-        status: flagRecord.status,
-        metadata: flagRecord.metadata,
-        created_at: nowIso,
-        updated_at: nowIso,
-      });
-    } catch {
-      // schema fallback preserved in memory store
+    if (rfErr) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Failed Persisting risk_flags Record (Fail Closed)',
+        transactionId: params.transactionId || undefined,
+        details: { error: rfErr.message },
+      }).catch(() => {});
+      throw new Error(`Failed persisting risk_flags record: ${rfErr.message}`);
     }
 
     await sendSystemAlert({
@@ -635,23 +625,25 @@ export async function persistRiskEvaluation(params: {
 
 export async function listRiskFlagsAndHolds(
   supabaseClient?: ReturnType<typeof getServiceSupabase>
-): Promise<RiskFlagFallbackRecord[]> {
+): Promise<RiskFlagRecord[]> {
   const supabase = supabaseClient || getServiceSupabase();
-  try {
-    const { data, error } = await supabase
-      .from('risk_flags')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(100);
+  const { data, error } = await supabase
+    .from('risk_flags')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(100);
 
-    if (!error && Array.isArray(data)) {
-      return data as RiskFlagFallbackRecord[];
-    }
-  } catch {
-    // fallback below
+  if (error) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Failed Querying risk_flags (Fail Closed)',
+      details: { error: error.message },
+    }).catch(() => {});
+    throw new Error(`Failed listing risk_flags: ${error.message}`);
   }
 
-  return [...getRiskFallbackStore().riskFlags];
+  return (data || []) as RiskFlagRecord[];
 }
 
 export async function clearTransactionRiskHold(params: {
@@ -672,69 +664,30 @@ export async function clearTransactionRiskHold(params: {
   }
 
   const supabase = params.supabaseClient || getServiceSupabase();
-  const nowIso = new Date().toISOString();
+  const { data, error } = await supabase.rpc('rpc_admin_clear_risk_hold', {
+    p_transaction_id: params.transactionId,
+    p_admin_email: params.adminEmail,
+    p_reason: reason,
+    p_unblock: Boolean(params.unblock),
+    p_ip_address: params.ipAddress || null,
+  });
 
-  // Attempt atomic DB RPC first
-  try {
-    const { data, error } = await supabase.rpc('rpc_admin_clear_risk_hold', {
-      p_transaction_id: params.transactionId,
-      p_admin_email: params.adminEmail,
-      p_reason: reason,
-      p_unblock: Boolean(params.unblock),
-      p_ip_address: params.ipAddress || null,
-    });
-
-    if (!error && data) {
-      const store = getRiskFallbackStore();
-      const prev = store.txRisk.get(params.transactionId);
-      if (prev) {
-        prev.review_hold = false;
-        if (params.unblock) prev.order_blocked = false;
-      }
-      for (const rf of store.riskFlags) {
-        if (rf.transaction_id === params.transactionId && (rf.status === 'OPEN' || rf.status === 'BLOCKED')) {
-          rf.status = 'CLEARED';
-          rf.cleared_by = params.adminEmail;
-          rf.cleared_reason = reason;
-          rf.cleared_at = nowIso;
-        }
-      }
-      return {
-        success: Boolean(data.success),
-        statusCode: data.status_code || (data.success ? 200 : 400),
-        error: data.error,
-        clearedFlagsCount: data.cleared_flags_count || 0,
-      };
-    }
-
-    if (error && !isSchemaMissingError(error) && !String(error.message || '').includes('function public.rpc_admin_clear_risk_hold')) {
-      return { success: false, statusCode: 500, error: error.message };
-    }
-  } catch {
-    // fallback if RPC not yet applied on Staging
+  if (error || !data) {
+    const errMsg = error?.message || 'rpc_admin_clear_risk_hold returned empty response';
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'rpc_admin_clear_risk_hold Failed (Fail Closed)',
+      transactionId: params.transactionId,
+      details: { error: errMsg },
+    }).catch(() => {});
+    return { success: false, statusCode: 500, error: errMsg };
   }
 
-  // Fallback path for unmigrated Staging DB
-  const store = getRiskFallbackStore();
-  const prev = store.txRisk.get(params.transactionId);
-  if (prev) {
-    prev.review_hold = false;
-    prev.review_hold_reason = null;
-    if (params.unblock) {
-      prev.order_blocked = false;
-      prev.order_block_reason = null;
-    }
-  }
-  let clearedCount = 0;
-  for (const rf of store.riskFlags) {
-    if (rf.transaction_id === params.transactionId && (rf.status === 'OPEN' || rf.status === 'BLOCKED')) {
-      rf.status = 'CLEARED';
-      rf.cleared_by = params.adminEmail;
-      rf.cleared_reason = reason;
-      rf.cleared_at = nowIso;
-      clearedCount += 1;
-    }
-  }
-
-  return { success: true, statusCode: 200, clearedFlagsCount: clearedCount };
+  return {
+    success: Boolean(data.success),
+    statusCode: data.status_code || (data.success ? 200 : 400),
+    error: data.error,
+    clearedFlagsCount: data.cleared_flags_count || 0,
+  };
 }

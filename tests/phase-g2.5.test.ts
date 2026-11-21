@@ -31,6 +31,7 @@
  *    - Delivered once to buyer WhatsApp number, localStorage restore in sandbox, vendor never sees code
  */
 
+import crypto from 'crypto';
 import { NextRequest } from 'next/server';
 import { verifyAdminSession } from '../lib/adminAuth';
 import { runDailyReconciliation } from '../lib/reconciliation';
@@ -475,7 +476,6 @@ async function runPhaseG25v2Tests() {
   console.log('\n--- TEST GROUP 6: DISPUTE CREATION PHONE OTP VERIFICATION ---');
 
   function simulateDisputeOtp(storedHash: string, submittedOtp: string, attempts: number) {
-    const crypto = require('crypto');
     const secret = 'relyvora_test_secret';
     const computed = crypto.createHmac('sha256', secret).update(`tx_123:${submittedOtp}`).digest('hex');
 
@@ -488,7 +488,6 @@ async function runPhaseG25v2Tests() {
     return { success: true };
   }
 
-  const crypto = require('crypto');
   const validOtp = '583921';
   const validHash = crypto.createHmac('sha256', 'relyvora_test_secret').update('tx_123:583921').digest('hex');
 

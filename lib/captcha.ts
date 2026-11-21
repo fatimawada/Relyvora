@@ -6,7 +6,7 @@
 
 export interface CaptchaVerificationResult {
   valid: boolean;
-  provider: 'turnstile' | 'hcaptcha' | 'sandbox';
+  provider: 'turnstile' | 'hcaptcha';
   error?: string;
 }
 
@@ -15,17 +15,14 @@ export async function verifyPublicSignupCaptcha(params: {
   remoteIp?: string | null;
 }): Promise<CaptchaVerificationResult> {
   const token = String(params.token || '').trim();
-  const isProduction =
-    process.env.PAYMENTS_MODE === 'live' || process.env.NODE_ENV === 'production';
+  const provider: 'turnstile' | 'hcaptcha' = process.env.HCAPTCHA_SECRET_KEY && !process.env.TURNSTILE_SECRET_KEY
+    ? 'hcaptcha'
+    : 'turnstile';
 
   if (!token) {
     return {
       valid: false,
-      provider: process.env.TURNSTILE_SECRET_KEY
-        ? 'turnstile'
-        : process.env.HCAPTCHA_SECRET_KEY
-          ? 'hcaptcha'
-          : 'sandbox',
+      provider,
       error: 'CAPTCHA verification token is required for public vendor signup.',
     };
   }
@@ -92,23 +89,9 @@ export async function verifyPublicSignupCaptcha(params: {
     }
   }
 
-  if (isProduction) {
-    return {
-      valid: false,
-      provider: 'turnstile',
-      error: 'Server CAPTCHA verification secret (TURNSTILE_SECRET_KEY or HCAPTCHA_SECRET_KEY) is not configured in production.',
-    };
-  }
-
-  // Non-production staging/sandbox mode when no external CAPTCHA secret is configured:
-  // still require an explicit non-empty challenge token and reject explicit invalid test markers.
-  if (token.toLowerCase() === 'invalid' || token.toLowerCase() === 'fail' || token.length < 8) {
-    return {
-      valid: false,
-      provider: 'sandbox',
-      error: 'Invalid or expired CAPTCHA challenge token.',
-    };
-  }
-
-  return { valid: true, provider: 'sandbox' };
+  return {
+    valid: false,
+    provider,
+    error: 'Server CAPTCHA verification secret (TURNSTILE_SECRET_KEY or HCAPTCHA_SECRET_KEY) is not configured.',
+  };
 }

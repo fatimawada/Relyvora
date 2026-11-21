@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabaseServer';
-import { getClientIp } from '@/lib/rateLimit';
+import { checkSharedRateLimit, getClientIp } from '@/lib/rateLimit';
 import { hashSignalWithSalt } from '@/lib/riskEngine';
-import { updateTransactionWithFallback } from '@/lib/orderLifecycle';
+import { updateTransactionStrict } from '@/lib/orderLifecycle';
 
-export const CURRENT_TERMS_VERSION = '2026-11-v1';
+const CURRENT_TERMS_VERSION = '2026-11-v1';
 
 export async function POST(
   request: NextRequest,
@@ -25,20 +25,30 @@ export async function POST(
 
     const supabase = getServiceSupabase();
     const clientIp = getClientIp(request);
+
+    const rl = await checkSharedRateLimit(`consent:${id}:${clientIp}`, 10, 15 * 60 * 1000, supabase);
+    if (!rl.allowed) {
+      return NextResponse.json({ success: false, error: 'Too many consent attempts.' }, { status: 429 });
+    }
+
     const consentIpHash = hashSignalWithSalt(clientIp || 'unknown');
     const nowIso = new Date().toISOString();
 
-    const { data: tx } = await supabase
+    const { data: tx, error: txErr } = await supabase
       .from('transactions')
       .select('id')
       .eq('id', id)
       .maybeSingle();
 
+    if (txErr) {
+      return NextResponse.json({ success: false, error: `Transaction lookup failed: ${txErr.message}` }, { status: 500 });
+    }
+
     if (!tx) {
       return NextResponse.json({ success: false, error: 'Transaction not found.' }, { status: 404 });
     }
 
-    await updateTransactionWithFallback(
+    const upd = await updateTransactionStrict(
       id,
       {
         buyer_terms_accepted_at: nowIso,
@@ -48,6 +58,12 @@ export async function POST(
       },
       supabase
     );
+    if (!upd.success) {
+      return NextResponse.json(
+        { success: false, error: upd.error || 'Failed to record terms acceptance.' },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       success: true,

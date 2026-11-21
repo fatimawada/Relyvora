@@ -24,18 +24,27 @@ import { isAnchorBrandApproved, ANCHOR_BRAND_APPROVED_DEFAULT } from '../lib/anc
 import { verifyAdminSession, verifyAdminIdentityForMfaSetup } from '../lib/adminAuth';
 import { maskPhoneNumber } from '../lib/smsDelivery';
 import {
-  setWhatsappTransportForTests,
-  resetWhatsappTestState,
-  getInMemoryOutboundLogsForTests,
-  getInMemoryBuyerPhoneVerification,
+  clearWhatsappRetryMemoryCacheForTests,
+  captureMetaCloudDispatch,
+  ensureTestSecrets,
+  extractSetCookiePair,
+} from './helpers/stagingAuthHelper';
+import type { MetaTemplatePayload } from '../lib/whatsapp';
+import {
   getWhatsappDailyLimits,
   hashWhatsappPhone,
-  MetaTemplatePayload,
+  WHATSAPP_TEMPLATES,
 } from '../lib/whatsapp';
+import {
+  BUYER_OTP_CHALLENGE_COOKIE_NAME,
+  BUYER_SESSION_COOKIE_NAME,
+  computeBuyerPhoneBindingHash,
+} from '../lib/buyerSession';
 
 import { POST as createLinkPost } from '../app/api/escrow/create-link/route';
 import { GET as getEscrowById } from '../app/api/escrow/[id]/route';
 import { GET as listEscrowGet } from '../app/api/escrow/list/route';
+import { POST as buyerSessionPost } from '../app/api/escrow/buyer-session/route';
 import { POST as anchorWebhookPost } from '../app/api/webhooks/anchor/route';
 import { POST as whatsappWebhookPost } from '../app/api/webhooks/whatsapp/route';
 import { POST as resendWhatsappPost } from '../app/api/escrow/[id]/resend-whatsapp/route';
@@ -136,6 +145,48 @@ async function runReleaseCandidateSuite() {
 
   const createdTxIds: string[] = [];
   const createdEventIds: string[] = [];
+  ensureTestSecrets();
+
+  const { data: stagingVendorRow } = await supabase
+    .from('vendors')
+    .select('id, user_id, email, store_name')
+    .ilike('store_name', '%StagingTestVendor%')
+    .maybeSingle();
+  const origStagingVendorUserId = stagingVendorRow?.user_id ?? null;
+
+  const rcRunTag = Date.now().toString();
+  const rcVendorUserId = crypto.randomUUID();
+  const rcVendorEmail = `test-rc-vendor-${rcRunTag}@relyvora.com`;
+  const rcVendorHandle = `@TEST_RC_${rcRunTag.slice(-6)}`;
+  const { data: ephemeralRcVendor, error: ephVendErr } = await supabase
+    .from('vendors')
+    .insert({
+      user_id: rcVendorUserId,
+      store_name: rcVendorHandle,
+      email: rcVendorEmail,
+      phone_number: '+2348000000001',
+      phone_verified: true,
+      phone_verified_at: new Date().toISOString(),
+      legal_first_name: 'TEST RC',
+      legal_last_name: 'Vendor',
+      kyc_status: 'verified',
+      is_allowlisted: true,
+      payout_account_verified: true,
+      settlement_account_name_matched: true,
+      settlement_name_match_score: 1.0,
+      anchor_deposit_account_id: `anc_rc_acc_${rcRunTag}`,
+      settlement_bank_code: '058',
+      settlement_account_number: '0123456789',
+      settlement_account_name: 'TEST RC VENDOR',
+      tier: 'NEW',
+    })
+    .select('*')
+    .single();
+  if (ephVendErr || !ephemeralRcVendor) {
+    throw new Error(`Failed creating ephemeral RC vendor: ${ephVendErr?.message}`);
+  }
+  const rcVendorToken = 'tok_rc_staging_vendor';
+  const rcSuiteIp = `198.51.100.${Math.floor(Math.random() * 180) + 10}`;
 
   try {
     // =========================================================================
@@ -221,19 +272,50 @@ async function runReleaseCandidateSuite() {
     process.env.RESEND_API_KEY = 're_rc_staging_mock';
 
     const staleTestHash = hashWhatsappPhone('+2348099991234');
+    const stalePhoneBindingHash = computeBuyerPhoneBindingHash('+2348099991234');
     await supabase.from('whatsapp_message_log').delete().eq('recipient_phone_hash', staleTestHash);
     await supabase.from('whatsapp_do_not_contact').delete().eq('phone_hash', staleTestHash);
+    await supabase.from('rate_limit_buckets').delete().ilike('key', `%${stalePhoneBindingHash}%`);
+    await supabase.from('rate_limit_buckets').delete().ilike('key', '%198.51.100.%');
+    if (stagingVendorRow?.id) {
+      await supabase.from('rate_limit_buckets').delete().ilike('key', `%create_link_v:${stagingVendorRow.id}%`);
+    }
 
-    resetWhatsappTestState();
-    setWhatsappTransportForTests(async (payload) => {
-      capturedWaPayloads.push(payload);
-      waMsgCounter += 1;
-      return { ok: true, messageId: `wamid.rc_${Date.now()}_${waMsgCounter}`, status: 'sent' };
-    });
+    clearWhatsappRetryMemoryCacheForTests();
 
-    // Intercept ONLY external Anchor / Resend HTTP calls; forward Supabase unmodified
+    // Intercept ONLY external Meta Graph / Anchor / Resend HTTP calls and synthetic RC vendor token; forward Supabase unmodified
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const urlStr = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+      if (urlStr.includes('graph.facebook.com/') && urlStr.endsWith('/messages')) {
+        const parsed = JSON.parse(String(init?.body || '{}')) as MetaTemplatePayload;
+        capturedWaPayloads.push(parsed);
+        waMsgCounter += 1;
+        const messageId = `wamid.rc_${Date.now()}_${waMsgCounter}`;
+        return new Response(
+          JSON.stringify({
+            messaging_product: 'whatsapp',
+            messages: [{ id: messageId, message_status: 'sent' }],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      }
+
+      if (urlStr.includes('/auth/v1/user')) {
+        const headersObj = new Headers(init?.headers || {});
+        const tok = (headersObj.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
+        if (tok === rcVendorToken) {
+          return new Response(
+            JSON.stringify({
+              id: rcVendorUserId,
+              email: rcVendorEmail,
+              email_confirmed_at: '2026-01-01T00:00:00Z',
+              app_metadata: { role: 'vendor' },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          );
+        }
+      }
 
       if (urlStr.includes('getanchor.co') && urlStr.includes('/virtual-nubans')) {
         return new Response(
@@ -278,7 +360,7 @@ async function runReleaseCandidateSuite() {
       const noConsentRes = await createLinkPost(
         new NextRequest('http://localhost:3000/api/escrow/create-link', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': rcSuiteIp, authorization: `Bearer ${rcVendorToken}` },
           body: JSON.stringify({
             itemName: 'RC No Consent Check',
             itemPrice: 12000,
@@ -302,7 +384,7 @@ async function runReleaseCandidateSuite() {
       // 3a. With consent checkbox + verified allowlisted vendor -> payment_link_v1 sent ONLY to entered number
       const createReq = new NextRequest('http://localhost:3000/api/escrow/create-link', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': rcSuiteIp, authorization: `Bearer ${rcVendorToken}` },
         body: JSON.stringify({
           itemName: 'TEST - RC Staging Camera Lens',
           itemPrice: 40000,
@@ -334,14 +416,24 @@ async function runReleaseCandidateSuite() {
       );
 
       const bodyComp = firstWaPayload?.template?.components?.find((c) => c.type === 'body') as any;
+      const btnQr0 = firstWaPayload?.template?.components?.find(
+        (c) => c.type === 'button' && c.sub_type === 'quick_reply' && c.index === '0'
+      ) as any;
+      const btnQr1 = firstWaPayload?.template?.components?.find(
+        (c) => c.type === 'button' && c.sub_type === 'quick_reply' && c.index === '1'
+      ) as any;
       const btnUrlComp = firstWaPayload?.template?.components?.find(
         (c) => c.type === 'button' && c.sub_type === 'url'
       ) as any;
       assert(
-        bodyComp?.parameters?.[0]?.text === '@StagingTestVendor' &&
+        bodyComp?.parameters?.[0]?.text === rcVendorHandle &&
           bodyComp?.parameters?.[1]?.text === 'TEST - RC Staging Camera Lens' &&
-          btnUrlComp?.parameters?.[0]?.text === liveTxId,
-        'payment_link_v1 includes vendor display name, item name, amount, and dynamic order token URL suffix'
+          bodyComp?.parameters?.[2]?.text === '43,260' &&
+          btnQr0?.parameters?.[0]?.payload === `CONFIRM_ORDER:${liveTxId}` &&
+          btnQr1?.parameters?.[0]?.payload === `NOT_ME_ORDER:${liveTxId}` &&
+          btnUrlComp?.parameters?.[0]?.text === liveTxId &&
+          WHATSAPP_TEMPLATES.payment_link_v1.footerText === 'Secured by Relyvora Escrow',
+        'payment_link_v1 matches live template (vendor, item, 43,260 no ₦, Continue/Not my order payloads, footer, URL button)'
       );
 
       // Verify release_code_hash is strictly null AND virtual_account_number is redacted before confirmation
@@ -367,7 +459,9 @@ async function runReleaseCandidateSuite() {
       );
       const preVerifyJson = await preVerifyGet.json();
       const preVerifyList = await listEscrowGet(
-        new NextRequest('http://localhost:3000/api/escrow/list?vendorHandle=@StagingTestVendor')
+        new NextRequest('http://localhost:3000/api/escrow/list?vendorHandle=@StagingTestVendor', {
+          headers: { authorization: `Bearer ${rcVendorToken}` },
+        })
       );
       const preVerifyListJson = await preVerifyList.json();
       const preVerifyListItem = (preVerifyListJson.transactions || []).find((t: any) => t.id === liveTxId);
@@ -402,7 +496,7 @@ async function runReleaseCandidateSuite() {
                       id: `wamid.confirm_${Date.now()}`,
                       from: '2348099991234',
                       type: 'button',
-                      button: { text: 'Confirm this is me', payload: `CONFIRM_ORDER:${liveTxId}` },
+                      button: { text: 'Continue', payload: `CONFIRM_ORDER:${liveTxId}` },
                     },
                   ],
                 },
@@ -433,7 +527,11 @@ async function runReleaseCandidateSuite() {
         })
       );
       const replayWhJson = await replayWhRes.json();
-      const confirmBpv = getInMemoryBuyerPhoneVerification(liveTxId);
+      const { data: confirmBpv } = await supabase
+        .from('buyer_phone_verifications')
+        .select('verified, masked_phone, phone_hash')
+        .eq('transaction_id', liveTxId)
+        .maybeSingle();
       assert(
         confirmWhRes.status === 200 &&
           confirmWhJson.processed?.[0]?.action === 'PHONE_VERIFIED' &&
@@ -441,7 +539,7 @@ async function runReleaseCandidateSuite() {
           confirmBpv?.verified === true &&
           confirmBpv?.masked_phone === '******1234' &&
           Boolean(confirmBpv?.phone_hash) &&
-          !confirmBpv?.phone_hash.includes('8099991234'),
+          !confirmBpv?.phone_hash?.includes('8099991234'),
         'Signed "Confirm this is me" marks phone verified, records hashed buyer_phone_verifications entry, and replay check blocks duplicate wamid'
       );
 
@@ -501,20 +599,57 @@ async function runReleaseCandidateSuite() {
         !capturedLogs.some((l) => l.includes(originalCode)),
         `Server logs NEVER printed plaintext release code ${originalCode}`
       );
-      const outboundLogs = getInMemoryOutboundLogsForTests();
+      const { data: outboundLogs } = await supabase
+        .from('whatsapp_message_log')
+        .select('masked_number, template_name, status')
+        .eq('transaction_id', liveTxId);
       assert(
-        outboundLogs.every(
-          (log) =>
-            !JSON.stringify(log).includes(originalCode) &&
-            !JSON.stringify(log).includes('08099991234') &&
-            log.masked_number === '******1234'
-        ),
+        Array.isArray(outboundLogs) &&
+          outboundLogs.length > 0 &&
+          outboundLogs.every(
+            (log: any) =>
+              !JSON.stringify(log).includes(originalCode) &&
+              !JSON.stringify(log).includes('08099991234') &&
+              log.masked_number === '******1234'
+          ),
         'whatsapp_message_log contains masked number ******1234 and ZERO release codes or unmasked phone numbers'
+      );
+
+      // 3b-ii. Mint signed HttpOnly Buyer Session cookie via REAL POST /api/escrow/buyer-session
+      const bsCountBefore = capturedWaPayloads.length;
+      const bsReqRes = await buyerSessionPost(
+        new NextRequest('http://localhost:3000/api/escrow/buyer-session', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': '198.51.100.9' },
+          body: JSON.stringify({ transactionId: liveTxId, action: 'request_code' }),
+        })
+      );
+      const bsChallenge = extractSetCookiePair(bsReqRes, BUYER_OTP_CHALLENGE_COOKIE_NAME);
+      const bsOtpPayload = capturedWaPayloads.slice(bsCountBefore).find((p) => p.template.name === 'verification_otp_v1');
+      const bsOtp = String((bsOtpPayload?.template.components.find((c) => c.type === 'body') as any)?.parameters?.[0]?.text || '');
+      const bsVerRes = await buyerSessionPost(
+        new NextRequest('http://localhost:3000/api/escrow/buyer-session', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-vercel-forwarded-for': '198.51.100.9',
+            cookie: bsChallenge.pair || '',
+          },
+          body: JSON.stringify({ transactionId: liveTxId, action: 'verify_code', code: bsOtp }),
+        })
+      );
+      const bsCookie = extractSetCookiePair(bsVerRes, BUYER_SESSION_COOKIE_NAME);
+      const rcBuyerCookie = bsCookie.pair || '';
+      assert(
+        bsReqRes.status === 200 && bsVerRes.status === 200 && Boolean(rcBuyerCookie),
+        'Verified buyer mints signed HttpOnly Buyer Session cookie via POST /api/escrow/buyer-session'
       );
 
       // 3c. Verify GET APIs never expose plaintext code or hashes (and reveal NUBAN once verified)
       const getRes = await getEscrowById(
-        new NextRequest(`http://localhost:3000/api/escrow/${liveTxId}`),
+        new NextRequest(`http://localhost:3000/api/escrow/${liveTxId}`, {
+          headers: { cookie: rcBuyerCookie },
+        }),
         { params: Promise.resolve({ id: liveTxId }) }
       );
       const getJson = await getRes.json();
@@ -530,7 +665,9 @@ async function runReleaseCandidateSuite() {
       );
 
       const listRes = await listEscrowGet(
-        new NextRequest('http://localhost:3000/api/escrow/list?vendorHandle=@StagingTestVendor')
+        new NextRequest('http://localhost:3000/api/escrow/list?vendorHandle=@StagingTestVendor', {
+          headers: { authorization: `Bearer ${rcVendorToken}` },
+        })
       );
       const listJson = await listRes.json();
       const listedTx = (listJson.transactions || []).find((t: any) => t.id === liveTxId);
@@ -542,11 +679,12 @@ async function runReleaseCandidateSuite() {
         'GET /api/escrow/list never returns release_code, hash, or raw buyer_phone to vendor'
       );
 
-      // 3d. Resend code OTP flow + invalidation of old code + rate limit (WhatsApp)
+      // 3d. Resend code OTP flow + invalidation of old code + rate limit (WhatsApp, Buyer Session authenticated)
+      const waCountBeforeOtp = capturedWaPayloads.length;
       const sendOtpRes = await reissueCodePost(
         new NextRequest('http://localhost:3000/api/escrow/reissue-code', {
           method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-forwarded-for': '198.51.100.10' },
+          headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': '198.51.100.10', cookie: rcBuyerCookie },
           body: JSON.stringify({ transactionId: liveTxId, action: 'send_otp' }),
         })
       );
@@ -555,7 +693,7 @@ async function runReleaseCandidateSuite() {
         sendOtpRes.status === 200 && sendOtpJson.sandbox_otp === undefined,
         'send_otp returns 200 in live mode without exposing sandbox_otp'
       );
-      const otpPayload = capturedWaPayloads.find((p) => p.template.name === 'verification_otp_v1');
+      const otpPayload = capturedWaPayloads.slice(waCountBeforeOtp).find((p) => p.template.name === 'verification_otp_v1');
       const otpBodyComp = otpPayload?.template.components.find((c) => c.type === 'body') as any;
       const otpCode = String(otpBodyComp?.parameters?.[0]?.text || '');
       assert(/^\d{6}$/.test(otpCode), 'send_otp dispatched 6-digit OTP via WhatsApp verification_otp_v1');
@@ -565,7 +703,7 @@ async function runReleaseCandidateSuite() {
       const verifyReissueRes = await reissueCodePost(
         new NextRequest('http://localhost:3000/api/escrow/reissue-code', {
           method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-forwarded-for': '198.51.100.10' },
+          headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': '198.51.100.10', cookie: rcBuyerCookie },
           body: JSON.stringify({ transactionId: liveTxId, action: 'verify_and_reissue', otp: otpCode }),
         })
       );
@@ -603,7 +741,11 @@ async function runReleaseCandidateSuite() {
         const rlRes = await reissueCodePost(
           new NextRequest('http://localhost:3000/api/escrow/reissue-code', {
             method: 'POST',
-            headers: { 'content-type': 'application/json', 'x-forwarded-for': `198.51.100.${20 + i}` },
+            headers: {
+              'content-type': 'application/json',
+              'x-vercel-forwarded-for': `198.51.100.${20 + i}`,
+              cookie: rcBuyerCookie,
+            },
             body: JSON.stringify({ transactionId: liveTxId, action: 'send_otp' }),
           })
         );
@@ -645,7 +787,7 @@ async function runReleaseCandidateSuite() {
     } finally {
       console.log = realConsoleLog;
       globalThis.fetch = realFetch;
-      setWhatsappTransportForTests(null);
+      clearWhatsappRetryMemoryCacheForTests();
       if (origPaymentsMode === undefined) delete process.env.PAYMENTS_MODE;
       else process.env.PAYMENTS_MODE = origPaymentsMode;
       if (origWebhookSecret === undefined) delete process.env.ANCHOR_WEBHOOK_SECRET;
@@ -969,7 +1111,7 @@ async function runReleaseCandidateSuite() {
       const cpRes = await confirmPaymentPost(
         new NextRequest('http://localhost/api/escrow/confirm-payment', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': rcSuiteIp },
           body: JSON.stringify({ transactionId: zeroUuid }),
         })
       );
@@ -1037,12 +1179,23 @@ async function runReleaseCandidateSuite() {
           ephemeralAuthUserId = createdAuth.user.id;
         }
       }
+      await supabase
+        .from('vendors')
+        .update({ user_id: stagingAuthUserId })
+        .eq('email', 'staging-vendor@relyvora.com');
 
       process.env.ANCHOR_SECRET_KEY = 'anc_test_secret_rc_10';
       process.env.TURNSTILE_SECRET_KEY = 'turnstile_test_secret_rc_10';
 
       globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
         const u = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+        if (u.includes('graph.facebook.com/') && u.endsWith('/messages')) {
+          return new Response(
+            JSON.stringify({ messaging_product: 'whatsapp', messages: [{ id: `wamid.s10_${Date.now()}`, message_status: 'sent' }] }),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          );
+        }
 
         if (u.includes('challenges.cloudflare.com/turnstile')) {
           return new Response(JSON.stringify({ success: true }), {
@@ -1135,7 +1288,7 @@ async function runReleaseCandidateSuite() {
         const resUnauth = await vendorOnboardingPost(
           new NextRequest('http://localhost/api/vendor/onboarding', {
             method: 'POST',
-            headers: { 'content-type': 'application/json', 'x-forwarded-for': '10.10.1.1' },
+            headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': '10.10.1.1' },
             body: JSON.stringify(validOnboardPayload('staging-vendor@relyvora.com', '@StagingTestVendor')),
           })
         );
@@ -1146,7 +1299,7 @@ async function runReleaseCandidateSuite() {
             headers: {
               'content-type': 'application/json',
               authorization: 'Bearer tok_unconfirmed',
-              'x-forwarded-for': '10.10.1.2',
+              'x-vercel-forwarded-for': '10.10.1.2',
             },
             body: JSON.stringify(validOnboardPayload('staging-vendor@relyvora.com', '@StagingTestVendor')),
           })
@@ -1158,7 +1311,7 @@ async function runReleaseCandidateSuite() {
             headers: {
               'content-type': 'application/json',
               authorization: 'Bearer tok_staging_vendor',
-              'x-forwarded-for': '10.10.1.3',
+              'x-vercel-forwarded-for': '10.10.1.3',
             },
             body: JSON.stringify({}),
           })
@@ -1170,7 +1323,7 @@ async function runReleaseCandidateSuite() {
             headers: {
               'content-type': 'application/json',
               authorization: 'Bearer tok_other_email',
-              'x-forwarded-for': '10.10.1.4',
+              'x-vercel-forwarded-for': '10.10.1.4',
             },
             body: JSON.stringify(validOnboardPayload('staging-vendor@relyvora.com', '@StagingTestVendor')),
           })
@@ -1189,7 +1342,7 @@ async function runReleaseCandidateSuite() {
             headers: {
               'content-type': 'application/json',
               authorization: 'Bearer tok_uninvited',
-              'x-forwarded-for': '10.10.1.5',
+              'x-vercel-forwarded-for': '10.10.1.5',
             },
             body: JSON.stringify(validOnboardPayload('uninvited-vendor@relyvora.com', '@UninvitedShop')),
           })
@@ -1221,7 +1374,7 @@ async function runReleaseCandidateSuite() {
             headers: {
               'content-type': 'application/json',
               authorization: 'Bearer tok_staging_vendor',
-              'x-forwarded-for': '10.10.1.6',
+              'x-vercel-forwarded-for': '10.10.1.6',
             },
             body: JSON.stringify(validOnboardPayload('staging-vendor@relyvora.com', '@StagingTestVendor')),
           })
@@ -1268,12 +1421,13 @@ async function runReleaseCandidateSuite() {
         );
 
         // Rate limit check (6th request on same IP -> 429)
+        await supabase.from('rate_limit_buckets').delete().ilike('key', '%10.10.1.99%');
         let rlStatus = 200;
         for (let i = 0; i < 6; i++) {
           const r = await vendorOnboardingPost(
             new NextRequest('http://localhost/api/vendor/onboarding', {
               method: 'POST',
-              headers: { 'content-type': 'application/json', 'x-forwarded-for': '10.10.1.99' },
+              headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': '10.10.1.99' },
               body: JSON.stringify({}),
             })
           );
@@ -1294,10 +1448,14 @@ async function runReleaseCandidateSuite() {
         await supabase
           .from('vendors')
           .update({
-            user_id: null,
+            user_id: origStagingVendorUserId,
             anchor_customer_id: null,
             anchor_deposit_account_id: 'anc_staging_acc_001',
             kyc_status: 'verified',
+            payout_account_verified: true,
+            settlement_account_name_matched: true,
+            settlement_name_match_score: 1.0,
+            phone_verified: true,
             is_allowlisted: true,
           })
           .eq('email', 'staging-vendor@relyvora.com');
@@ -1375,13 +1533,46 @@ async function runReleaseCandidateSuite() {
     process.env.WHATSAPP_APP_SECRET = 'wa_sec11_test_32bytes_min';
     process.env.RELEASE_CODE_PEPPER = 'rc_test_pepper_32bytes_hex_staging';
     process.env.RESEND_API_KEY = 're_sec11_mock';
-    resetWhatsappTestState();
-    setWhatsappTransportForTests(async (payload) => {
-      waCalls11.push(payload);
-      return { ok: true, messageId: `wamid.s11_${Date.now()}_${waCalls11.length}`, status: 'sent' };
-    });
+    const sec11PhoneHashes = [
+      hashWhatsappPhone('+2348011112222'),
+      hashWhatsappPhone('+2348033334444'),
+      hashWhatsappPhone('+2348055556666'),
+    ];
+    await supabase.from('whatsapp_do_not_contact').delete().in('phone_hash', sec11PhoneHashes);
+    await supabase.from('whatsapp_message_log').delete().in('recipient_phone_hash', sec11PhoneHashes);
+    if (stagingVendorRow?.id) {
+      await supabase.from('rate_limit_buckets').delete().ilike('key', `%create_link_v:${stagingVendorRow.id}%`);
+    }
+    clearWhatsappRetryMemoryCacheForTests();
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const u = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (u.includes('graph.facebook.com/') && u.endsWith('/messages')) {
+        const parsedPayload = JSON.parse(String(init?.body || '{}')) as MetaTemplatePayload;
+        waCalls11.push(parsedPayload);
+        const msgId = `wamid.s11_${Date.now()}_${waCalls11.length}`;
+        return new Response(
+          JSON.stringify({
+            messaging_product: 'whatsapp',
+            messages: [{ id: msgId, message_status: 'sent' }],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        );
+      }
+      if (u.includes('/auth/v1/user')) {
+        const headersObj = new Headers(init?.headers || {});
+        const tok = (headersObj.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
+        if (tok === rcVendorToken) {
+          return new Response(
+            JSON.stringify({
+              id: rcVendorUserId,
+              email: rcVendorEmail,
+              email_confirmed_at: '2026-01-01T00:00:00Z',
+              app_metadata: { role: 'vendor' },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          );
+        }
+      }
       if (u.includes('api.resend.com')) {
         const parsed = JSON.parse(String(init?.body || '{}'));
         alerts11.push({ title: String(parsed.subject || '') });
@@ -1395,7 +1586,7 @@ async function runReleaseCandidateSuite() {
       const nmRes = await createLinkPost(
         new NextRequest('http://localhost:3000/api/escrow/create-link', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': rcSuiteIp, authorization: `Bearer ${rcVendorToken}` },
           body: JSON.stringify({
             itemName: 'TEST - RC Not-Me Test Item',
             itemPrice: 15000,
@@ -1421,7 +1612,7 @@ async function runReleaseCandidateSuite() {
                       id: `wamid.notme_${Date.now()}`,
                       from: '2348011112222',
                       type: 'button',
-                      button: { text: 'Not me', payload: `NOT_ME_ORDER:${nmTxId}` },
+                      button: { text: 'Not my order', payload: `NOT_ME_ORDER:${nmTxId}` },
                     },
                   ],
                 },
@@ -1447,24 +1638,32 @@ async function runReleaseCandidateSuite() {
         { params: Promise.resolve({ id: nmTxId }) }
       );
       const blockedGetJson = await blockedGetRes.json();
+      const { data: nmBpv } = await supabase
+        .from('buyer_phone_verifications')
+        .select('verified')
+        .eq('transaction_id', nmTxId)
+        .maybeSingle();
       assert(
         notMeWhRes.status === 200 &&
           blockedGetJson.transaction?.whatsapp_blocked === true &&
           blockedGetJson.transaction?.virtual_account_number === null &&
-          getInMemoryBuyerPhoneVerification(nmTxId)?.verified !== true,
+          nmBpv?.verified !== true,
         '"Not me" Quick Reply marks order whatsapp_blocked=true, leaves phone unverified, and hides virtual account details'
       );
 
       // Re-sending or new order to DNC number must send 0 WhatsApp messages
       const waBeforeDncRetry = waCalls11.length;
       const resendBlockedRes = await resendWhatsappPost(
-        new NextRequest(`http://localhost:3000/api/escrow/${nmTxId}/resend-whatsapp`, { method: 'POST' }),
+        new NextRequest(`http://localhost:3000/api/escrow/${nmTxId}/resend-whatsapp`, {
+          method: 'POST',
+          headers: { 'x-vercel-forwarded-for': rcSuiteIp },
+        }),
         { params: Promise.resolve({ id: nmTxId }) }
       );
       const dncSecondOrderRes = await createLinkPost(
         new NextRequest('http://localhost:3000/api/escrow/create-link', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': rcSuiteIp, authorization: `Bearer ${rcVendorToken}` },
           body: JSON.stringify({
             itemName: 'TEST - RC Post-NotMe Order',
             itemPrice: 10000,
@@ -1522,7 +1721,7 @@ async function runReleaseCandidateSuite() {
       const postStopOrder = await createLinkPost(
         new NextRequest('http://localhost:3000/api/escrow/create-link', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': rcSuiteIp, authorization: `Bearer ${rcVendorToken}` },
           body: JSON.stringify({
             itemName: 'TEST - RC Post-STOP Order',
             itemPrice: 9000,
@@ -1546,7 +1745,7 @@ async function runReleaseCandidateSuite() {
         const capRes = await createLinkPost(
           new NextRequest('http://localhost:3000/api/escrow/create-link', {
             method: 'POST',
-            headers: { 'content-type': 'application/json' },
+            headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': rcSuiteIp, authorization: `Bearer ${rcVendorToken}` },
             body: JSON.stringify({
               itemName: `TEST - RC Cap Check ${idx + 1}`,
               itemPrice: 8000,
@@ -1563,7 +1762,7 @@ async function runReleaseCandidateSuite() {
       const exceedRes = await createLinkPost(
         new NextRequest('http://localhost:3000/api/escrow/create-link', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': rcSuiteIp, authorization: `Bearer ${rcVendorToken}` },
           body: JSON.stringify({
             itemName: 'TEST - RC Cap Exceed Check',
             itemPrice: 8000,
@@ -1581,7 +1780,7 @@ async function runReleaseCandidateSuite() {
       );
     } finally {
       globalThis.fetch = fetch11;
-      setWhatsappTransportForTests(null);
+      clearWhatsappRetryMemoryCacheForTests();
       if (origMode11 === undefined) delete process.env.PAYMENTS_MODE;
       else process.env.PAYMENTS_MODE = origMode11;
       if (origSec11 === undefined) delete process.env.WHATSAPP_APP_SECRET;
@@ -1594,6 +1793,16 @@ async function runReleaseCandidateSuite() {
   } finally {
     // Clean up temporary rows created on staging
     console.log('\n--- CLEANING UP TEMPORARY STAGING TEST ROWS ---');
+    await supabase.from('rate_limit_buckets').delete().ilike('key', `%${rcSuiteIp}%`);
+    await supabase.from('rate_limit_buckets').delete().ilike('key', `%${computeBuyerPhoneBindingHash('+2348099991234')}%`);
+    await supabase.from('rate_limit_buckets').delete().ilike('key', '%198.51.100.%');
+    await supabase.from('rate_limit_buckets').delete().ilike('key', '%10.10.1.%');
+    if (stagingVendorRow?.id) {
+      await supabase.from('rate_limit_buckets').delete().ilike('key', `%create_link_v:${stagingVendorRow.id}%`);
+    }
+    if (stagingVendorRow && !origStagingVendorUserId) {
+      await supabase.from('vendors').update({ user_id: null }).eq('id', stagingVendorRow.id);
+    }
     if (createdEventIds.length > 0) {
       await supabase.from('webhook_events').delete().in('event_id', createdEventIds);
       await supabase.from('deposits').delete().in('anchor_event_id', createdEventIds);
@@ -1624,6 +1833,23 @@ async function runReleaseCandidateSuite() {
         console.log(
           `Notice: transaction ${txId} retained & labeled TEST because append-only ledger trigger prevents delete (${delErr.message}).`
         );
+      }
+    }
+
+    if (ephemeralRcVendor?.id) {
+      await supabase.from('rate_limit_buckets').delete().ilike('key', `%${ephemeralRcVendor.id}%`);
+      await supabase.from('risk_flags').delete().eq('vendor_id', ephemeralRcVendor.id);
+      await supabase.from('admin_audit_log').delete().eq('target_id', ephemeralRcVendor.id);
+      const { error: vDelErr } = await supabase.from('vendors').delete().eq('id', ephemeralRcVendor.id);
+      if (vDelErr) {
+        await supabase
+          .from('vendors')
+          .update({
+            user_id: null,
+            store_name: `TEST - Archived RC Vendor (${ephemeralRcVendor.id.slice(0, 8)})`,
+            is_suspended: true,
+          })
+          .eq('id', ephemeralRcVendor.id);
       }
     }
   }

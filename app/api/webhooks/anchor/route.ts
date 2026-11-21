@@ -8,8 +8,7 @@ import {
 } from '@/lib/releaseCode';
 import {
   getDeliveryAndLifecycleConfig,
-  mergeTransactionWithLifecycleOverlay,
-  updateTransactionWithFallback,
+  updateTransactionStrict,
   executeBuyerOrderRefund,
 } from '@/lib/orderLifecycle';
 import {
@@ -20,32 +19,27 @@ import { sendSystemAlert } from '@/lib/alerts';
 import { sendReleaseCodeSmsOrWhatsapp, maskPhoneNumber } from '@/lib/smsDelivery';
 import { evaluateDepositWebhookRisk, persistRiskEvaluation } from '@/lib/riskEngine';
 import { logInfo, logWarn } from '@/lib/logger';
+import { getClientIp } from '@/lib/rateLimit';
 
 /**
- * Strict HMAC-SHA256 webhook signature verification.
+ * Strict HMAC-SHA256 webhook signature verification (Fail Closed).
  */
 function verifyAnchorSignature(rawBody: string, signatureHeader: string | null): boolean {
-  const secret = process.env.ANCHOR_WEBHOOK_SECRET;
-  if (!secret) {
-    if (process.env.NODE_ENV === 'production' || process.env.PAYMENTS_MODE === 'live') {
-      console.error('CRITICAL SECURITY ERROR: ANCHOR_WEBHOOK_SECRET is not configured in production.');
-      return false;
-    }
-    return true; // Allow local sandbox testing only if secret not configured
+  const secret = process.env.ANCHOR_WEBHOOK_SECRET?.trim();
+  if (!secret || !signatureHeader) {
+    return false;
   }
-
-  if (!signatureHeader) return false;
 
   try {
     const computedSignature = crypto
-      .createHmac('sha256', secret.trim())
+      .createHmac('sha256', secret)
       .update(rawBody)
       .digest('hex');
 
     const sigBuf = Buffer.from(signatureHeader.trim(), 'hex');
     const compBuf = Buffer.from(computedSignature, 'hex');
 
-    if (sigBuf.length !== compBuf.length) return false;
+    if (sigBuf.length === 0 || sigBuf.length !== compBuf.length) return false;
     return crypto.timingSafeEqual(sigBuf, compBuf);
   } catch (err) {
     console.error('Signature verification threw exception:', err);
@@ -67,8 +61,9 @@ export async function POST(request: NextRequest) {
         severity: 'CRITICAL',
         title: 'Unauthorized Anchor Webhook Signature Rejection',
         details: {
-          clientIp: request.headers.get('x-forwarded-for') || 'unknown',
+          clientIp: getClientIp(request),
           hasSignature: Boolean(signature),
+          secretConfigured: Boolean(process.env.ANCHOR_WEBHOOK_SECRET?.trim()),
         },
       }).catch(() => {});
 
@@ -109,8 +104,6 @@ export async function POST(request: NextRequest) {
     const amountNaira = amountKobo / 100;
 
     const supabase = getServiceSupabase();
-
-    // Extract verified sender fields early (covers both nested `sender` and JSON:API `included[]`)
     const extractedSender = extractAnchorDepositSenderFields(payload);
 
     // 2. Execute DB-first idempotency & atomic deposit processing via Postgres RPC
@@ -123,16 +116,24 @@ export async function POST(request: NextRequest) {
       p_payload: payload,
     });
 
-    if (rpcError) {
-      console.error('RPC process_webhook_deposit failed:', rpcError);
-      return NextResponse.json({ success: false, error: rpcError.message }, { status: 500 });
+    if (rpcError || !rpcResult) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'RPC rpc_process_webhook_deposit Failed (Fail Closed)',
+        details: { eventId, error: rpcError?.message || 'Empty RPC response' },
+      }).catch(() => {});
+      return NextResponse.json(
+        { success: false, error: rpcError?.message || 'Deposit webhook RPC failed.' },
+        { status: 500 }
+      );
     }
 
-    if (rpcResult?.replayed) {
+    if (rpcResult.replayed) {
       return NextResponse.json({ success: true, message: 'Webhook event already processed (idempotent)' }, { status: 200 });
     }
 
-    if (rpcResult?.status === 'UNMATCHED') {
+    if (rpcResult.status === 'UNMATCHED') {
       sendSystemAlert({
         type: 'WEBHOOK_FAILURE',
         severity: 'CRITICAL',
@@ -150,25 +151,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const txId: string | undefined = rpcResult?.transaction_id;
-    const senderAccountNumber = rpcResult?.sender_account_number || extractedSender.senderAccountNumber;
-    const senderBankCode = rpcResult?.sender_bank_code || extractedSender.senderBankCode;
-    const senderName = rpcResult?.sender_name || extractedSender.senderName;
+    const txId: string | undefined = rpcResult.transaction_id;
+    const senderAccountNumber = rpcResult.sender_account_number || extractedSender.senderAccountNumber;
+    const senderBankCode = rpcResult.sender_bank_code || extractedSender.senderBankCode;
+    const senderName = rpcResult.sender_name || extractedSender.senderName;
 
-    // Persist encrypted verified refund destination immediately when sender details exist on deposit webhook
+    // Persist encrypted verified refund destination strictly when sender details exist
     if (txId && senderAccountNumber && senderBankCode) {
-      await saveVerifiedRefundDestination({
+      const saveDest = await saveVerifiedRefundDestination({
         transactionId: txId,
         bankCode: senderBankCode,
         accountNumber: senderAccountNumber,
         accountName: senderName || 'Verified Buyer',
         source: 'DEPOSIT_SENDER',
         supabaseClient: supabase,
-      }).catch(() => {});
+      });
+      if (!saveDest.verified) {
+        await sendSystemAlert({
+          type: 'SYSTEM_FAILURE',
+          severity: 'CRITICAL',
+          title: 'Failed Persisting Deposit Refund Destination (Fail Closed)',
+          transactionId: txId,
+          details: { eventId },
+        }).catch(() => {});
+        return NextResponse.json(
+          { success: false, error: 'Failed saving verified refund destination.' },
+          { status: 500 }
+        );
+      }
     }
 
-    // Handle Underpayment (Cumulative deposits < total_amount)
-    if (rpcResult?.status === 'PARTIALLY_FUNDED') {
+    // Handle Underpayment
+    if (rpcResult.status === 'PARTIALLY_FUNDED') {
       sendSystemAlert({
         type: 'STUCK_FUNDS',
         severity: 'CRITICAL',
@@ -193,29 +207,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Handle Late or Excess Deposit received after EXPIRED/CANCELLED/non-funding state
-    if (rpcResult?.late_or_excess) {
+    if (rpcResult.late_or_excess) {
       const isLateAfterTerminal =
-        rpcResult?.deposit_status === 'LATE_AFTER_TERMINAL' ||
-        ['EXPIRED', 'CANCELLED'].includes(String(rpcResult?.current_status || ''));
+        rpcResult.deposit_status === 'LATE_AFTER_TERMINAL' ||
+        ['EXPIRED', 'CANCELLED'].includes(String(rpcResult.current_status || ''));
 
       let autoRefundResult: { success: boolean; transferId?: string; error?: string } | null = null;
       if (isLateAfterTerminal && txId && amountNaira > 0) {
-        const { data: txRow } = await supabase
+        const { data: txRow, error: lateErr } = await supabase
           .from('transactions')
           .select('*')
           .eq('id', txId)
-          .maybeSingle();
-        if (txRow) {
-          const mergedLate = mergeTransactionWithLifecycleOverlay(txRow);
-          autoRefundResult = await executeBuyerOrderRefund({
-            tx: mergedLate,
-            amountNgn: amountNaira,
-            reasonTag: 'LATE_DEPOSIT_REFUND',
-            targetStatus: null,
-            referenceKey: `late_dep_${eventId}`,
-            supabaseClient: supabase,
-          });
+          .single();
+        if (lateErr || !txRow) {
+          return NextResponse.json(
+            { success: false, error: lateErr?.message || 'Failed loading late-deposit transaction.' },
+            { status: 500 }
+          );
         }
+        autoRefundResult = await executeBuyerOrderRefund({
+          tx: txRow,
+          amountNgn: amountNaira,
+          reasonTag: 'LATE_DEPOSIT_REFUND',
+          targetStatus: null,
+          referenceKey: `late_dep_${eventId}`,
+          supabaseClient: supabase,
+        });
       }
 
       sendSystemAlert({
@@ -251,8 +268,8 @@ export async function POST(request: NextRequest) {
       }, { status: 200 });
     }
 
-    if (!rpcResult?.success) {
-      return NextResponse.json({ success: false, error: rpcResult?.error || 'Deposit handling failed' }, { status: 400 });
+    if (!rpcResult.success) {
+      return NextResponse.json({ success: false, error: rpcResult.error || 'Deposit handling failed' }, { status: 400 });
     }
 
     if (rpcResult.excess_amount > 0) {
@@ -272,11 +289,14 @@ export async function POST(request: NextRequest) {
     // 3. Evaluate deposit-time risk/cap/self-dealing
     let effectiveVendorId: string | null = rpcResult.vendor_id || null;
     if (txId && !effectiveVendorId) {
-      const { data: txRow } = await supabase
+      const { data: txRow, error: vLookupErr } = await supabase
         .from('transactions')
         .select('vendor_id')
         .eq('id', txId)
-        .maybeSingle();
+        .single();
+      if (vLookupErr) {
+        return NextResponse.json({ success: false, error: `Vendor lookup failed: ${vLookupErr.message}` }, { status: 500 });
+      }
       effectiveVendorId = txRow?.vendor_id || null;
     }
 
@@ -309,15 +329,21 @@ export async function POST(request: NextRequest) {
 
     // 4. Issue Cryptographic Release Code & Set Delivery/Dispatch Deadlines ONLY when funded & not blocked
     if (txId && rpcResult.needs_code_issue && !depositRisk?.orderBlocked) {
-      const { data: txMeta } = await supabase
+      const { data: txMeta, error: txMetaErr } = await supabase
         .from('transactions')
         .select('*')
         .eq('id', txId)
         .single();
 
-      const mergedTx = mergeTransactionWithLifecycleOverlay(txMeta || {});
+      if (txMetaErr || !txMeta) {
+        return NextResponse.json(
+          { success: false, error: txMetaErr?.message || 'Failed loading transaction for code issuance.' },
+          { status: 500 }
+        );
+      }
+
       const cfg = await getDeliveryAndLifecycleConfig(supabase);
-      const deliveryType = mergedTx.delivery_type === 'interstate' ? 'interstate' : 'same_city';
+      const deliveryType = txMeta.delivery_type === 'interstate' ? 'interstate' : 'same_city';
       const nowMs = Date.now();
       const expiryInfo = calculateDeliveryWindowCodeExpiration(
         deliveryType,
@@ -331,7 +357,7 @@ export async function POST(request: NextRequest) {
       const rawCode = generateCryptographicReleaseCode();
       const hmacHash = computeReleaseCodeHmac(txId, rawCode);
 
-      await updateTransactionWithFallback(
+      const upd = await updateTransactionStrict(
         txId,
         {
           release_code_hash: hmacHash,
@@ -344,20 +370,24 @@ export async function POST(request: NextRequest) {
         },
         supabase
       );
+      if (!upd.success) {
+        return NextResponse.json({ success: false, error: upd.error || 'Failed storing release code.' }, { status: 500 });
+      }
 
       const smsDelivery = await sendReleaseCodeSmsOrWhatsapp({
         transactionId: txId,
-        buyerPhone: mergedTx.buyer_phone,
+        vendorId: txMeta.vendor_id,
+        buyerPhone: txMeta.buyer_phone,
         releaseCode: rawCode,
-        itemName: mergedTx.item_name || 'Escrow Order',
-        totalAmount: Number(mergedTx.total_amount) || 0,
-        vendorHandle: mergedTx.vendor_handle || '',
+        itemName: txMeta.item_name || 'Escrow Order',
+        totalAmount: Number(txMeta.total_amount) || 0,
+        vendorHandle: txMeta.vendor_handle || '',
       }).catch((err) => {
         logWarn('RELEASE_CODE_WHATSAPP_DELIVERY_FAILED', { transactionId: txId, error: err?.message });
-        return { success: false, channel: 'whatsapp', maskedPhone: maskPhoneNumber(mergedTx.buyer_phone) };
+        return { success: false, channel: 'whatsapp', maskedPhone: maskPhoneNumber(txMeta.buyer_phone) };
       });
 
-      await supabase
+      const { error: auditErr } = await supabase
         .from('admin_audit_log')
         .insert({
           admin_email: 'system:anchor_webhook',
@@ -371,8 +401,10 @@ export async function POST(request: NextRequest) {
             code_expires_at: expiryInfo.codeExpiresAt,
             dispatch_deadline_at: dispatchDeadlineAt,
           },
-        })
-        .then(() => {}, () => {});
+        });
+      if (auditErr) {
+        return NextResponse.json({ success: false, error: `Audit log insert failed: ${auditErr.message}` }, { status: 500 });
+      }
 
       logInfo('RELEASE_CODE_ISSUED_FOR_FUNDED_ORDER', {
         transactionId: txId,

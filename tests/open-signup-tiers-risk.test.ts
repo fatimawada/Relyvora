@@ -24,7 +24,6 @@ import {
 } from '../lib/safetyLimits';
 import {
   computeNameSimilarityScore,
-  setVendorSafetyOverlay,
   verifySettlementNameMatchesKyc,
 } from '../lib/payoutSafety';
 import {
@@ -38,7 +37,6 @@ import {
   evaluateOrderCreationRisk,
   extractRequestDeviceFingerprints,
   listRiskFlagsAndHolds,
-  resetRiskFallbackStoreForTests,
 } from '../lib/riskEngine';
 import {
   expectedAdminConfirmationPhrase,
@@ -46,13 +44,11 @@ import {
 } from '../lib/adminSafety';
 import { verifyAdminSession } from '../lib/adminAuth';
 import { sendSystemAlert } from '../lib/alerts';
-import { computeReleaseCodeHmac } from '../lib/releaseCode';
+import type { MetaTemplatePayload } from '../lib/whatsapp';
 import {
-  MetaTemplatePayload,
-  getInMemoryOutboundLogsForTests,
-  resetWhatsappTestState,
-  setWhatsappTransportForTests,
-} from '../lib/whatsapp';
+  clearWhatsappRetryMemoryCacheForTests,
+  ensureTestSecrets,
+} from './helpers/stagingAuthHelper';
 
 import { POST as vendorOnboardingPost } from '../app/api/vendor/onboarding/route';
 import { POST as settlementPost, PUT as settlementPut } from '../app/api/vendor/settlement-account/route';
@@ -153,7 +149,7 @@ async function main() {
   process.env.ANCHOR_SECRET_KEY = 'anc_test_secret_open_signup';
   process.env.ANCHOR_WEBHOOK_SECRET = 'anc_wh_secret_open_signup';
   process.env.WHATSAPP_APP_SECRET = 'meta_wh_secret_open_signup';
-  const adminUserId = '00000000-0000-0000-0000-000000000999';
+  const adminUserId = crypto.randomUUID();
   process.env.ADMIN_USER_IDS = adminUserId;
 
   let anchorKycStatusToReturn: 'PENDING' | 'VERIFIED' = 'PENDING';
@@ -161,7 +157,8 @@ async function main() {
   const capturedResendPayloads: any[] = [];
 
   const runTag = Date.now().toString();
-  const vendorUserId = '00000000-0000-0000-0000-000000000801';
+  const vendorUserId = crypto.randomUUID();
+  const openSuiteIp = `198.51.100.${Math.floor(Math.random() * 180) + 10}`;
   const vendorEmail = `test-open-vendor-${runTag}@relyvora.com`;
   const vendorHandle = `@TestOpenShop${runTag.slice(-4)}`;
   const vendorPhone = '+2348099998801';
@@ -170,20 +167,39 @@ async function main() {
   const freshAdminJwt = makeFakeJwt(adminUserId, 'admin@relyvora.com', nowSec - 60, 'aal2');
   const staleAdminJwt = makeFakeJwt(adminUserId, 'admin@relyvora.com', nowSec - 30 * 60, 'aal2');
 
-  setWhatsappTransportForTests(async (payload: MetaTemplatePayload) => {
-    sentWhatsapp.push({
-      to: payload.to,
-      templateName: payload.template?.name,
-      body: payload,
-    });
-    return {
-      ok: true,
-      messageId: `wamid_test_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-    };
-  });
+  clearWhatsappRetryMemoryCacheForTests();
 
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const u = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+    if (u.includes('graph.facebook.com/') && u.endsWith('/messages')) {
+      const payload = JSON.parse(String(init?.body || '{}')) as MetaTemplatePayload;
+      const messageId = `wamid_test_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      sentWhatsapp.push({
+        to: payload.to,
+        templateName: payload.template?.name,
+        body: payload,
+      });
+      return new Response(
+        JSON.stringify({
+          messaging_product: 'whatsapp',
+          messages: [{ id: messageId, message_status: 'sent' }],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
+    }
+
+    if (u.includes('challenges.cloudflare.com/turnstile/v0/siteverify')) {
+      const form = new URLSearchParams(String(init?.body || ''));
+      const tok = (form.get('response') || '').trim();
+      const valid = Boolean(tok) && tok.toLowerCase() !== 'invalid' && tok.toLowerCase() !== 'fail' && tok.length >= 8;
+      return new Response(
+        JSON.stringify(
+          valid ? { success: true } : { success: false, 'error-codes': ['invalid-input-response'] }
+        ),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      );
+    }
 
     if (u.includes('/auth/v1/user')) {
       const headersObj = new Headers(init?.headers || {});
@@ -280,7 +296,7 @@ async function main() {
   };
 
   try {
-    resetRiskFallbackStoreForTests();
+    ensureTestSecrets();
     clearSafetySettingsCache();
 
     // Ensure open signup + Owner Override defaults in system_settings
@@ -355,7 +371,7 @@ async function main() {
         headers: {
           'content-type': 'application/json',
           authorization: 'Bearer tok_open_vendor_confirmed',
-          'x-forwarded-for': '203.0.113.10',
+          'x-vercel-forwarded-for': '203.0.113.10',
         },
         body: JSON.stringify(baseOnboardBody({ captchaToken: '' })),
       })
@@ -366,7 +382,7 @@ async function main() {
         headers: {
           'content-type': 'application/json',
           authorization: 'Bearer tok_open_vendor_confirmed',
-          'x-forwarded-for': '203.0.113.11',
+          'x-vercel-forwarded-for': '203.0.113.11',
         },
         body: JSON.stringify(baseOnboardBody({ captchaToken: 'fail' })),
       })
@@ -384,7 +400,7 @@ async function main() {
         headers: {
           'content-type': 'application/json',
           authorization: 'Bearer tok_open_vendor_confirmed',
-          'x-forwarded-for': '203.0.113.12',
+          'x-vercel-forwarded-for': '203.0.113.12',
         },
         body: JSON.stringify(baseOnboardBody()),
       })
@@ -405,7 +421,7 @@ async function main() {
         headers: {
           'content-type': 'application/json',
           authorization: 'Bearer tok_open_vendor_confirmed',
-          'x-forwarded-for': '203.0.113.13',
+          'x-vercel-forwarded-for': '203.0.113.13',
           'user-agent': 'OpenTestBrowser/1.0',
         },
         body: JSON.stringify(
@@ -439,7 +455,11 @@ async function main() {
     const resLinkUnverified = await createLinkPost(
       new NextRequest('http://localhost/api/escrow/create-link', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.14' },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': '203.0.113.14',
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({
           vendorHandle,
           itemName: 'TEST Blocked Unverified Item',
@@ -462,7 +482,7 @@ async function main() {
         headers: {
           'content-type': 'application/json',
           authorization: 'Bearer tok_open_vendor_confirmed',
-          'x-forwarded-for': '203.0.113.15',
+          'x-vercel-forwarded-for': '203.0.113.15',
           'user-agent': 'OpenTestBrowser/2.0',
         },
         body: JSON.stringify(baseOnboardBody()),
@@ -532,11 +552,15 @@ async function main() {
       `NEW tier defaults match FINAL DECISIONS (perOrder=${newTierCap}, daily=${newDailyCap})`
     );
 
-    // Exceeds NEW tier cap at create-link -> 400
+    // Exceeds NEW tier cap at create-link -> 400/403
     const resOverNewCap = await createLinkPost(
       new NextRequest('http://localhost/api/escrow/create-link', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.20' },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': '203.0.113.20',
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({
           vendorHandle,
           itemName: 'TEST Over-Cap Laptop',
@@ -552,14 +576,21 @@ async function main() {
     );
 
     // Exceeds NEW tier daily cap (₦5,000,000) at create-link -> 400/403
-    setVendorSafetyOverlay(openVendorId, {
-      daily_volume_ngn: 3000000,
-      daily_volume_reset_at: new Date().toISOString(),
-    });
+    await supabase
+      .from('vendors')
+      .update({
+        daily_volume_ngn: 3000000,
+        daily_volume_reset_at: new Date().toISOString(),
+      })
+      .eq('id', openVendorId);
     const resOverNewDailyCap = await createLinkPost(
       new NextRequest('http://localhost/api/escrow/create-link', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.25' },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': '203.0.113.25',
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({
           vendorHandle,
           itemName: 'TEST Over-Daily-Cap Item',
@@ -571,10 +602,13 @@ async function main() {
     );
     const jsonOverDailyCap = await resOverNewDailyCap.json().catch(() => ({}));
     if (jsonOverDailyCap?.transaction?.id) createdTxIds.push(jsonOverDailyCap.transaction.id);
-    setVendorSafetyOverlay(openVendorId, {
-      daily_volume_ngn: 0,
-      daily_volume_reset_at: new Date().toISOString(),
-    });
+    await supabase
+      .from('vendors')
+      .update({
+        daily_volume_ngn: 0,
+        daily_volume_reset_at: new Date().toISOString(),
+      })
+      .eq('id', openVendorId);
     assert(
       resOverNewDailyCap.status === 400 || resOverNewDailyCap.status === 403,
       `NEW tier rejects order pushing cumulative daily volume past ₦${newDailyCap.toLocaleString()} (HTTP ${resOverNewDailyCap.status})`
@@ -584,7 +618,12 @@ async function main() {
     const resValidNewLink = await createLinkPost(
       new NextRequest('http://localhost/api/escrow/create-link', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.21', 'user-agent': 'CreatorUA' },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': '203.0.113.21',
+          'user-agent': 'CreatorUA',
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({
           vendorHandle,
           itemName: 'TEST Deposit Over-Cap Hold Item',
@@ -643,7 +682,11 @@ async function main() {
     const resReleaseHeld = await releasePost(
       new NextRequest('http://localhost/api/escrow/release', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': '198.51.100.91',
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({ transactionId: overDepositTxId, releaseCode: '123456' }),
       })
     );
@@ -653,19 +696,21 @@ async function main() {
     );
 
     // Rule-based NEW -> ESTABLISHED promotion (requires 5 clean sales AND >= 14 days AND 0 disputes)
-    // Never lift caps on sales count alone (< 14 days must stay NEW with 2.5M / 5M caps)
     const promoThreshold = tierCfg.promotion.established_min_completed_orders;
     const minDays = tierCfg.promotion.established_min_days_since_first_order;
     const youngFirstOrderIso = new Date(Date.now() - 2 * 24 * 3600_000).toISOString();
     const oldFirstOrderIso = new Date(Date.now() - (minDays + 2) * 24 * 3600_000).toISOString();
 
-    setVendorSafetyOverlay(openVendorId, {
-      tier: 'NEW',
-      successful_sales_count: promoThreshold - 1,
-      completed_orders_count: promoThreshold - 1,
-      disputes_count: 0,
-      first_order_at: youngFirstOrderIso,
-    });
+    await supabase
+      .from('vendors')
+      .update({
+        tier: 'NEW',
+        successful_sales_count: promoThreshold - 1,
+        completed_orders_count: promoThreshold - 1,
+        disputes_count: 0,
+        first_order_at: youngFirstOrderIso,
+      })
+      .eq('id', openVendorId);
     const youngPromo = await recordCompletedOrderAndEvaluateTier({ vendorId: openVendorId, supabaseClient: supabase });
     const capsYoung = await getVendorEffectiveTierAndCaps(openVendorId, supabase);
     assert(
@@ -677,29 +722,27 @@ async function main() {
       `5 sales under ${minDays} days does NOT promote or uncap vendor (tier=${youngPromo.newTier}, cap=${capsYoung.perOrderCapNgn})`
     );
 
-    setVendorSafetyOverlay(openVendorId, {
-      tier: 'NEW',
-      successful_sales_count: promoThreshold - 1,
-      completed_orders_count: promoThreshold - 1,
-      disputes_count: 0,
-      first_order_at: oldFirstOrderIso,
-    });
     await supabase
       .from('vendors')
       .update({
+        tier: 'NEW',
+        successful_sales_count: promoThreshold - 1,
         completed_orders_count: promoThreshold - 1,
         disputes_count: 0,
         first_order_at: oldFirstOrderIso,
       })
-      .eq('id', openVendorId)
-      .then(() => {});
+      .eq('id', openVendorId);
 
     const promoResult = await recordCompletedOrderAndEvaluateTier({ vendorId: openVendorId, supabaseClient: supabase });
     const capsAfterPromo = await getVendorEffectiveTierAndCaps(openVendorId, supabase);
     const resEstAllowedLink = await createLinkPost(
       new NextRequest('http://localhost/api/escrow/create-link', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.23' },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': '203.0.113.23',
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({
           vendorHandle,
           itemName: 'TEST Established Tier 3.1M Order',
@@ -718,7 +761,11 @@ async function main() {
     const resOverEstCap = await createLinkPost(
       new NextRequest('http://localhost/api/escrow/create-link', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.24' },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': '203.0.113.24',
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({
           vendorHandle,
           itemName: 'TEST Over Established 10M Cap Order',
@@ -804,7 +851,11 @@ async function main() {
     const resUncappedLink = await createLinkPost(
       new NextRequest('http://localhost/api/escrow/create-link', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-forwarded-for': '203.0.113.22' },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': '203.0.113.22',
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({
           vendorHandle,
           itemName: 'TEST Uncapped Trusted 11M Order',
@@ -860,7 +911,11 @@ async function main() {
     const resSettleBad = await settlementPost(
       new NextRequest('http://localhost/api/vendor/settlement-account', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer tok_open_vendor_confirmed' },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': openSuiteIp,
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({ bankCode: '058', accountNumber: '0987654321' }),
       })
     );
@@ -869,34 +924,51 @@ async function main() {
     const resSettleReq = await settlementPost(
       new NextRequest('http://localhost/api/vendor/settlement-account', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer tok_open_vendor_confirmed' },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': openSuiteIp,
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({ bankCode: '058', accountNumber: '0987654321' }),
       })
     );
     const resSettleConfirm = await settlementPut(
       new NextRequest('http://localhost/api/vendor/settlement-account', {
         method: 'PUT',
-        headers: { 'content-type': 'application/json', authorization: 'Bearer tok_open_vendor_confirmed' },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': openSuiteIp,
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({ confirmationCode: 'WHATSAPP_CONFIRMED' }),
       })
     );
     const jsonSettleConfirm = await resSettleConfirm.json();
+    const settleWaMsg = sentWhatsapp.find((w) => w.templateName === 'settlement_change_confirm_v1');
+    const settleWaBodyParams = (settleWaMsg?.body?.template?.components?.find((c: any) => c.type === 'body') as any)
+      ?.parameters?.map((p: any) => p.text) || [];
     assert(
       resSettleBad.status === 422 &&
         (resSettleReq.status === 200 || resSettleReq.status === 202) &&
-        sentWhatsapp.some((w) => w.templateName === 'settlement_change_confirm_v1') &&
+        Boolean(settleWaMsg) &&
+        settleWaBodyParams[1] === '4321' &&
+        settleWaBodyParams[2] === 'Guaranty Trust Bank (GTBank)' &&
+        !settleWaBodyParams.join(' ').includes('*') &&
         resSettleConfirm.status === 200 &&
         Boolean(jsonSettleConfirm.payoutHoldUntil),
-      `Settlement bank change blocks mismatch (${resSettleBad.status}), sends WhatsApp confirm (${resSettleReq.status}), and enforces 48h payout hold`
+      `Settlement bank change blocks mismatch (${resSettleBad.status}), sends WhatsApp confirm (${resSettleReq.status}, GTBank resolved, no asterisks), and enforces 48h payout hold`
     );
 
-    // Clear settlement hold on overlay so cooling window release tests can proceed later
-    setVendorSafetyOverlay(openVendorId, {
-      payout_hold_until: null,
-      disputes_count: 0,
-      successful_sales_count: 0,
-      completed_orders_count: 0,
-    });
+    // Clear settlement hold in DB so cooling window release tests can proceed later
+    await supabase
+      .from('vendors')
+      .update({
+        payout_hold_until: null,
+        disputes_count: 0,
+        successful_sales_count: 0,
+        completed_orders_count: 0,
+      })
+      .eq('id', openVendorId);
 
     // =========================================================================
     // 4. RISK SCORING, SELF-DEALING DETECTION & PRIVACY-PRESERVING HASHING
@@ -904,18 +976,25 @@ async function main() {
     console.log('\n--- 4. RISK SCORING, SELF-DEALING & PRIVACY-PRESERVING HASHING ---');
     const rawTestIp = '198.51.100.77';
     const rawTestUa = 'RiskTestBrowser/9.9';
+    const spoofOnlyFps = await extractRequestDeviceFingerprints(
+      new NextRequest('http://localhost/api/escrow/create-link', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '203.0.113.250', 'x-real-ip': '203.0.113.251', 'user-agent': rawTestUa },
+      })
+    );
     const fps = await extractRequestDeviceFingerprints(
       new NextRequest('http://localhost/api/escrow/create-link', {
         method: 'POST',
-        headers: { 'x-forwarded-for': rawTestIp, 'user-agent': rawTestUa, 'x-device-id': 'dev_raw_secret_id' },
+        headers: { 'x-vercel-forwarded-for': rawTestIp, 'user-agent': rawTestUa, 'x-device-id': 'dev_raw_secret_id' },
       })
     );
     assert(
-      Boolean(fps.ipHash && fps.uaHash && fps.deviceHash) &&
+      spoofOnlyFps.ipHash === null &&
+        Boolean(fps.ipHash && fps.uaHash && fps.deviceHash) &&
         !fps.ipHash!.includes(rawTestIp) &&
         !fps.uaHash!.includes(rawTestUa) &&
         !fps.deviceHash!.includes('dev_raw_secret_id'),
-      'Request IP/UA/device fingerprints are stored strictly as salted cryptographic hashes (no raw PII)'
+      'Trusted platform header x-vercel-forwarded-for hashes cleanly while spoofed x-forwarded-for is ignored (ipHash=null)'
     );
 
     // Score < 3 ALLOW
@@ -948,7 +1027,12 @@ async function main() {
     const resSelfPhoneLink = await createLinkPost(
       new NextRequest('http://localhost/api/escrow/create-link', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-forwarded-for': rawTestIp, 'user-agent': rawTestUa },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': rawTestIp,
+          'user-agent': rawTestUa,
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({
           vendorHandle,
           itemName: 'TEST Self-Dealing Shared Phone',
@@ -1033,7 +1117,11 @@ async function main() {
     const resCoolLink = await createLinkPost(
       new NextRequest('http://localhost/api/escrow/create-link', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-forwarded-for': '198.51.100.88' },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': '198.51.100.88',
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({
           vendorHandle,
           itemName: 'TEST Cooling Window Order',
@@ -1058,31 +1146,31 @@ async function main() {
     const jsonFundCool = await resFundCool.json();
     const releaseCode = jsonFundCool?.sandbox_release_code as string;
 
-    // Also make sure DB release_code_hmac matches if Staging DB uses older schema
-    if (releaseCode) {
-      await supabase
-        .from('transactions')
-        .update({ release_code_hmac: computeReleaseCodeHmac(coolTxId, releaseCode) })
-        .eq('id', coolTxId);
-    }
-
     // Attempt release for NEW tier -> HTTP 202 COOLING_HOLD + WhatsApp PROBLEM button sent!
     const resCool202 = await releasePost(
       new NextRequest('http://localhost/api/escrow/release', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': '198.51.100.91',
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({ transactionId: coolTxId, releaseCode }),
       })
     );
     const jsonCool202 = await resCool202.json();
+    const coolMsg = sentWhatsapp.find((w) => w.templateName === 'payout_cooling_notice_v1');
+    const coolBtnPayload = (coolMsg?.body?.template?.components?.find((c: any) => c.type === 'button') as any)
+      ?.parameters?.[0]?.payload;
     assert(
       resCool202.status === 202 &&
         jsonCool202.coolingActive === true &&
-        sentWhatsapp.some((w) => w.templateName === 'payout_cooling_notice_v1'),
-      `NEW tier code entry triggers HTTP 202 cooling hold and dispatches buyer WhatsApp PROBLEM notice`
+        Boolean(coolMsg) &&
+        coolBtnPayload === `PROBLEM_ORDER:${coolTxId}`,
+      `NEW tier code entry triggers HTTP 202 cooling hold and dispatches buyer WhatsApp Problem notice (${coolBtnPayload})`
     );
 
-    // Buyer taps PROBLEM button via WhatsApp webhook -> freezes order to DISPUTED
+    // Buyer taps "Problem" button via WhatsApp webhook -> freezes order to DISPUTED
     const waProblemPayload = JSON.stringify({
       entry: [
         {
@@ -1094,7 +1182,7 @@ async function main() {
                     id: `wamid_problem_${Date.now()}`,
                     from: '2348088887766',
                     type: 'button',
-                    button: { payload: `PROBLEM_ORDER:${coolTxId}`, text: 'PROBLEM' },
+                    button: { payload: `PROBLEM_ORDER:${coolTxId}`, text: 'Problem' },
                   },
                 ],
               },
@@ -1134,7 +1222,11 @@ async function main() {
     const resEstLink = await createLinkPost(
       new NextRequest('http://localhost/api/escrow/create-link', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-forwarded-for': '198.51.100.89' },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': '198.51.100.89',
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({
           vendorHandle,
           itemName: 'TEST Established 0h Release',
@@ -1159,7 +1251,11 @@ async function main() {
     const resEstRelease = await releasePost(
       new NextRequest('http://localhost/api/escrow/release', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': '198.51.100.91',
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({ transactionId: estTxId, releaseCode: estCode }),
       })
     );
@@ -1172,7 +1268,11 @@ async function main() {
     const resEstHighValLink = await createLinkPost(
       new NextRequest('http://localhost/api/escrow/create-link', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-forwarded-for': '198.51.100.90' },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': '198.51.100.90',
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({
           vendorHandle,
           itemName: 'TEST Established High-Value 500k Order',
@@ -1187,7 +1287,6 @@ async function main() {
     if (estHighValTxId) {
       createdTxIds.push(estHighValTxId);
       await supabase.from('transactions').update({ review_hold: false }).eq('id', estHighValTxId);
-      resetRiskFallbackStoreForTests();
     }
     const resEstHighValFund = await confirmPaymentPost(
       new NextRequest('http://localhost/api/escrow/confirm-payment', {
@@ -1201,7 +1300,11 @@ async function main() {
     const resEstHighValRelease = await releasePost(
       new NextRequest('http://localhost/api/escrow/release', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': '198.51.100.91',
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({ transactionId: estHighValTxId, releaseCode: estHighValCode }),
       })
     );
@@ -1311,7 +1414,11 @@ async function main() {
     const resReleasePaused = await releasePost(
       new NextRequest('http://localhost/api/escrow/release', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': '198.51.100.91',
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({ transactionId: overDepositTxId, releaseCode: '123456' }),
       })
     );
@@ -1325,7 +1432,11 @@ async function main() {
     const resLinkPaused = await createLinkPost(
       new NextRequest('http://localhost/api/escrow/create-link', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          'x-vercel-forwarded-for': '198.51.100.91',
+          authorization: 'Bearer tok_open_vendor_confirmed',
+        },
         body: JSON.stringify({
           vendorHandle,
           itemName: 'TEST Paused Checkout',
@@ -1401,11 +1512,20 @@ async function main() {
     for (const vId of createdVendorIds) {
       await supabase.from('risk_flags').delete().eq('vendor_id', vId);
       await supabase.from('admin_audit_log').delete().eq('target_id', vId);
-      await supabase.from('vendors').delete().eq('id', vId);
+      await supabase.from('rate_limit_buckets').delete().ilike('key', `%${vId}%`);
+      const { error: vDelErr } = await supabase.from('vendors').delete().eq('id', vId);
+      if (vDelErr) {
+        await supabase
+          .from('vendors')
+          .update({ user_id: null, store_name: `TEST - Archived Open Vendor (${vId.slice(0, 8)})`, is_suspended: true })
+          .eq('id', vId);
+      }
     }
+    await supabase.from('rate_limit_buckets').delete().ilike('key', '%198.51.100.%');
+    await supabase.from('rate_limit_buckets').delete().ilike('key', `%${openSuiteIp}%`);
+    await supabase.from('rate_limit_buckets').delete().ilike('key', '%203.0.113.%');
 
-    resetWhatsappTestState();
-    resetRiskFallbackStoreForTests();
+    clearWhatsappRetryMemoryCacheForTests();
     globalThis.fetch = realFetch;
 
     if (origAnchorSecret === undefined) delete process.env.ANCHOR_SECRET_KEY;
@@ -1424,9 +1544,6 @@ async function main() {
     else process.env.RESEND_API_KEY = origResendKey;
     if (origAlertEmail === undefined) delete process.env.ALERT_EMAIL;
     else process.env.ALERT_EMAIL = origAlertEmail;
-
-    // Keep linter happy about unused helper when inspecting logs
-    void getInMemoryOutboundLogsForTests;
   }
 
   console.log('\n======================================================================');

@@ -12,9 +12,9 @@
 
 import crypto from 'crypto';
 import { getServiceSupabase } from '@/lib/supabaseServer';
-import { isSchemaMissingError } from '@/lib/whatsapp';
 import { performAnchorNameEnquiry } from '@/lib/payoutSafety';
 import { logWarn } from '@/lib/logger';
+import { sendSystemAlert } from '@/lib/alerts';
 
 export interface RefundAccountPayload {
   bankCode: string;
@@ -38,23 +38,6 @@ export interface RefundDestinationState {
   maskedAccount: string | null;
 }
 
-interface GlobalRefundOverlayStore {
-  byTxId: Map<string, RefundDestinationState>;
-}
-
-const gRef = globalThis as unknown as { __relyvoraRefundOverlay?: GlobalRefundOverlayStore };
-
-function getRefundOverlayStore(): GlobalRefundOverlayStore {
-  if (!gRef.__relyvoraRefundOverlay) {
-    gRef.__relyvoraRefundOverlay = { byTxId: new Map() };
-  }
-  return gRef.__relyvoraRefundOverlay;
-}
-
-export function resetRefundDestinationOverlayForTests() {
-  getRefundOverlayStore().byTxId.clear();
-}
-
 function getRefundEncryptionKey(): Buffer {
   const raw =
     process.env.REFUND_DATA_ENCRYPTION_KEY ||
@@ -63,10 +46,9 @@ function getRefundEncryptionKey(): Buffer {
     '';
 
   if (!raw) {
-    if (process.env.NODE_ENV === 'production' && process.env.PAYMENTS_MODE === 'live') {
-      throw new Error('CRITICAL SECURITY ERROR: REFUND_DATA_ENCRYPTION_KEY or RELEASE_CODE_PEPPER is required.');
-    }
-    return crypto.createHash('sha256').update('relyvora_sandbox_refund_aes_key').digest();
+    throw new Error(
+      'CRITICAL SECURITY ERROR: REFUND_DATA_ENCRYPTION_KEY, RELEASE_CODE_PEPPER, or SUPABASE_SERVICE_ROLE_KEY is required.'
+    );
   }
   return crypto.createHash('sha256').update(raw.trim()).digest();
 }
@@ -203,39 +185,31 @@ export async function saveVerifiedRefundDestination(params: {
     maskedAccount: maskAccounttail(cleanAcc),
   };
 
-  getRefundOverlayStore().byTxId.set(params.transactionId, state);
+  const { error } = await supabase
+    .from('transactions')
+    .update({
+      refund_destination_bank: cleanBank,
+      refund_destination_account: cleanAcc,
+      refund_destination_name: cleanName,
+      refund_account_ciphertext: encrypted.ciphertext,
+      refund_account_iv: encrypted.iv,
+      refund_account_auth_tag: encrypted.authTag,
+      refund_account_verified: true,
+      refund_account_verified_at: nowIso,
+      refund_account_source: params.source,
+      updated_at: nowIso,
+    })
+    .eq('id', params.transactionId);
 
-  try {
-    const { error } = await supabase
-      .from('transactions')
-      .update({
-        refund_destination_bank: cleanBank,
-        refund_destination_account: cleanAcc,
-        refund_destination_name: cleanName,
-        refund_account_ciphertext: encrypted.ciphertext,
-        refund_account_iv: encrypted.iv,
-        refund_account_auth_tag: encrypted.authTag,
-        refund_account_verified: true,
-        refund_account_verified_at: nowIso,
-        refund_account_source: params.source,
-        updated_at: nowIso,
-      })
-      .eq('id', params.transactionId);
-
-    if (error && isSchemaMissingError(error)) {
-      await supabase
-        .from('transactions')
-        .update({
-          refund_destination_bank: cleanBank,
-          refund_destination_account: cleanAcc,
-          refund_destination_name: cleanName,
-          updated_at: nowIso,
-        })
-        .eq('id', params.transactionId)
-        .then(() => {}, () => {});
-    }
-  } catch {
-    // Overlay stays populated
+  if (error) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Failed Persisting Verified Refund Destination (Fail Closed)',
+      transactionId: params.transactionId,
+      details: { source: params.source, error: error.message },
+    }).catch(() => {});
+    throw new Error(`Failed saving verified refund destination: ${error.message}`);
   }
 
   return state;
@@ -292,9 +266,6 @@ export async function resolveVerifiedRefundDestination(
   tx: Record<string, any>,
   supabaseClient?: ReturnType<typeof getServiceSupabase>
 ): Promise<RefundDestinationState> {
-  const overlay = tx?.id ? getRefundOverlayStore().byTxId.get(tx.id) : undefined;
-  if (overlay && overlay.verified) return overlay;
-
   const decrypted = decryptRefundAccount({
     ciphertext: tx?.refund_account_ciphertext,
     iv: tx?.refund_account_iv,
@@ -337,33 +308,39 @@ export async function resolveVerifiedRefundDestination(
     };
   }
 
-  // Fallback check against deposits table
   if (tx?.id) {
     const supabase = supabaseClient || getServiceSupabase();
-    try {
-      const { data: dep } = await supabase
-        .from('deposits')
-        .select('sender_account_number, sender_bank_code, sender_name, created_at')
-        .eq('transaction_id', tx.id)
-        .not('sender_account_number', 'is', null)
-        .not('sender_bank_code', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    const { data: dep, error: depErr } = await supabase
+      .from('deposits')
+      .select('sender_account_number, sender_bank_code, sender_name, created_at')
+      .eq('transaction_id', tx.id)
+      .not('sender_account_number', 'is', null)
+      .not('sender_bank_code', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-      if (dep?.sender_account_number && dep?.sender_bank_code) {
-        return {
-          verified: true,
-          bankCode: String(dep.sender_bank_code),
-          accountNumber: String(dep.sender_account_number),
-          accountName: String(dep.sender_name || 'Verified Deposit Sender'),
-          source: 'DEPOSIT_SENDER',
-          verifiedAt: dep.created_at || null,
-          maskedAccount: maskAccounttail(dep.sender_account_number),
-        };
-      }
-    } catch {
-      // ignore
+    if (depErr) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Deposit Sender Refund Lookup Failed (Fail Closed)',
+        transactionId: tx.id,
+        details: { error: depErr.message },
+      }).catch(() => {});
+      throw new Error(`Deposit refund destination lookup failed: ${depErr.message}`);
+    }
+
+    if (dep?.sender_account_number && dep?.sender_bank_code) {
+      return {
+        verified: true,
+        bankCode: String(dep.sender_bank_code),
+        accountNumber: String(dep.sender_account_number),
+        accountName: String(dep.sender_name || 'Verified Deposit Sender'),
+        source: 'DEPOSIT_SENDER',
+        verifiedAt: dep.created_at || null,
+        maskedAccount: maskAccounttail(dep.sender_account_number),
+      };
     }
   }
 

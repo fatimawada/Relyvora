@@ -16,43 +16,33 @@ import {
   getTierUpgradeThresholdServer,
   type VendorTierName,
 } from './safetyLimits';
-import { getVendorSafetyOverlay, setVendorSafetyOverlay } from './payoutSafety';
-import { getTxRiskFallback, hashPhoneSignal } from './riskEngine';
+import { hashPhoneSignal } from './riskEngine';
 import { logAndAlertAdminAction } from './adminSafety';
-import { isSchemaMissingError } from './whatsapp';
 import { sendSystemAlert } from './alerts';
-
-function mergeVendorWithOverlay(
-  dbVendor: Record<string, any> | null,
-  vendorIdHint?: string | null
-): Record<string, any> | null {
-  const id = dbVendor?.id || vendorIdHint;
-  const overlay = id ? getVendorSafetyOverlay(id) || {} : {};
-  if (!dbVendor) {
-    return Object.keys(overlay).length > 0 ? overlay : null;
-  }
-  const definedEntries = Object.entries(dbVendor).filter(([, v]) => v !== undefined);
-  return {
-    ...Object.fromEntries(definedEntries),
-    ...overlay,
-  };
-}
 
 export async function getVendorEffectiveTierAndCaps(
   vendorOrId: string | Record<string, any>,
   supabaseClient?: ReturnType<typeof getServiceSupabase>
 ) {
-  let vendor: Record<string, any> | null =
-    typeof vendorOrId === 'object' ? mergeVendorWithOverlay(vendorOrId, vendorOrId?.id) : null;
+  let vendor: Record<string, any> | null = typeof vendorOrId === 'object' ? vendorOrId : null;
 
   if (typeof vendorOrId === 'string') {
     const supabase = supabaseClient || getServiceSupabase();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('vendors')
       .select('*')
       .eq('id', vendorOrId)
       .maybeSingle();
-    vendor = mergeVendorWithOverlay(data, vendorOrId);
+    if (error) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Vendor Tier Read Failed (Fail Closed)',
+        details: { vendorId: vendorOrId, error: error.message },
+      }).catch(() => {});
+      throw new Error(`Failed reading vendor tier record: ${error.message}`);
+    }
+    vendor = data;
   }
 
   const tierConfig = await getTierConfigServer();
@@ -99,13 +89,22 @@ export async function recordCompletedOrderAndEvaluateTier(params: {
   successfulSalesCount: number;
 }> {
   const supabase = params.supabaseClient || getServiceSupabase();
-  const { data: rawVendor } = await supabase
+  const { data: vendor, error: vErr } = await supabase
     .from('vendors')
     .select('*')
     .eq('id', params.vendorId)
     .maybeSingle();
 
-  const vendor = mergeVendorWithOverlay(rawVendor, params.vendorId);
+  if (vErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Vendor Tier Evaluation Query Failed (Fail Closed)',
+      transactionId: params.transactionId || undefined,
+      details: { vendorId: params.vendorId, error: vErr.message },
+    }).catch(() => {});
+    throw new Error(`Failed reading vendor for tier evaluation: ${vErr.message}`);
+  }
 
   if (!vendor) {
     return {
@@ -120,58 +119,75 @@ export async function recordCompletedOrderAndEvaluateTier(params: {
 
   let eligibleToIncrement = true;
   if (params.transactionId) {
-    try {
-      const { data: txRow } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('id', params.transactionId)
-        .maybeSingle();
+    const { data: txRow, error: txErr } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('id', params.transactionId)
+      .maybeSingle();
 
-      const { data: disputeResRows } = await supabase
-        .from('dispute_resolutions')
-        .select('id')
-        .eq('transaction_id', params.transactionId)
-        .limit(1);
+    if (txErr) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Tier Sales Eligibility Query Failed (Fail Closed)',
+        transactionId: params.transactionId,
+        details: { error: txErr.message },
+      }).catch(() => {});
+      throw new Error(`Failed reading transaction for tier evaluation: ${txErr.message}`);
+    }
 
-      const txRiskFb = getTxRiskFallback(params.transactionId);
-      const hasDispute =
-        Boolean(txRow?.disputed_at) ||
-        Boolean(txRow?.dispute_reason) ||
-        String(txRow?.status || '').toUpperCase() === 'DISPUTED' ||
-        (Array.isArray(disputeResRows) && disputeResRows.length > 0);
+    const { data: disputeResRows, error: dispErr } = await supabase
+      .from('dispute_resolutions')
+      .select('id')
+      .eq('transaction_id', params.transactionId)
+      .limit(1);
 
-      const buyerPhoneHash = txRow?.buyer_phone_hash || hashPhoneSignal(txRow?.buyer_phone);
-      const vendorPhoneHash = vendor.phone_hash || hashPhoneSignal(vendor.phone_number);
-      const sharedPhone = Boolean(buyerPhoneHash && vendorPhoneHash && buyerPhoneHash === vendorPhoneHash);
+    if (dispErr) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Tier Dispute Resolution Check Failed (Fail Closed)',
+        transactionId: params.transactionId,
+        details: { error: dispErr.message },
+      }).catch(() => {});
+      throw new Error(`Failed checking dispute resolutions: ${dispErr.message}`);
+    }
 
-      const buyerIpHash = txRow?.buyer_ip_hash || null;
-      const creatorIpHash = txRow?.creator_ip_hash || txRiskFb?.creator_ip_hash || null;
-      const sharedIp = Boolean(
-        buyerIpHash &&
-          ((vendor.signup_ip_hash && buyerIpHash === vendor.signup_ip_hash) ||
-            (creatorIpHash && buyerIpHash === creatorIpHash))
-      );
+    const hasDispute =
+      Boolean(txRow?.disputed_at) ||
+      Boolean(txRow?.dispute_reason) ||
+      String(txRow?.status || '').toUpperCase() === 'DISPUTED' ||
+      (Array.isArray(disputeResRows) && disputeResRows.length > 0);
 
-      const buyerDeviceHash = txRow?.buyer_device_hash || null;
-      const creatorDeviceHash = txRow?.creator_device_hash || txRiskFb?.creator_device_hash || null;
-      const sharedDevice = Boolean(
-        buyerDeviceHash &&
-          ((vendor.signup_device_hash && buyerDeviceHash === vendor.signup_device_hash) ||
-            (creatorDeviceHash && buyerDeviceHash === creatorDeviceHash))
-      );
+    const buyerPhoneHash = txRow?.buyer_phone_hash || hashPhoneSignal(txRow?.buyer_phone);
+    const vendorPhoneHash = vendor.phone_hash || hashPhoneSignal(vendor.phone_number);
+    const sharedPhone = Boolean(buyerPhoneHash && vendorPhoneHash && buyerPhoneHash === vendorPhoneHash);
 
-      const txSignals: Array<{ code?: string }> = Array.isArray(txRow?.risk_signals)
-        ? txRow.risk_signals
-        : txRiskFb?.risk_signals || [];
-      const hasSharedSignal = txSignals.some(
-        (s) => s?.code === 'SHARED_PHONE_VENDOR_BUYER' || s?.code === 'SHARED_DEVICE_OR_IP'
-      );
+    const buyerIpHash = txRow?.buyer_ip_hash || null;
+    const creatorIpHash = txRow?.creator_ip_hash || null;
+    const sharedIp = Boolean(
+      buyerIpHash &&
+        ((vendor.signup_ip_hash && buyerIpHash === vendor.signup_ip_hash) ||
+          (creatorIpHash && buyerIpHash === creatorIpHash))
+    );
 
-      if (hasDispute || sharedPhone || sharedIp || sharedDevice || hasSharedSignal) {
-        eligibleToIncrement = false;
-      }
-    } catch {
-      // If dispute/signal check throws, stay conservative
+    const buyerDeviceHash = txRow?.buyer_device_hash || null;
+    const creatorDeviceHash = txRow?.creator_device_hash || null;
+    const sharedDevice = Boolean(
+      buyerDeviceHash &&
+        ((vendor.signup_device_hash && buyerDeviceHash === vendor.signup_device_hash) ||
+          (creatorDeviceHash && buyerDeviceHash === creatorDeviceHash))
+    );
+
+    const txSignals: Array<{ code?: string }> = Array.isArray(txRow?.risk_signals)
+      ? txRow.risk_signals
+      : [];
+    const hasSharedSignal = txSignals.some(
+      (s) => s?.code === 'SHARED_PHONE_VENDOR_BUYER' || s?.code === 'SHARED_DEVICE_OR_IP'
+    );
+
+    if (hasDispute || sharedPhone || sharedIp || sharedDevice || hasSharedSignal) {
+      eligibleToIncrement = false;
     }
   }
 
@@ -231,8 +247,15 @@ export async function recordCompletedOrderAndEvaluateTier(params: {
     .update(patch)
     .eq('id', vendor.id);
 
-  if (!updErr || isSchemaMissingError(updErr)) {
-    setVendorSafetyOverlay(vendor.id, patch);
+  if (updErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Failed Persisting Vendor Tier Update (Fail Closed)',
+      transactionId: params.transactionId || undefined,
+      details: { vendorId: vendor.id, error: updErr.message },
+    }).catch(() => {});
+    throw new Error(`Failed updating vendor tier metrics: ${updErr.message}`);
   }
 
   if (promoted) {
@@ -274,13 +297,22 @@ export async function recordDisputeAndDemoteIfNeeded(params: {
 }): Promise<void> {
   if (!params.vendorId) return;
   const supabase = params.supabaseClient || getServiceSupabase();
-  const { data: rawVendor } = await supabase
+  const { data: vendor, error: vErr } = await supabase
     .from('vendors')
     .select('*')
     .eq('id', params.vendorId)
     .maybeSingle();
 
-  const vendor = mergeVendorWithOverlay(rawVendor, params.vendorId);
+  if (vErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Dispute Demotion Vendor Query Failed (Fail Closed)',
+      transactionId: params.transactionId,
+      details: { vendorId: params.vendorId, error: vErr.message },
+    }).catch(() => {});
+    throw new Error(`Failed querying vendor for dispute demotion: ${vErr.message}`);
+  }
   if (!vendor) return;
 
   const tierCfg = await getTierConfigServer();
@@ -306,21 +338,34 @@ export async function recordDisputeAndDemoteIfNeeded(params: {
     .update(patch)
     .eq('id', vendor.id);
 
-  if (!updErr || isSchemaMissingError(updErr)) {
-    setVendorSafetyOverlay(vendor.id, patch);
+  if (updErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Failed Persisting Vendor Tier Update (Fail Closed)',
+      transactionId: params.transactionId || undefined,
+      details: { vendorId: vendor.id, error: updErr.message },
+    }).catch(() => {});
+    throw new Error(`Failed updating vendor tier metrics: ${updErr.message}`);
   }
 
   if (params.transactionId) {
-    try {
-      await supabase
-        .from('transactions')
-        .update({
-          disputed_at: nowIso,
-          updated_at: nowIso,
-        })
-        .eq('id', params.transactionId);
-    } catch {
-      // Non-fatal if transactions column not yet migrated
+    const { error: txUpdErr } = await supabase
+      .from('transactions')
+      .update({
+        disputed_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq('id', params.transactionId);
+    if (txUpdErr) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Transaction disputed_at Update Failed (Fail Closed)',
+        transactionId: params.transactionId,
+        details: { error: txUpdErr.message },
+      }).catch(() => {});
+      throw new Error(`Failed stamping disputed_at on transaction: ${txUpdErr.message}`);
     }
   }
 
@@ -370,13 +415,15 @@ export async function adminSetVendorTierOrCapOverride(params: {
   }
 
   const supabase = params.supabaseClient || getServiceSupabase();
-  const { data: rawVendor } = await supabase
+  const { data: vendor, error: vErr } = await supabase
     .from('vendors')
     .select('*')
     .eq('id', params.vendorId)
     .maybeSingle();
 
-  const vendor = mergeVendorWithOverlay(rawVendor, params.vendorId);
+  if (vErr) {
+    return { success: false, statusCode: 500, error: vErr.message };
+  }
   if (!vendor) {
     return { success: false, statusCode: 404, error: 'Vendor not found.' };
   }
@@ -405,15 +452,19 @@ export async function adminSetVendorTierOrCapOverride(params: {
     .update(patch)
     .eq('id', vendor.id);
 
-  if (updErr && !isSchemaMissingError(updErr)) {
+  if (updErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Admin Vendor Tier Update Failed (Fail Closed)',
+      details: { vendorId: vendor.id, error: updErr.message },
+    }).catch(() => {});
     return {
       success: false,
       statusCode: 500,
       error: `Failed updating vendor tier/cap override: ${updErr.message}`,
     };
   }
-
-  setVendorSafetyOverlay(vendor.id, patch);
 
   await logAndAlertAdminAction({
     adminEmail: params.adminEmail,
@@ -465,13 +516,13 @@ export async function recordVendorComplianceStrike(params: {
     return { success: false, error: 'Missing vendorId for compliance strike.' };
   }
   const supabase = params.supabaseClient || getServiceSupabase();
-  const { data: rawVendor } = await supabase
+  const { data: vendor, error: vErr } = await supabase
     .from('vendors')
     .select('*')
     .eq('id', params.vendorId)
     .maybeSingle();
 
-  const vendor = mergeVendorWithOverlay(rawVendor, params.vendorId);
+  if (vErr) return { success: false, error: vErr.message };
   if (!vendor) return { success: false, error: 'Vendor not found.' };
 
   const nowIso = new Date().toISOString();
@@ -497,10 +548,15 @@ export async function recordVendorComplianceStrike(params: {
     .update(patch)
     .eq('id', vendor.id);
 
-  if (updErr && !isSchemaMissingError(updErr)) {
+  if (updErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Compliance Strike Update Failed (Fail Closed)',
+      details: { vendorId: vendor.id, error: updErr.message },
+    }).catch(() => {});
     return { success: false, error: updErr.message };
   }
-  setVendorSafetyOverlay(vendor.id, patch);
 
   await logAndAlertAdminAction({
     adminEmail: params.adminEmail || 'system:compliance_engine',
@@ -548,13 +604,13 @@ export async function setVendorSuspensionState(params: {
   }
 
   const supabase = params.supabaseClient || getServiceSupabase();
-  const { data: rawVendor } = await supabase
+  const { data: vendor, error: vErr } = await supabase
     .from('vendors')
     .select('*')
     .eq('id', params.vendorId)
     .maybeSingle();
 
-  const vendor = mergeVendorWithOverlay(rawVendor, params.vendorId);
+  if (vErr) return { success: false, statusCode: 500, error: vErr.message };
   if (!vendor) return { success: false, statusCode: 404, error: 'Vendor not found.' };
 
   const nowIso = new Date().toISOString();
@@ -577,10 +633,15 @@ export async function setVendorSuspensionState(params: {
     .update(patch)
     .eq('id', vendor.id);
 
-  if (updErr && !isSchemaMissingError(updErr)) {
+  if (updErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Vendor Suspension Update Failed (Fail Closed)',
+      details: { vendorId: vendor.id, error: updErr.message },
+    }).catch(() => {});
     return { success: false, statusCode: 500, error: updErr.message };
   }
-  setVendorSafetyOverlay(vendor.id, patch);
 
   await logAndAlertAdminAction({
     adminEmail: params.adminEmail,

@@ -3,7 +3,7 @@
  */
 
 import { getServiceSupabase } from '@/lib/supabaseServer';
-import { getHotSettings } from '@/lib/safetyLimits';
+import { getHotSettings, requireHotSetting } from '@/lib/safetyLimits';
 import {
   closeAnchorVirtualNuban,
   createAnchorCounterParty,
@@ -15,189 +15,66 @@ import {
 import { sendSystemAlert } from '@/lib/alerts';
 import { recordLedgerEntry } from '@/lib/ledger';
 import { resolveVerifiedRefundDestination } from '@/lib/refundDestination';
-import { isSchemaMissingError, sendDeliveryReminderWhatsapp } from '@/lib/whatsapp';
+import { sendDeliveryReminderWhatsapp } from '@/lib/whatsapp';
 import { logError, logInfo, logWarn } from '@/lib/logger';
 
-export interface TxLifecycleOverlay {
-  delivery_type?: 'same_city' | 'interstate';
-  delivery_window_days?: number;
-  dispatch_deadline_at?: string | null;
-  delivery_deadline_at?: string | null;
-  reminder_sent_at?: string | null;
-  courier_name?: string | null;
-  courier_phone?: string | null;
-  tracking_number?: string | null;
-  dispatch_notes?: string | null;
-  dispatch_proof_count?: number;
-  handover_proof_count?: number;
-  dispute_raised_by?: string | null;
-  dispute_response_deadline_at?: string | null;
-  counterparty_response_text?: string | null;
-  counterparty_responded_at?: string | null;
-  expires_at?: string | null;
-  expired_at?: string | null;
-  cancelled_at?: string | null;
-  cancelled_by?: string | null;
-  cancellation_reason?: string | null;
-  virtual_account_closed?: boolean;
-  excess_refund_amount?: number;
-  excess_refund_transfer_id?: string | null;
-  buyer_terms_accepted_at?: string | null;
-  buyer_terms_version?: string | null;
-  buyer_consent_ip_hash?: string | null;
-  whatsapp_retry_count?: number;
-  [key: string]: unknown;
-}
-
-const gLc = globalThis as unknown as { __relyvoraTxLifecycleOverlay?: Map<string, TxLifecycleOverlay> };
-
-function getOverlayMap(): Map<string, TxLifecycleOverlay> {
-  if (!gLc.__relyvoraTxLifecycleOverlay) {
-    gLc.__relyvoraTxLifecycleOverlay = new Map();
-  }
-  return gLc.__relyvoraTxLifecycleOverlay;
-}
-
-export function setTxLifecycleOverlay(txId: string, patch: Partial<TxLifecycleOverlay>) {
-  const prev = getOverlayMap().get(txId) || {};
-  getOverlayMap().set(txId, { ...prev, ...patch });
-}
-
-export function getTxLifecycleOverlay(txId: string): TxLifecycleOverlay | undefined {
-  return getOverlayMap().get(txId);
-}
-
-export function mergeTransactionWithLifecycleOverlay<T extends Record<string, any>>(tx: T): T {
-  if (!tx?.id) return tx;
-  const ov = getOverlayMap().get(tx.id);
-  if (!ov) return tx;
-  return { ...tx, ...ov };
-}
-
-export function resetTxLifecycleOverlayForTests() {
-  getOverlayMap().clear();
-}
-
-export async function updateTransactionWithFallback(
+export async function updateTransactionStrict(
   txId: string,
   patch: Record<string, any>,
   supabaseClient?: ReturnType<typeof getServiceSupabase>
-): Promise<{ success: boolean; usedFallback?: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string }> {
   const supabase = supabaseClient || getServiceSupabase();
-  setTxLifecycleOverlay(txId, patch);
+  const { error } = await supabase.from('transactions').update(patch).eq('id', txId);
 
-  let remainingPatch = { ...patch };
-  let usedFallback = false;
-
-  try {
-    for (let attempt = 0; attempt < 20; attempt++) {
-      if (Object.keys(remainingPatch).length === 0) {
-        return { success: true, usedFallback: true };
-      }
-
-      const { error } = await supabase.from('transactions').update(remainingPatch).eq('id', txId);
-      if (!error) {
-        return { success: true, ...(usedFallback ? { usedFallback: true } : {}) };
-      }
-
-      if (!isSchemaMissingError(error)) {
-        return { success: false, error: error.message };
-      }
-
-      usedFallback = true;
-      const msg = String(error.message || '');
-      const colMatch =
-        msg.match(/Could not find the '([^']+)' column/i) ||
-        msg.match(/column "([^"]+)" of relation/i);
-
-      if (colMatch?.[1] && colMatch[1] in remainingPatch) {
-        const next = { ...remainingPatch };
-        delete next[colMatch[1]];
-        remainingPatch = next;
-        continue;
-      }
-
-      // Fall back to strictly guaranteed baseline columns
-      const baselineKeys = new Set([
-        'status',
-        'updated_at',
-        'paid_at',
-        'dispatched_at',
-        'released_at',
-        'disputed_at',
-        'resolving_at',
-        'resolved_at',
-        'dispute_reason',
-        'dispute_scenario',
-        'resolution_action',
-        'resolution_notes',
-        'release_code_hash',
-        'code_expires_at',
-        'failed_code_attempts',
-        'code_locked',
-        'anchor_vendor_transfer_id',
-        'anchor_fee_transfer_id',
-        'refund_destination_account',
-        'refund_destination_bank',
-      ]);
-      const safePatch: Record<string, any> = {};
-      for (const [k, v] of Object.entries(remainingPatch)) {
-        if (baselineKeys.has(k)) safePatch[k] = v;
-      }
-      if (Object.keys(safePatch).length === 0) {
-        return { success: true, usedFallback: true };
-      }
-      const retry = await supabase.from('transactions').update(safePatch).eq('id', txId);
-      if (!retry.error) {
-        return { success: true, usedFallback: true };
-      }
-      return { success: false, error: retry.error.message };
-    }
-
-    return { success: true, usedFallback: true };
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Transaction update failed' };
+  if (error) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Transaction Database Update Failed (Fail Closed)',
+      transactionId: txId,
+      details: { error: error.message, fields: Object.keys(patch) },
+    }).catch(() => {});
+    return { success: false, error: error.message };
   }
+
+  return { success: true };
 }
 
 export async function getDeliveryAndLifecycleConfig(_supabaseClient?: ReturnType<typeof getServiceSupabase>) {
   const settings = await getHotSettings();
-  const delRaw = (settings.delivery_window_config || {}) as Record<string, unknown>;
-  const lcRaw = (settings.order_lifecycle_config || {}) as Record<string, unknown>;
-  const dispRaw = (settings.dispatch_proof_config || {}) as Record<string, unknown>;
-  const polRaw = (settings.dispute_policy_config || {}) as Record<string, unknown>;
+  const delRaw = await requireHotSetting<Record<string, unknown>>(settings, 'delivery_window_config');
+  const lcRaw = await requireHotSetting<Record<string, unknown>>(settings, 'order_lifecycle_config');
+  const dispRaw = await requireHotSetting<Record<string, unknown>>(settings, 'dispatch_proof_config');
+  const polRaw = await requireHotSetting<Record<string, unknown>>(settings, 'dispute_policy_config');
+
+  if (!delRaw || !lcRaw || !dispRaw || !polRaw) {
+    throw new Error('Required lifecycle/delivery/dispute configuration object is invalid in system_settings.');
+  }
+
   return {
     delivery: {
-      same_city_days: Number(delRaw.same_city_days ?? 3),
-      interstate_days: Number(delRaw.interstate_days ?? 7),
-      grace_days: Number(delRaw.grace_days ?? 3),
-      hard_max_days: Number(delRaw.hard_max_days ?? 14),
-      dispatch_deadline_days: Number(delRaw.dispatch_deadline_days ?? 3),
-      reminder_hours_before_expiry: Number(delRaw.reminder_hours_before_expiry ?? 24),
+      same_city_days: Number(delRaw.same_city_days),
+      interstate_days: Number(delRaw.interstate_days),
+      grace_days: Number(delRaw.grace_days),
+      hard_max_days: Number(delRaw.hard_max_days),
+      dispatch_deadline_days: Number(delRaw.dispatch_deadline_days),
+      reminder_hours_before_expiry: Number(delRaw.reminder_hours_before_expiry),
     },
     lifecycle: {
-      payment_expiry_hours: Number(lcRaw.payment_expiry_hours ?? 24),
-      stuck_settlement_minutes: Number(lcRaw.stuck_settlement_minutes ?? 15),
-      refund_fee_on_vendor_cancel:
-        typeof lcRaw.refund_fee_on_vendor_cancel === 'boolean'
-          ? lcRaw.refund_fee_on_vendor_cancel
-          : true,
+      payment_expiry_hours: Number(lcRaw.payment_expiry_hours),
+      stuck_settlement_minutes: Number(lcRaw.stuck_settlement_minutes),
+      refund_fee_on_vendor_cancel: Boolean(lcRaw.refund_fee_on_vendor_cancel),
     },
     dispatchProof: {
-      require_upload: typeof dispRaw.require_upload === 'boolean' ? dispRaw.require_upload : true,
-      require_courier_name:
-        typeof dispRaw.require_courier_name === 'boolean' ? dispRaw.require_courier_name : true,
-      require_courier_phone:
-        typeof dispRaw.require_courier_phone === 'boolean' ? dispRaw.require_courier_phone : true,
-      require_tracking_for_interstate:
-        typeof dispRaw.require_tracking_for_interstate === 'boolean'
-          ? dispRaw.require_tracking_for_interstate
-          : true,
+      require_upload: Boolean(dispRaw.require_upload),
+      require_courier_name: Boolean(dispRaw.require_courier_name),
+      require_courier_phone: Boolean(dispRaw.require_courier_phone),
+      require_tracking_for_interstate: Boolean(dispRaw.require_tracking_for_interstate),
     },
     disputePolicy: {
       timezone: String(polRaw.timezone || 'Africa/Lagos'),
-      start_hour: Number(polRaw.start_hour ?? 8),
-      end_hour: Number(polRaw.end_hour ?? 20),
+      start_hour: Number(polRaw.start_hour),
+      end_hour: Number(polRaw.end_hour),
       work_days: Array.isArray(polRaw.work_days) ? (polRaw.work_days as number[]) : [1, 2, 3, 4, 5, 6],
     },
   };
@@ -217,15 +94,24 @@ export async function expireUnpaidOrders(
     now.getTime() - cfg.lifecycle.payment_expiry_hours * 3600 * 1000
   ).toISOString();
 
-  const { data: rows } = await supabase
+  const { data: rows, error: selErr } = await supabase
     .from('transactions')
     .select('*')
     .eq('status', 'AWAITING_PAYMENT')
     .limit(100);
 
+  if (selErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Unpaid Order Expiry Query Failed (Fail Closed)',
+      details: { error: selErr.message },
+    }).catch(() => {});
+    throw new Error(`Failed querying AWAITING_PAYMENT orders for expiry: ${selErr.message}`);
+  }
+
   const expiredIds: string[] = [];
-  for (const rawTx of rows || []) {
-    const tx = mergeTransactionWithLifecycleOverlay(rawTx);
+  for (const tx of rows || []) {
     const effectiveExpiresAt = tx.expires_at
       ? new Date(tx.expires_at).getTime()
       : new Date(tx.created_at).getTime() + cfg.lifecycle.payment_expiry_hours * 3600 * 1000;
@@ -235,7 +121,7 @@ export async function expireUnpaidOrders(
     }
 
     const closedRes = await closeAnchorVirtualNuban(tx.virtual_nuban_id);
-    const upd = await updateTransactionWithFallback(
+    const upd = await updateTransactionStrict(
       tx.id,
       {
         status: 'EXPIRED',
@@ -245,9 +131,10 @@ export async function expireUnpaidOrders(
       },
       supabase
     );
-    if (upd.success) {
-      expiredIds.push(tx.id);
+    if (!upd.success) {
+      throw new Error(`Failed updating EXPIRED status on transaction ${tx.id}: ${upd.error}`);
     }
+    expiredIds.push(tx.id);
   }
 
   if (expiredIds.length > 0) {
@@ -268,18 +155,26 @@ export async function flagOverdueDispatchesAndSendReminders(
   const now = new Date();
   const nowIso = now.toISOString();
 
-  const { data: activeRows } = await supabase
+  const { data: activeRows, error: actErr } = await supabase
     .from('transactions')
     .select('*')
     .in('status', ['FUNDS_LOCKED', 'DISPATCHED'])
     .limit(150);
 
+  if (actErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Overdue Dispatch Query Failed (Fail Closed)',
+      details: { error: actErr.message },
+    }).catch(() => {});
+    throw new Error(`Failed querying active orders for dispatch check: ${actErr.message}`);
+  }
+
   let overdueFlagged = 0;
   let remindersSent = 0;
 
-  for (const rawTx of activeRows || []) {
-    const tx = mergeTransactionWithLifecycleOverlay(rawTx);
-
+  for (const tx of activeRows || []) {
     // 1. Overdue Dispatch Check (FUNDS_LOCKED only)
     if (tx.status === 'FUNDS_LOCKED' && tx.paid_at && !tx.review_hold) {
       const dispatchDeadlineMs = tx.dispatch_deadline_at
@@ -287,7 +182,7 @@ export async function flagOverdueDispatchesAndSendReminders(
         : new Date(tx.paid_at).getTime() + cfg.delivery.dispatch_deadline_days * 24 * 3600 * 1000;
 
       if (now.getTime() > dispatchDeadlineMs) {
-        await updateTransactionWithFallback(
+        const flagUpd = await updateTransactionStrict(
           tx.id,
           {
             review_hold: true,
@@ -297,6 +192,9 @@ export async function flagOverdueDispatchesAndSendReminders(
           },
           supabase
         );
+        if (!flagUpd.success) {
+          throw new Error(`Failed flagging overdue dispatch for ${tx.id}: ${flagUpd.error}`);
+        }
         overdueFlagged++;
         await sendSystemAlert({
           type: 'RISK_HOLD',
@@ -343,7 +241,14 @@ export async function flagOverdueDispatchesAndSendReminders(
           );
           if (wa.success) {
             remindersSent++;
-            await updateTransactionWithFallback(tx.id, { reminder_sent_at: nowIso, updated_at: nowIso }, supabase);
+            const remUpd = await updateTransactionStrict(
+              tx.id,
+              { reminder_sent_at: nowIso, updated_at: nowIso },
+              supabase
+            );
+            if (!remUpd.success) {
+              throw new Error(`Failed recording reminder_sent_at for ${tx.id}: ${remUpd.error}`);
+            }
           }
         }
       }
@@ -365,12 +270,22 @@ export async function retryStuckSettlementLegs(
     Date.now() - cfg.lifecycle.stuck_settlement_minutes * 60 * 1000
   ).toISOString();
 
-  const { data: stuckRows } = await supabase
+  const { data: stuckRows, error: stuckErr } = await supabase
     .from('transactions')
     .select('*, vendors(id, anchor_deposit_account_id)')
     .in('status', ['RELEASING', 'VENDOR_PAID'])
     .lt('updated_at', cutoffIso)
     .limit(50);
+
+  if (stuckErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Stuck Settlement Query Failed (Fail Closed)',
+      details: { error: stuckErr.message },
+    }).catch(() => {});
+    throw new Error(`Failed querying stuck settlements: ${stuckErr.message}`);
+  }
 
   let checked = 0;
   let recovered = 0;
@@ -402,12 +317,13 @@ export async function retryStuckSettlementLegs(
         } else {
           vendorTransferId = `sandbox_retry_leg1_${tx.id}`;
         }
-        await supabase.rpc('rpc_finalize_release_step', {
+        const { error: step1Err } = await supabase.rpc('rpc_finalize_release_step', {
           p_transaction_id: tx.id,
           p_step: 'VENDOR_PAID',
           p_transfer_id: vendorTransferId,
           p_idempotency_key: tx.leg1_idempotency_key || `leg1_${tx.id}`,
         });
+        if (step1Err) throw new Error(`rpc_finalize_release_step VENDOR_PAID failed: ${step1Err.message}`);
       }
 
       if (!feeTransferId) {
@@ -423,12 +339,13 @@ export async function retryStuckSettlementLegs(
         } else {
           feeTransferId = `sandbox_retry_leg2_${tx.id}`;
         }
-        await supabase.rpc('rpc_finalize_release_step', {
+        const { error: step2Err } = await supabase.rpc('rpc_finalize_release_step', {
           p_transaction_id: tx.id,
           p_step: 'RELEASED',
           p_transfer_id: feeTransferId,
           p_idempotency_key: tx.leg2_idempotency_key || `leg2_${tx.id}`,
         });
+        if (step2Err) throw new Error(`rpc_finalize_release_step RELEASED failed: ${step2Err.message}`);
       }
 
       recovered++;
@@ -543,7 +460,14 @@ export async function executeBuyerOrderRefund(params: {
     patch.status = 'REFUNDED';
   }
 
-  await updateTransactionWithFallback(params.tx.id, patch, supabase);
+  const upd = await updateTransactionStrict(params.tx.id, patch, supabase);
+  if (!upd.success) {
+    return {
+      success: false,
+      statusCode: 500,
+      error: upd.error || 'Failed persisting buyer refund update to database.',
+    };
+  }
 
   await recordLedgerEntry({
     transactionId: params.tx.id,

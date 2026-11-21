@@ -7,6 +7,7 @@
  */
 
 import { getServiceSupabase } from './supabaseServer';
+import { sendSystemAlert } from './alerts';
 
 export const DEFAULT_MAX_ORDER_NGN: number | null = null;
 export const DEFAULT_MAX_DAILY_VENDOR_VOLUME_NGN: number | null = null;
@@ -166,262 +167,184 @@ export async function getHotSettings(): Promise<Record<string, any>> {
     return settingsCache.data;
   }
 
-  try {
-    const supabase = getServiceSupabase();
-    const { data, error } = await supabase.from('system_settings').select('key, value');
-    if (!error && data) {
-      const map: Record<string, any> = {};
-      for (const row of data) {
-        map[row.key] = row.value;
-      }
-      settingsCache = { data: map, expiresAt: now + 30000 };
-      return map;
-    }
-  } catch (err) {
-    console.warn('Could not read system_settings from DB, using env defaults:', err);
+  const supabase = getServiceSupabase();
+  const { data, error } = await supabase.from('system_settings').select('key, value');
+  if (error || !Array.isArray(data) || data.length === 0) {
+    const errMsg = error?.message || 'system_settings table is missing or empty';
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Critical Failure Loading system_settings (Fail Closed)',
+      details: { error: errMsg },
+    }).catch(() => {});
+    throw new Error(`Critical runtime failure: unable to load system_settings (${errMsg}).`);
   }
 
-  return {};
+  const map: Record<string, any> = {};
+  for (const row of data) {
+    map[row.key] = row.value;
+  }
+  settingsCache = { data: map, expiresAt: now + 30000 };
+  return map;
+}
+
+export async function requireHotSetting<T = any>(
+  settings: Record<string, any>,
+  key: string
+): Promise<T> {
+  if (!(key in settings) || settings[key] === undefined) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: `Required system_settings Key Missing: ${key}`,
+      details: { key },
+    }).catch(() => {});
+    throw new Error(`Required configuration setting "${key}" is missing from system_settings.`);
+  }
+  return settings[key] as T;
 }
 
 export async function getTier1OrderLimitNgnServer(): Promise<number | null> {
   const settings = await getHotSettings();
-  if (settings.tier1_order_limit_ngn !== undefined) {
-    if (settings.tier1_order_limit_ngn === null || settings.tier1_order_limit_ngn === 'null') {
-      return null;
-    }
-    return parseNullableLimit(settings.tier1_order_limit_ngn);
+  await requireHotSetting(settings, 'tier1_order_limit_ngn');
+  if (settings.tier1_order_limit_ngn === null || settings.tier1_order_limit_ngn === 'null') {
+    return null;
   }
-  const tierRaw = settings.tier_config?.tiers?.NEW?.per_order_cap_ngn;
-  if (tierRaw !== undefined) {
-    return parseNullableLimit(tierRaw);
-  }
-  return DEFAULT_TIER1_ORDER_LIMIT_NGN;
+  return parseNullableLimit(settings.tier1_order_limit_ngn);
 }
 
 export async function getTierUpgradeThresholdServer(): Promise<number> {
   const settings = await getHotSettings();
-  if (settings.tier_upgrade_threshold !== undefined && settings.tier_upgrade_threshold !== null) {
-    const parsed = Number(settings.tier_upgrade_threshold);
-    if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
+  const raw = await requireHotSetting(settings, 'tier_upgrade_threshold');
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error('Invalid system_settings.tier_upgrade_threshold configuration.');
   }
-  const promoRaw = settings.tier_config?.promotion?.established_min_completed_orders;
-  if (Number.isFinite(Number(promoRaw)) && Number(promoRaw) > 0) {
-    return Math.floor(Number(promoRaw));
-  }
-  return DEFAULT_TIER_UPGRADE_THRESHOLD;
+  return Math.floor(parsed);
 }
 
 export async function getTierConfigServer(): Promise<TierConfig> {
   const settings = await getHotSettings();
-  const raw = settings.tier_config && typeof settings.tier_config === 'object' ? settings.tier_config : {};
-  const rawTiers = raw.tiers && typeof raw.tiers === 'object' ? raw.tiers : {};
-  const rawPromo = raw.promotion && typeof raw.promotion === 'object' ? raw.promotion : {};
-  const tier1Fallback =
-    settings.tier1_order_limit_ngn !== undefined
-      ? parseNullableLimit(settings.tier1_order_limit_ngn)
-      : DEFAULT_TIER_CONFIG.tiers.NEW.per_order_cap_ngn;
-  const thresholdFallback = Number.isFinite(Number(settings.tier_upgrade_threshold))
-    ? Number(settings.tier_upgrade_threshold)
-    : DEFAULT_TIER_CONFIG.promotion.established_min_completed_orders;
+  const raw = await requireHotSetting<Record<string, any>>(settings, 'tier_config');
+  if (!raw || typeof raw !== 'object' || !raw.tiers || !raw.promotion) {
+    throw new Error('Invalid system_settings.tier_config structure.');
+  }
+  const rawTiers = raw.tiers;
+  const rawPromo = raw.promotion;
 
   return {
     tiers: {
       NEW: {
-        per_order_cap_ngn:
-          rawTiers.NEW?.per_order_cap_ngn !== undefined
-            ? parseNullableLimit(rawTiers.NEW.per_order_cap_ngn)
-            : tier1Fallback,
-        daily_volume_cap_ngn:
-          rawTiers.NEW?.daily_volume_cap_ngn !== undefined
-            ? parseNullableLimit(rawTiers.NEW.daily_volume_cap_ngn)
-            : DEFAULT_TIER_CONFIG.tiers.NEW.daily_volume_cap_ngn,
+        per_order_cap_ngn: parseNullableLimit(rawTiers.NEW?.per_order_cap_ngn),
+        daily_volume_cap_ngn: parseNullableLimit(rawTiers.NEW?.daily_volume_cap_ngn),
       },
       ESTABLISHED: {
-        per_order_cap_ngn:
-          rawTiers.ESTABLISHED?.per_order_cap_ngn !== undefined
-            ? parseNullableLimit(rawTiers.ESTABLISHED.per_order_cap_ngn)
-            : DEFAULT_TIER_CONFIG.tiers.ESTABLISHED.per_order_cap_ngn,
-        daily_volume_cap_ngn:
-          rawTiers.ESTABLISHED?.daily_volume_cap_ngn !== undefined
-            ? parseNullableLimit(rawTiers.ESTABLISHED.daily_volume_cap_ngn)
-            : DEFAULT_TIER_CONFIG.tiers.ESTABLISHED.daily_volume_cap_ngn,
+        per_order_cap_ngn: parseNullableLimit(rawTiers.ESTABLISHED?.per_order_cap_ngn),
+        daily_volume_cap_ngn: parseNullableLimit(rawTiers.ESTABLISHED?.daily_volume_cap_ngn),
       },
       TRUSTED: {
-        per_order_cap_ngn:
-          rawTiers.TRUSTED?.per_order_cap_ngn !== undefined
-            ? parseNullableLimit(rawTiers.TRUSTED.per_order_cap_ngn)
-            : DEFAULT_TIER_CONFIG.tiers.TRUSTED.per_order_cap_ngn,
-        daily_volume_cap_ngn:
-          rawTiers.TRUSTED?.daily_volume_cap_ngn !== undefined
-            ? parseNullableLimit(rawTiers.TRUSTED.daily_volume_cap_ngn)
-            : DEFAULT_TIER_CONFIG.tiers.TRUSTED.daily_volume_cap_ngn,
+        per_order_cap_ngn: parseNullableLimit(rawTiers.TRUSTED?.per_order_cap_ngn),
+        daily_volume_cap_ngn: parseNullableLimit(rawTiers.TRUSTED?.daily_volume_cap_ngn),
       },
     },
     promotion: {
-      established_min_completed_orders:
-        Number.isFinite(Number(rawPromo.established_min_completed_orders))
-          ? Number(rawPromo.established_min_completed_orders)
-          : thresholdFallback,
-      established_min_days_since_first_order:
-        Number.isFinite(Number(rawPromo.established_min_days_since_first_order))
-          ? Number(rawPromo.established_min_days_since_first_order)
-          : DEFAULT_TIER_CONFIG.promotion.established_min_days_since_first_order,
-      established_max_disputes:
-        Number.isFinite(Number(rawPromo.established_max_disputes))
-          ? Number(rawPromo.established_max_disputes)
-          : DEFAULT_TIER_CONFIG.promotion.established_max_disputes,
+      established_min_completed_orders: Number(rawPromo.established_min_completed_orders),
+      established_min_days_since_first_order: Number(rawPromo.established_min_days_since_first_order),
+      established_max_disputes: Number(rawPromo.established_max_disputes),
     },
   };
 }
 
 export async function getPayoutSafetyConfigServer(): Promise<PayoutSafetyConfig> {
   const settings = await getHotSettings();
-  const raw =
-    settings.payout_safety_config && typeof settings.payout_safety_config === 'object'
-      ? settings.payout_safety_config
-      : {};
+  const raw = await requireHotSetting<Record<string, any>>(settings, 'payout_safety_config');
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('Invalid system_settings.payout_safety_config structure.');
+  }
   return {
-    name_match_min_score:
-      Number.isFinite(Number(raw.name_match_min_score))
-        ? Number(raw.name_match_min_score)
-        : DEFAULT_PAYOUT_SAFETY_CONFIG.name_match_min_score,
-    settlement_change_wait_hours:
-      Number.isFinite(Number(raw.settlement_change_wait_hours))
-        ? Number(raw.settlement_change_wait_hours)
-        : DEFAULT_PAYOUT_SAFETY_CONFIG.settlement_change_wait_hours,
+    name_match_min_score: Number(raw.name_match_min_score),
+    settlement_change_wait_hours: Number(raw.settlement_change_wait_hours),
     require_whatsapp_confirm_on_bank_change: parseBooleanSetting(
       raw.require_whatsapp_confirm_on_bank_change,
-      DEFAULT_PAYOUT_SAFETY_CONFIG.require_whatsapp_confirm_on_bank_change
+      true
     ),
   };
 }
 
 export async function getRiskEngineConfigServer(): Promise<RiskEngineConfig> {
   const settings = await getHotSettings();
-  const raw =
-    settings.risk_engine_config && typeof settings.risk_engine_config === 'object'
-      ? settings.risk_engine_config
-      : {};
-  const rawWeights = raw.weights && typeof raw.weights === 'object' ? raw.weights : {};
-  const mergedWeights: Record<string, number> = { ...DEFAULT_RISK_ENGINE_CONFIG.weights };
-  for (const [k, v] of Object.entries(rawWeights)) {
+  const raw = await requireHotSetting<Record<string, any>>(settings, 'risk_engine_config');
+  if (!raw || typeof raw !== 'object' || !raw.weights || typeof raw.weights !== 'object') {
+    throw new Error('Invalid system_settings.risk_engine_config structure.');
+  }
+  const mergedWeights: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw.weights)) {
     const num = Number(v);
     if (Number.isFinite(num) && num >= 0) {
       mergedWeights[k] = num;
     }
   }
   return {
-    review_hold_threshold: Number.isFinite(Number(raw.review_hold_threshold))
-      ? Number(raw.review_hold_threshold)
-      : DEFAULT_RISK_ENGINE_CONFIG.review_hold_threshold,
-    block_threshold: Number.isFinite(Number(raw.block_threshold))
-      ? Number(raw.block_threshold)
-      : DEFAULT_RISK_ENGINE_CONFIG.block_threshold,
-    amount_review_threshold_ngn: Number.isFinite(Number(raw.amount_review_threshold_ngn))
-      ? Number(raw.amount_review_threshold_ngn)
-      : DEFAULT_RISK_ENGINE_CONFIG.amount_review_threshold_ngn,
-    near_cap_ratio_min: Number.isFinite(Number(raw.near_cap_ratio_min))
-      ? Number(raw.near_cap_ratio_min)
-      : DEFAULT_RISK_ENGINE_CONFIG.near_cap_ratio_min,
-    velocity_window_minutes: Number.isFinite(Number(raw.velocity_window_minutes))
-      ? Number(raw.velocity_window_minutes)
-      : DEFAULT_RISK_ENGINE_CONFIG.velocity_window_minutes,
-    velocity_max_orders: Number.isFinite(Number(raw.velocity_max_orders))
-      ? Number(raw.velocity_max_orders)
-      : DEFAULT_RISK_ENGINE_CONFIG.velocity_max_orders,
-    repeat_pair_window_hours: Number.isFinite(Number(raw.repeat_pair_window_hours))
-      ? Number(raw.repeat_pair_window_hours)
-      : DEFAULT_RISK_ENGINE_CONFIG.repeat_pair_window_hours,
-    repeat_pair_max_orders: Number.isFinite(Number(raw.repeat_pair_max_orders))
-      ? Number(raw.repeat_pair_max_orders)
-      : DEFAULT_RISK_ENGINE_CONFIG.repeat_pair_max_orders,
-    spike_multiplier: Number.isFinite(Number(raw.spike_multiplier))
-      ? Number(raw.spike_multiplier)
-      : DEFAULT_RISK_ENGINE_CONFIG.spike_multiplier,
-    spike_min_baseline_ngn: Number.isFinite(Number(raw.spike_min_baseline_ngn))
-      ? Number(raw.spike_min_baseline_ngn)
-      : DEFAULT_RISK_ENGINE_CONFIG.spike_min_baseline_ngn,
-    ip_hash_retention_hours: Number.isFinite(Number(raw.ip_hash_retention_hours))
-      ? Number(raw.ip_hash_retention_hours)
-      : DEFAULT_RISK_ENGINE_CONFIG.ip_hash_retention_hours,
+    review_hold_threshold: Number(raw.review_hold_threshold),
+    block_threshold: Number(raw.block_threshold),
+    amount_review_threshold_ngn: Number(raw.amount_review_threshold_ngn),
+    near_cap_ratio_min: Number(raw.near_cap_ratio_min),
+    velocity_window_minutes: Number(raw.velocity_window_minutes),
+    velocity_max_orders: Number(raw.velocity_max_orders),
+    repeat_pair_window_hours: Number(raw.repeat_pair_window_hours),
+    repeat_pair_max_orders: Number(raw.repeat_pair_max_orders),
+    spike_multiplier: Number(raw.spike_multiplier),
+    spike_min_baseline_ngn: Number(raw.spike_min_baseline_ngn),
+    ip_hash_retention_hours: Number(raw.ip_hash_retention_hours),
     weights: mergedWeights,
   };
 }
 
 export async function getCoolingWindowConfigServer(): Promise<CoolingWindowConfig> {
   const settings = await getHotSettings();
-  const raw =
-    settings.cooling_window_config && typeof settings.cooling_window_config === 'object'
-      ? settings.cooling_window_config
-      : {};
-  const rawHours = raw.hours_by_tier && typeof raw.hours_by_tier === 'object' ? raw.hours_by_tier : {};
+  const raw = await requireHotSetting<Record<string, any>>(settings, 'cooling_window_config');
+  if (!raw || typeof raw !== 'object' || !raw.hours_by_tier) {
+    throw new Error('Invalid system_settings.cooling_window_config structure.');
+  }
+  const rawHours = raw.hours_by_tier;
   return {
     hours_by_tier: {
-      NEW: Number.isFinite(Number(rawHours.NEW))
-        ? Number(rawHours.NEW)
-        : DEFAULT_COOLING_WINDOW_CONFIG.hours_by_tier.NEW,
-      ESTABLISHED: Number.isFinite(Number(rawHours.ESTABLISHED))
-        ? Number(rawHours.ESTABLISHED)
-        : DEFAULT_COOLING_WINDOW_CONFIG.hours_by_tier.ESTABLISHED,
-      TRUSTED: Number.isFinite(Number(rawHours.TRUSTED))
-        ? Number(rawHours.TRUSTED)
-        : DEFAULT_COOLING_WINDOW_CONFIG.hours_by_tier.TRUSTED,
+      NEW: Number(rawHours.NEW ?? 0),
+      ESTABLISHED: Number(rawHours.ESTABLISHED ?? 0),
+      TRUSTED: Number(rawHours.TRUSTED ?? 0),
     },
-    high_value_cooling_hours: Number.isFinite(Number(raw.high_value_cooling_hours))
-      ? Number(raw.high_value_cooling_hours)
-      : DEFAULT_COOLING_WINDOW_CONFIG.high_value_cooling_hours,
-    notify_buyer_on_code_use: parseBooleanSetting(
-      raw.notify_buyer_on_code_use,
-      DEFAULT_COOLING_WINDOW_CONFIG.notify_buyer_on_code_use
-    ),
+    high_value_cooling_hours: Number(raw.high_value_cooling_hours ?? 0),
+    notify_buyer_on_code_use: parseBooleanSetting(raw.notify_buyer_on_code_use, true),
   };
 }
 
 export async function getAdminSafetyConfigServer(): Promise<AdminSafetyConfig> {
   const settings = await getHotSettings();
-  const raw =
-    settings.admin_safety_config && typeof settings.admin_safety_config === 'object'
-      ? settings.admin_safety_config
-      : {};
+  const raw = await requireHotSetting<Record<string, any>>(settings, 'admin_safety_config');
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('Invalid system_settings.admin_safety_config structure.');
+  }
   return {
-    session_max_age_minutes: Number.isFinite(Number(raw.session_max_age_minutes))
-      ? Number(raw.session_max_age_minutes)
-      : DEFAULT_ADMIN_SAFETY_CONFIG.session_max_age_minutes,
-    high_value_confirm_threshold_ngn: Number.isFinite(Number(raw.high_value_confirm_threshold_ngn))
-      ? Number(raw.high_value_confirm_threshold_ngn)
-      : DEFAULT_ADMIN_SAFETY_CONFIG.high_value_confirm_threshold_ngn,
-    require_typed_confirmation: parseBooleanSetting(
-      raw.require_typed_confirmation,
-      DEFAULT_ADMIN_SAFETY_CONFIG.require_typed_confirmation
-    ),
-    alert_on_every_admin_action: parseBooleanSetting(
-      raw.alert_on_every_admin_action,
-      DEFAULT_ADMIN_SAFETY_CONFIG.alert_on_every_admin_action
-    ),
+    session_max_age_minutes: Number(raw.session_max_age_minutes),
+    high_value_confirm_threshold_ngn: Number(raw.high_value_confirm_threshold_ngn),
+    require_typed_confirmation: parseBooleanSetting(raw.require_typed_confirmation, true),
+    alert_on_every_admin_action: parseBooleanSetting(raw.alert_on_every_admin_action, true),
   };
 }
 
 export async function isPayoutsEnabledServer(): Promise<boolean> {
   const settings = await getHotSettings();
-  if (settings.payouts_enabled !== undefined) {
-    return parseBooleanSetting(settings.payouts_enabled, true);
-  }
-  const envFlag = (process.env.PAYOUTS_ENABLED || 'true').toLowerCase().trim();
-  return envFlag !== 'false' && envFlag !== '0' && envFlag !== 'disabled';
+  const val = await requireHotSetting(settings, 'payouts_enabled');
+  return parseBooleanSetting(val, false);
 }
 
 /**
- * Checks if checkout is enabled (DB setting overrides environment variable).
+ * Checks if checkout is enabled strictly from system_settings.
  */
 export async function isCheckoutEnabledServer(): Promise<boolean> {
   const settings = await getHotSettings();
-  if (settings.checkout_enabled !== undefined) {
-    return Boolean(settings.checkout_enabled === true || settings.checkout_enabled === 'true');
-  }
-
-  const envFlag = (process.env.CHECKOUT_ENABLED || 'true').toLowerCase().trim();
-  return envFlag !== 'false' && envFlag !== '0' && envFlag !== 'disabled';
+  const val = await requireHotSetting(settings, 'checkout_enabled');
+  return Boolean(val === true || val === 'true');
 }
 
 /**
@@ -442,18 +365,15 @@ export function isCheckoutEnabled(): boolean {
  */
 export async function getMaxOrderNgnServer(): Promise<number | null> {
   const settings = await getHotSettings();
-  if (settings.max_order_ngn !== undefined && settings.max_order_ngn !== null) {
-    const dbVal = parseNullableLimit(settings.max_order_ngn);
-    if (dbVal !== null) return dbVal;
-  }
+  const dbSetting = await requireHotSetting(settings, 'max_order_ngn');
 
   const envVal = process.env.MAX_ORDER_NGN ?? process.env.NEXT_PUBLIC_MAX_ORDER_NGN;
   if (envVal !== undefined) {
-    const parsed = parseNullableLimit(envVal);
-    if (parsed !== null) return parsed;
+    const envParsed = parseNullableLimit(envVal);
+    if (envParsed !== null) return envParsed;
   }
 
-  return DEFAULT_MAX_ORDER_NGN;
+  return parseNullableLimit(dbSetting);
 }
 
 export function getMaxOrderNgn(): number | null {
@@ -472,18 +392,15 @@ export function getMaxOrderNgn(): number | null {
  */
 export async function getMaxDailyVendorVolumeNgnServer(): Promise<number | null> {
   const settings = await getHotSettings();
-  if (settings.max_daily_vendor_volume_ngn !== undefined && settings.max_daily_vendor_volume_ngn !== null) {
-    const dbVal = parseNullableLimit(settings.max_daily_vendor_volume_ngn);
-    if (dbVal !== null) return dbVal;
-  }
+  const dbSetting = await requireHotSetting(settings, 'max_daily_vendor_volume_ngn');
 
   const envVal = process.env.MAX_DAILY_VENDOR_VOLUME_NGN;
   if (envVal !== undefined) {
-    const parsed = parseNullableLimit(envVal);
-    if (parsed !== null) return parsed;
+    const envParsed = parseNullableLimit(envVal);
+    if (envParsed !== null) return envParsed;
   }
 
-  return DEFAULT_MAX_DAILY_VENDOR_VOLUME_NGN;
+  return parseNullableLimit(dbSetting);
 }
 
 export function computeVendorEffectiveTierLimits(params: {
@@ -541,15 +458,20 @@ export function computeVendorEffectiveTierLimits(params: {
 }
 
 /**
+ * Reads `vendor_allowlist_mode` strictly from system_settings (fails closed if missing).
+ */
+export async function getVendorAllowlistModeServer(): Promise<boolean> {
+  const settings = await getHotSettings();
+  const allowlistRaw = await requireHotSetting(settings, 'vendor_allowlist_mode');
+  return parseBooleanSetting(allowlistRaw, false);
+}
+
+/**
  * Checks whether a vendor is allowlisted when vendor_allowlist_mode = true.
  * Default for vendor_allowlist_mode is false (open signup).
  */
 export async function isVendorAllowlistedServer(vendorHandle: string): Promise<boolean> {
-  const settings = await getHotSettings();
-  const allowlistMode =
-    settings.vendor_allowlist_mode !== undefined
-      ? parseBooleanSetting(settings.vendor_allowlist_mode, false)
-      : false;
+  const allowlistMode = await getVendorAllowlistModeServer();
 
   if (!allowlistMode) {
     return true;
@@ -557,19 +479,25 @@ export async function isVendorAllowlistedServer(vendorHandle: string): Promise<b
 
   const cleanHandle = (vendorHandle || '').trim().toLowerCase().replace(/^@/, '');
 
-  try {
-    const supabase = getServiceSupabase();
-    const { data: vendor } = await supabase
-      .from('vendors')
-      .select('is_allowlisted')
-      .or(`store_name.ilike.%${cleanHandle}%,email.ilike.%${cleanHandle}%`)
-      .maybeSingle();
+  const supabase = getServiceSupabase();
+  const { data: vendor, error } = await supabase
+    .from('vendors')
+    .select('is_allowlisted')
+    .or(`store_name.ilike.%${cleanHandle}%,email.ilike.%${cleanHandle}%`)
+    .maybeSingle();
 
-    if (vendor && vendor.is_allowlisted === true) {
-      return true;
-    }
-  } catch (err) {
-    console.warn('Error querying vendor allowlist status in DB:', err);
+  if (error) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Vendor Allowlist Query Failed (Fail Closed)',
+      details: { error: error.message },
+    }).catch(() => {});
+    throw new Error(`Vendor allowlist verification failed: ${error.message}`);
+  }
+
+  if (vendor && vendor.is_allowlisted === true) {
+    return true;
   }
 
   const rawEnv = process.env.VENDOR_ALLOWLIST || '';
@@ -653,30 +581,23 @@ export async function resolveAndValidateVendorServer(params: {
   }
 
   const { data: dbVendor, error } = await query.maybeSingle();
-  const settings = await getHotSettings();
-  const allowlistMode =
-    settings.vendor_allowlist_mode !== undefined
-      ? parseBooleanSetting(settings.vendor_allowlist_mode, false)
-      : false;
+  if (error) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Vendor Verification Query Failed (Fail Closed)',
+      details: { error: error.message },
+    }).catch(() => {});
+    throw new Error(`Vendor verification query failed: ${error.message}`);
+  }
 
-  if (error || !dbVendor) {
-    // Preserve sandbox handle demo mode only when allowlist switch is off and input is a non-UUID handle
-    if (process.env.PAYMENTS_MODE !== 'live' && !isUuid && !allowlistMode) {
-      return {
-        allowed: true,
-        vendor: {
-          id: '00000000-0000-0000-0000-000000000001',
-          store_name: input,
-          email: `${input.replace(/^@/, '')}@sandbox.relyvora.com`,
-          kyc_status: 'verified',
-          is_allowlisted: true,
-          tier: 'NEW',
-          payout_account_verified: true,
-          settlement_account_name_matched: true,
-          daily_volume_ngn: 0,
-        },
-      };
-    }
+  const settings = await getHotSettings();
+  const allowlistMode = parseBooleanSetting(
+    await requireHotSetting(settings, 'vendor_allowlist_mode'),
+    false
+  );
+
+  if (!dbVendor) {
     return {
       allowed: false,
       code: 'VENDOR_NOT_FOUND',
@@ -684,15 +605,7 @@ export async function resolveAndValidateVendorServer(params: {
     };
   }
 
-  const overlay =
-    ((globalThis as any).__relyvoraVendorSafetyOverlay as Map<string, any> | undefined)?.get(
-      dbVendor.id
-    ) || {};
-  const definedDbEntries = Object.entries(dbVendor).filter(([, v]) => v !== undefined);
-  const vendor: Record<string, any> = {
-    ...Object.fromEntries(definedDbEntries),
-    ...overlay,
-  };
+  const vendor: Record<string, any> = { ...dbVendor };
 
   // Allowlist instant kill-switch (only enforced when vendor_allowlist_mode = true)
   if (allowlistMode && !vendor.is_allowlisted) {
@@ -721,13 +634,9 @@ export async function resolveAndValidateVendorServer(params: {
     };
   }
 
-  // Open-signup gate 2: Settlement payout account + name-match verification must pass
-  const hasPayoutColumns =
-    typeof vendor.payout_account_verified === 'boolean' ||
-    typeof vendor.settlement_account_name_matched === 'boolean';
-  const payoutVerified = hasPayoutColumns
-    ? Boolean(vendor.payout_account_verified) && Boolean(vendor.settlement_account_name_matched)
-    : Boolean(vendor.settlement_account_number && vendor.settlement_bank_code);
+  // Open-signup gate 2: Settlement payout account + name-match verification must pass strictly
+  const payoutVerified =
+    vendor.payout_account_verified === true && vendor.settlement_account_name_matched === true;
 
   if (!vendor.anchor_deposit_account_id || !vendor.settlement_account_number || !payoutVerified) {
     return {
@@ -777,22 +686,25 @@ export async function resolveAndValidateVendorServer(params: {
 
   let txDailyVolume = 0;
   if (effective.dailyVolumeCapNgn !== null) {
-    try {
-      const { data: todayTxRows, error: todayTxErr } = await supabase
-        .from('transactions')
-        .select('total_amount, status, resolution_notes')
-        .eq('vendor_id', vendor.id)
-        .gte('created_at', effectiveWindowStartIso)
-        .neq('status', 'CANCELLED')
-        .neq('status', 'REFUNDED');
-      if (!todayTxErr && Array.isArray(todayTxRows)) {
-        txDailyVolume = todayTxRows
-          .filter((row: any) => String(row.resolution_notes || '').toUpperCase() !== 'TEST')
-          .reduce((sum: number, row: any) => sum + (Number(row.total_amount) || 0), 0);
-      }
-    } catch {
-      // ignore fallback errors and use stored daily_volume_ngn
+    const { data: todayTxRows, error: todayTxErr } = await supabase
+      .from('transactions')
+      .select('total_amount, status, resolution_notes')
+      .eq('vendor_id', vendor.id)
+      .gte('created_at', effectiveWindowStartIso)
+      .neq('status', 'CANCELLED')
+      .neq('status', 'REFUNDED');
+    if (todayTxErr) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Vendor Daily Volume Query Failed (Fail Closed)',
+        details: { vendorId: vendor.id, error: todayTxErr.message },
+      }).catch(() => {});
+      throw new Error(`Unable to compute vendor daily volume: ${todayTxErr.message}`);
     }
+    txDailyVolume = (todayTxRows || [])
+      .filter((row: any) => String(row.resolution_notes || '').toUpperCase() !== 'TEST')
+      .reduce((sum: number, row: any) => sum + (Number(row.total_amount) || 0), 0);
   }
   const currentDailyVolume = Math.max(storedDailyVolume, txDailyVolume);
 

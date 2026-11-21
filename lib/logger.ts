@@ -7,9 +7,14 @@
 export type LogLevel = 'info' | 'warn' | 'error';
 
 const SECRET_KEY_RE =
-  /secret|token|password|pepper|salt|hash|cipher|auth_?tag|release_?code|otp|bvn|nin|signature|api_?key|authorization|cookie/i;
+  /secret|token|password|pepper|salt|hash|cipher|auth_?tag|release_?code|otp|bvn|signature|api_?key|authorization|cookie/i;
+const NIN_KEY_RE = /(?:^|_)nin(?:$|_)|(?<=[a-z])Nin(?:[A-Z]|$)|\bNIN\b/;
 const PHONE_KEY_RE = /phone|whatsapp|msisdn|mobile/i;
 const ACCOUNT_KEY_RE = /account|nuban|iban/i;
+
+function isSecretKey(key: string): boolean {
+  return SECRET_KEY_RE.test(key) || NIN_KEY_RE.test(key);
+}
 
 function maskTail(val: string, prefix: string): string {
   const clean = val.trim();
@@ -21,7 +26,7 @@ export function redactLogValue(key: string, value: unknown, depth = 0): unknown 
   if (depth > 5) return '[TRUNCATED]';
   if (value === null || value === undefined) return value;
 
-  if (SECRET_KEY_RE.test(key)) {
+  if (isSecretKey(key)) {
     return '[REDACTED]';
   }
 
@@ -105,7 +110,7 @@ export async function captureException(
   });
 
   const hookUrl = process.env.ERROR_TRACKING_WEBHOOK_URL?.trim();
-  if (!hookUrl || process.env.NODE_ENV === 'test') return;
+  if (!hookUrl) return;
 
   try {
     await fetch(hookUrl, {

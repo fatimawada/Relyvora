@@ -35,14 +35,16 @@ export function MarketWaitlistForm({ countryCode, countryName }: MarketWaitlistF
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: trimmed, market: countryCode }),
       });
-      if (res.ok) {
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.success !== false) {
         setStatus('success');
       } else {
-        // Fallback grace for preview environments without active DB
-        setStatus('success');
+        setStatus('error');
+        setErrorMessage(json.error || 'Could not register waitlist request. Please try again.');
       }
-    } catch {
-      setStatus('success');
+    } catch (err: any) {
+      setStatus('error');
+      setErrorMessage(err?.message || 'Network error registering waitlist request.');
     }
   };
 

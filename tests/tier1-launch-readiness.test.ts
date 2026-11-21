@@ -52,38 +52,50 @@ import { calculateDeliveryWindowCodeExpiration } from '../lib/releaseCode';
 import { calculateBusinessHoursDeadline, calculateBusinessSlaCountdown } from '../lib/disputeScenarios';
 import {
   buildMetaReleaseCodeTemplatePayload,
-  WHATSAPP_TEMPLATES,
-  setWhatsappTransportForTests,
-  resetWhatsappTestState,
+  buildMetaVerificationOtpTemplatePayload,
+  evaluateWhatsappRecipientPolicy,
+  extractTemplateBodyVariableCount,
+  sendCoolingWindowWhatsappNotice,
+  sendDeliveryReminderWhatsapp,
+  sendDisputeOpenedOrUpdatedWhatsapp,
   sendOrderDispatchedWhatsapp,
+  sendOtpWhatsappTemplate,
+  sendPaymentLinkWhatsappTemplate,
+  sendReleaseCodeWhatsappTemplate,
+  sendSettlementChangeConfirmWhatsapp,
+  sendVendorPhoneVerifyWhatsapp,
+  validateWhatsappTemplatePayload,
+  WHATSAPP_TEMPLATES,
 } from '../lib/whatsapp';
 import {
   encryptRefundAccount,
   decryptRefundAccount,
   extractAnchorDepositSenderFields,
   resolveVerifiedRefundDestination,
-  resetRefundDestinationOverlayForTests,
 } from '../lib/refundDestination';
-import {
-  validateEvidenceFileInput,
-  resetEvidenceFallbackStoreForTests,
-} from '../lib/evidenceStorage';
+import { validateEvidenceFileInput } from '../lib/evidenceStorage';
 import {
   expireUnpaidOrders,
   flagOverdueDispatchesAndSendReminders,
-  resetTxLifecycleOverlayForTests,
-  setTxLifecycleOverlay,
 } from '../lib/orderLifecycle';
 import { recordVendorComplianceStrike, setVendorSuspensionState } from '../lib/vendorTiers';
 import { checkSharedRateLimit } from '../lib/rateLimit';
 import { runRetentionCleanup } from '../lib/retentionCleanup';
 import { logInfo, redactLogValue } from '../lib/logger';
 import { clearSafetySettingsCache } from '../lib/safetyLimits';
+import {
+  clearWhatsappRetryMemoryCacheForTests,
+  ensureTestSecrets,
+  installTestTransportMocks,
+  mintBuyerSessionCookieViaApi,
+  CapturedWhatsappDispatch,
+} from './helpers/stagingAuthHelper';
 import { POST as createLinkPost } from '../app/api/escrow/create-link/route';
 import { GET as getOrderGet } from '../app/api/escrow/[id]/route';
 import { POST as consentPost } from '../app/api/escrow/[id]/consent/route';
 import { POST as dispatchPost } from '../app/api/escrow/dispatch/route';
 import { POST as cancelPost } from '../app/api/escrow/cancel/route';
+import { POST as disputeSendOtpPost } from '../app/api/escrow/dispute/send-otp/route';
 import { POST as disputePost } from '../app/api/escrow/dispute/route';
 import { POST as disputeRespondPost } from '../app/api/escrow/dispute/respond/route';
 import { POST as reissuePost } from '../app/api/escrow/reissue-code/route';
@@ -124,12 +136,38 @@ async function runTier1Suite() {
   process.env.WHATSAPP_APP_SECRET = 'test_wa_secret_tier1';
   process.env.ANCHOR_WEBHOOK_SECRET = 'test_anchor_secret_tier1';
   process.env.WHATSAPP_ALLOWED_RECIPIENTS = '+2348011112222,+2348099998888';
+  ensureTestSecrets();
 
-  resetWhatsappTestState();
-  resetEvidenceFallbackStoreForTests();
-  resetRefundDestinationOverlayForTests();
-  resetTxLifecycleOverlayForTests();
+  clearWhatsappRetryMemoryCacheForTests();
   clearSafetySettingsCache();
+
+  const t1VendorUserId = crypto.randomUUID();
+  const t1VendorEmail = `test_t1_${Date.now()}@relyvora.com`;
+  const t1VendorToken = 'tok_t1_vendor';
+  const adminId = crypto.randomUUID();
+  const t1SuiteIp = `198.51.100.${Math.floor(Math.random() * 180) + 10}`;
+  process.env.ADMIN_USER_IDS = adminId;
+
+  const h = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const p = Buffer.from(
+    JSON.stringify({
+      sub: adminId,
+      email: 'admin@relyvora.com',
+      aal: 'aal2',
+      iat: Math.floor(Date.now() / 1000) - 30,
+      amr: [{ method: 'totp', timestamp: Math.floor(Date.now() / 1000) - 30 }],
+    })
+  ).toString('base64url');
+  const adminJwt = `${h}.${p}.fakesig`;
+
+  const capturedWaForSession: CapturedWhatsappDispatch[] = [];
+  const authMockHarness = installTestTransportMocks({
+    usersByToken: new Map([
+      [t1VendorToken, { id: t1VendorUserId, email: t1VendorEmail, role: 'authenticated', emailConfirmed: true }],
+      [adminJwt, { id: adminId, email: 'admin@relyvora.com', role: 'admin', aal: 'aal2', emailConfirmed: true }],
+    ]),
+    capturedWhatsapp: capturedWaForSession,
+  });
 
   try {
     console.log('\n======================================================================');
@@ -139,25 +177,79 @@ async function runTier1Suite() {
     // -------------------------------------------------------------------------
     // 1. WhatsApp Templates, TTL = -1 & Failed/Undelivered Webhook Auto-Retry
     // -------------------------------------------------------------------------
-    console.log('--- 1. WHATSAPP TTL=-1 & FAILED/UNDELIVERED RETRY ---');
+    console.log('--- 1. WHATSAPP TEMPLATES, AUTH TTL, UTILITY WORD AUDIT & RETRY ---');
     const tplPayload = buildMetaReleaseCodeTemplatePayload();
+    const otpTplPayload = buildMetaVerificationOtpTemplatePayload();
+    const forbiddenUtilityPattern = /code|verify|confirm|otp|one[- ]time/i;
+    const utilityTemplates = Object.values(WHATSAPP_TEMPLATES).filter((t) => t.category === 'UTILITY');
+    const utilityForbiddenHits = utilityTemplates.filter(
+      (t) =>
+        forbiddenUtilityPattern.test(t.bodyText) ||
+        forbiddenUtilityPattern.test(t.footerText || '') ||
+        (t.buttons || []).some((b) => forbiddenUtilityPattern.test(b.text))
+    );
     assert(
       tplPayload.name === 'release_code_v1' &&
         tplPayload.message_send_ttl_seconds === -1 &&
+        otpTplPayload.name === 'verification_otp_v1' &&
+        otpTplPayload.category === 'AUTHENTICATION' &&
+        !('message_send_ttl_seconds' in otpTplPayload) &&
+        otpTplPayload.components.some((c) => c.type === 'BODY' && c.add_security_recommendation === false) &&
+        WHATSAPP_TEMPLATES.payment_link_v1.footerText === 'Secured by Relyvora Escrow' &&
+        WHATSAPP_TEMPLATES.payment_link_v1.buttons?.[0]?.text === 'Continue' &&
+        WHATSAPP_TEMPLATES.payment_link_v1.buttons?.[1]?.text === 'Not my order' &&
+        WHATSAPP_TEMPLATES.payment_link_v1.buttons?.[2]?.text === 'Open payment page' &&
+        !WHATSAPP_TEMPLATES.order_dispatched_v1.bodyText.includes('*') &&
+        WHATSAPP_TEMPLATES.order_dispatched_v1.bodyText.includes('(Ref: {{3}}) as dispatched with {{4}}') &&
+        WHATSAPP_TEMPLATES.settlement_change_confirm_v1.bodyText.includes('account ending in {{2}} at {{3}}') &&
+        !WHATSAPP_TEMPLATES.settlement_change_confirm_v1.bodyText.includes('*') &&
+        WHATSAPP_TEMPLATES.payout_cooling_notice_v1.buttons?.[0]?.text === 'Problem' &&
+        !WHATSAPP_TEMPLATES.payout_cooling_notice_v1.bodyText.includes('*') &&
+        utilityTemplates.length === 7 &&
+        utilityForbiddenHits.length === 0 &&
         Object.keys(WHATSAPP_TEMPLATES).length === 9,
-      'release_code_v1 template sets message_send_ttl_seconds=-1 (30 days) and all 9 templates registered'
+      'release_code_v1 (TTL=-1), verification_otp_v1 (AUTH), payment_link_v1 footer/buttons, order_dispatched_v1 order, settlement bank name, Problem label & utility word audit match live Meta'
     );
 
-    const dispatchedWamids: string[] = [];
-    setWhatsappTransportForTests(async (payload, meta) => {
-      const id = `wamid.t1.${dispatchedWamids.length + 1}`;
-      dispatchedWamids.push(id);
-      return { ok: true, messageId: id, status: 'sent' };
-    });
+    const waCountBefore = capturedWaForSession.length;
+
+    const { data: waSeedVendor, error: waVendorErr } = await supabase
+      .from('vendors')
+      .insert({
+        store_name: `@TEST_T1_WA_${Date.now()}`,
+        email: `test_t1_wa_${Date.now()}@relyvora.com`,
+        phone_number: '+2348099998888',
+        kyc_status: 'verified',
+        payout_account_verified: true,
+        settlement_account_name_matched: true,
+        is_allowlisted: true,
+      })
+      .select('id')
+      .single();
+    if (waVendorErr || !waSeedVendor) throw new Error(`Failed seeding WA test vendor: ${waVendorErr?.message}`);
+    createdVendorIds.push(waSeedVendor.id);
+
+    const { data: waSeedTx, error: waTxErr } = await supabase
+      .from('transactions')
+      .insert({
+        vendor_id: waSeedVendor.id,
+        vendor_handle: '@TEST_T1_WA',
+        item_name: 'TEST Phone',
+        item_price: 10000,
+        delivery_fee: 0,
+        protection_fee: 500,
+        total_amount: 10500,
+        status: 'FUNDS_LOCKED',
+        buyer_phone: '+2348011112222',
+      })
+      .select('id')
+      .single();
+    if (waTxErr || !waSeedTx) throw new Error(`Failed seeding WA test tx: ${waTxErr?.message}`);
+    createdTxIds.push(waSeedTx.id);
 
     const sendDisp = await sendOrderDispatchedWhatsapp(
       {
-        transactionId: '00000000-0000-4000-8000-000000000099',
+        transactionId: waSeedTx.id,
         buyerPhone: '+2348011112222',
         vendorDisplayName: '@TESTShop',
         itemName: 'TEST Phone',
@@ -166,7 +258,203 @@ async function runTier1Suite() {
       },
       supabase
     );
-    assert(sendDisp.success && Boolean(sendDisp.messageId), 'sendOrderDispatchedWhatsapp sends order_dispatched_v1 cleanly');
+    const dispPayload = capturedWaForSession.find((m) => m.messageId === sendDisp.messageId);
+    assert(
+      sendDisp.success &&
+        Boolean(sendDisp.messageId) &&
+        dispPayload?.parameters?.[0] === '@TESTShop' &&
+        dispPayload?.parameters?.[1] === 'TEST Phone' &&
+        dispPayload?.parameters?.[2] === 'WAYBILL-991' &&
+        dispPayload?.parameters?.[3] === 'DHL Rider',
+      'sendOrderDispatchedWhatsapp sends order_dispatched_v1 with exact variable order [vendor, item, ref, courier]'
+    );
+
+    // Verify EVERY single one of all 9 template senders emits exact variable counts matching WHATSAPP_TEMPLATES
+    const auditPhone = '+2348099997777';
+    const prevAllowed = process.env.WHATSAPP_ALLOWED_RECIPIENTS;
+    process.env.WHATSAPP_ALLOWED_RECIPIENTS = `${prevAllowed || ''},${auditPhone}`;
+    const auditStart = capturedWaForSession.length;
+    await sendPaymentLinkWhatsappTemplate(
+      {
+        transactionId: waSeedTx.id,
+        vendorId: waSeedVendor.id,
+        vendorDisplayName: '@TESTShop',
+        itemName: 'TEST Phone',
+        totalAmount: 45000,
+        buyerPhone: auditPhone,
+      },
+      supabase
+    );
+    await sendReleaseCodeWhatsappTemplate(
+      {
+        transactionId: waSeedTx.id,
+        vendorId: waSeedVendor.id,
+        vendorDisplayName: '@TESTShop',
+        itemName: 'TEST Phone',
+        releaseCode: '482910',
+        buyerPhone: auditPhone,
+      },
+      supabase
+    );
+    await sendOtpWhatsappTemplate(
+      {
+        transactionId: waSeedTx.id,
+        buyerPhone: auditPhone,
+        otp: '739204',
+        purpose: 'reissue',
+      },
+      supabase
+    );
+    await sendOrderDispatchedWhatsapp(
+      {
+        transactionId: waSeedTx.id,
+        buyerPhone: auditPhone,
+        vendorDisplayName: '@TESTShop',
+        itemName: 'TEST Phone',
+        courierLabel: 'DHL Rider',
+        trackingRef: 'WAYBILL-991',
+      },
+      supabase
+    );
+    await sendDeliveryReminderWhatsapp(
+      {
+        transactionId: waSeedTx.id,
+        buyerPhone: auditPhone,
+        itemName: 'TEST Phone',
+        vendorDisplayName: '@TESTShop',
+        hoursLeftText: '24 hours',
+      },
+      supabase
+    );
+    await sendCoolingWindowWhatsappNotice(
+      {
+        transactionId: waSeedTx.id,
+        buyerPhone: auditPhone,
+        itemName: 'TEST Phone',
+        totalAmount: 45000,
+        coolingHours: 2,
+        payoutAvailableAt: '2026-11-18T16:30:00Z',
+      },
+      supabase
+    );
+    await sendDisputeOpenedOrUpdatedWhatsapp(
+      {
+        transactionId: waSeedTx.id,
+        recipientPhone: auditPhone,
+        itemName: 'TEST Phone',
+        updateSummary: 'Buyer flagged Quality Mismatch',
+        deadlineText: '2026-11-18T18:00:00Z',
+      },
+      supabase
+    );
+    await sendVendorPhoneVerifyWhatsapp(
+      {
+        vendorId: waSeedVendor.id,
+        vendorDisplayName: '@TESTShop',
+        vendorPhone: auditPhone,
+        maskedAccountHint: 'kemi@relyvora.com',
+      },
+      supabase
+    );
+    await sendSettlementChangeConfirmWhatsapp(
+      {
+        vendorId: waSeedVendor.id,
+        vendorDisplayName: '@TESTShop',
+        vendorPhone: auditPhone,
+        newAccountLast4: '****6789',
+        newBankCode: '058',
+        waitHours: 48,
+      },
+      supabase
+    );
+    if (prevAllowed === undefined) delete process.env.WHATSAPP_ALLOWED_RECIPIENTS;
+    else process.env.WHATSAPP_ALLOWED_RECIPIENTS = prevAllowed;
+
+    const auditedDispatches = capturedWaForSession.slice(auditStart);
+    const auditedNames = new Set(auditedDispatches.map((d) => d.templateName));
+    const settleAudit = auditedDispatches.find((d) => d.templateName === 'settlement_change_confirm_v1');
+    const coolingAudit = auditedDispatches.find((d) => d.templateName === 'payout_cooling_notice_v1');
+    const payLinkAudit = auditedDispatches.find((d) => d.templateName === 'payment_link_v1');
+    let allCountChecksValid = auditedNames.size === 9;
+    for (const dispatched of auditedDispatches) {
+      const def = WHATSAPP_TEMPLATES[dispatched.templateName as keyof typeof WHATSAPP_TEMPLATES];
+      const expectedVars = extractTemplateBodyVariableCount(def.bodyText);
+      const bodyParams = (dispatched.payload.template.components.find((c) => c.type === 'body') as any)?.parameters || [];
+      if (bodyParams.length !== expectedVars) {
+        allCountChecksValid = false;
+      }
+      validateWhatsappTemplatePayload(dispatched.payload);
+    }
+
+    let mismatchRejected = false;
+    try {
+      validateWhatsappTemplatePayload({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: '2348099997777',
+        type: 'template',
+        template: {
+          name: 'order_dispatched_v1',
+          language: { code: 'en' },
+          components: [
+            { type: 'body', parameters: [{ type: 'text', text: 'OnlyTwo' }, { type: 'text', text: 'Vars' }] },
+          ],
+        },
+      });
+    } catch {
+      mismatchRejected = true;
+    }
+
+    assert(
+      allCountChecksValid &&
+        mismatchRejected &&
+        payLinkAudit?.parameters?.[2] === '45,000' &&
+        settleAudit?.parameters?.[1] === '6789' &&
+        settleAudit?.parameters?.[2] === 'Guaranty Trust Bank (GTBank)' &&
+        !(settleAudit?.parameters || []).join(' ').includes('*') &&
+        (coolingAudit?.payload.template.components.find((c) => c.type === 'button') as any)?.parameters?.[0]?.payload === `PROBLEM_ORDER:${waSeedTx.id}`,
+      'All 9 WhatsApp senders pass exact template variable-count validation, mismatch throws, and GTBank name/digits/no-asterisk formatting verified'
+    );
+
+    // WHATSAPP_ALLOWED_RECIPIENTS matrix across Staging vs Production (unset, empty, set, invalid)
+    const origVercelEnv = process.env.VERCEL_ENV;
+    const prevAllowMat = process.env.WHATSAPP_ALLOWED_RECIPIENTS;
+    const matChecks = [
+      evaluateWhatsappRecipientPolicy('+2348055551111', { VERCEL_ENV: 'preview', WHATSAPP_ALLOWED_RECIPIENTS: undefined }).allowed === true,
+      evaluateWhatsappRecipientPolicy('+2348055551111', { VERCEL_ENV: 'preview', WHATSAPP_ALLOWED_RECIPIENTS: '' }).allowed === true,
+      evaluateWhatsappRecipientPolicy('+2348055551111', { VERCEL_ENV: 'preview', WHATSAPP_ALLOWED_RECIPIENTS: '+2348055551111' }).allowed === true,
+      evaluateWhatsappRecipientPolicy('+2348055559999', { VERCEL_ENV: 'preview', WHATSAPP_ALLOWED_RECIPIENTS: '+2348055551111' }).allowed === false,
+      evaluateWhatsappRecipientPolicy('+2348055559999', { VERCEL_ENV: 'preview', WHATSAPP_ALLOWED_RECIPIENTS: 'bad-entry' }).allowed === false,
+      evaluateWhatsappRecipientPolicy('+2348055559999', { VERCEL_ENV: 'production', WHATSAPP_ALLOWED_RECIPIENTS: undefined }).allowed === true,
+      evaluateWhatsappRecipientPolicy('+2348055559999', { VERCEL_ENV: 'production', WHATSAPP_ALLOWED_RECIPIENTS: '' }).allowed === true,
+      evaluateWhatsappRecipientPolicy('+2348055559999', { VERCEL_ENV: 'production', WHATSAPP_ALLOWED_RECIPIENTS: '+2348055551111' }).allowed === true,
+      evaluateWhatsappRecipientPolicy('+2348055559999', { VERCEL_ENV: 'production', WHATSAPP_ALLOWED_RECIPIENTS: 'bad-entry' }).allowed === true,
+    ];
+    process.env.VERCEL_ENV = 'production';
+    process.env.WHATSAPP_ALLOWED_RECIPIENTS = '+2348055551111';
+    const prodSendOther = await sendReleaseCodeWhatsappTemplate(
+      {
+        transactionId: waSeedTx.id,
+        vendorId: waSeedVendor.id,
+        vendorDisplayName: '@TESTShop',
+        itemName: 'TEST Phone',
+        releaseCode: '123456',
+        buyerPhone: '+2348099997777',
+      },
+      supabase
+    );
+    if (origVercelEnv === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = origVercelEnv;
+    if (prevAllowMat === undefined) delete process.env.WHATSAPP_ALLOWED_RECIPIENTS;
+    else process.env.WHATSAPP_ALLOWED_RECIPIENTS = prevAllowMat;
+
+    assert(
+      matChecks.every(Boolean) && prodSendOther.success === true,
+      'WHATSAPP_ALLOWED_RECIPIENTS allows unset/empty & enforces set in staging while Production never silently blocks messages'
+    );
+
+    const waCountBeforeRetry = capturedWaForSession.length;
+    void waCountBefore;
 
     const failWebhookBody = JSON.stringify({
       entry: [
@@ -202,7 +490,7 @@ async function runTier1Suite() {
     assert(
       waFailRes.status === 200 &&
         waFailJson.processed?.[0]?.retryOutcome?.retried === true &&
-        dispatchedWamids.length === 2,
+        capturedWaForSession.length - waCountBeforeRetry === 1,
       'Undelivered status webhook automatically retries Meta Cloud API dispatch ONCE and logs failed delivery'
     );
 
@@ -254,7 +542,11 @@ async function runTier1Suite() {
     // 3. Health, Prohibited Items Page & Footer Legal/Support Coverage
     // -------------------------------------------------------------------------
     console.log('\n--- 3. HEALTH, PROHIBITED ITEMS & LEGAL CONSENT ---');
-    const healthRes = await healthGet();
+    const healthRes = await healthGet(
+      new NextRequest('http://localhost/api/health', {
+        headers: { 'x-vercel-forwarded-for': t1SuiteIp },
+      })
+    );
     const healthJson = await healthRes.json();
     assert(
       healthRes.status === 200 &&
@@ -280,10 +572,13 @@ async function runTier1Suite() {
     const { data: testVendor, error: vErr } = await supabase
       .from('vendors')
       .insert({
+        user_id: t1VendorUserId,
         store_name: `@TEST_T1_Vendor_${Date.now()}`,
-        email: `test_t1_${Date.now()}@relyvora.com`,
+        email: t1VendorEmail,
         phone_number: '+2348099998888',
         kyc_status: 'verified',
+        payout_account_verified: true,
+        settlement_account_name_matched: true,
         is_allowlisted: true,
         anchor_deposit_account_id: 'anc_t1_test_001',
         settlement_bank_code: '058',
@@ -298,10 +593,12 @@ async function runTier1Suite() {
     const linkRes = await createLinkPost(
       new NextRequest('http://localhost/api/escrow/create-link', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${t1VendorToken}`,
+          'x-vercel-forwarded-for': t1SuiteIp,
+        },
         body: JSON.stringify({
-          vendorId: testVendor.id,
-          vendorHandle: testVendor.store_name,
           itemName: 'TEST Interstate Luxury Wig',
           itemPrice: 50000,
           deliveryFee: 2500,
@@ -313,14 +610,17 @@ async function runTier1Suite() {
     );
     const linkJson = await linkRes.json();
     const txId = linkJson?.transaction?.id;
-    assert(linkRes.status === 201 && txId && linkJson.transaction.delivery_type === 'interstate', 'Order created with interstate delivery type');
+    assert(
+      linkRes.status === 201 && txId && linkJson.transaction.delivery_type === 'interstate',
+      `Order created with interstate delivery type (status=${linkRes.status}, error=${linkJson?.error || linkJson?.code || 'none'})`
+    );
     if (txId) createdTxIds.push(txId);
 
     // Buyer consent recording
     const consRes = await consentPost(
       new NextRequest(`http://localhost/api/escrow/${txId}/consent`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': t1SuiteIp },
         body: JSON.stringify({ acceptedTerms: true, termsVersion: '2026-11-v1' }),
       }),
       { params: Promise.resolve({ id: txId }) }
@@ -386,11 +686,11 @@ async function runTier1Suite() {
     const depJson = await depRes.json();
     assert(depRes.status === 200 && depJson.status === 'FUNDS_LOCKED', 'Anchor deposit webhook transitions order to FUNDS_LOCKED');
 
-    // Proof of dispatch gate: fails without courier/waybill/proof upload, succeeds with valid proof file
+    // Proof of dispatch gate: fails without courier/waybill/proof upload, succeeds with valid proof file (authenticated Vendor)
     const badDispatchRes = await dispatchPost(
       new NextRequest('http://localhost/api/escrow/dispatch', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${t1VendorToken}` },
         body: JSON.stringify({ transactionId: txId }),
       })
     );
@@ -400,7 +700,7 @@ async function runTier1Suite() {
     const goodDispatchRes = await dispatchPost(
       new NextRequest('http://localhost/api/escrow/dispatch', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${t1VendorToken}` },
         body: JSON.stringify({
           transactionId: txId,
           carrierName: 'GIG Logistics',
@@ -425,12 +725,23 @@ async function runTier1Suite() {
     const bigImgCheck = await validateEvidenceFileInput({ mimeType: 'image/png', fileSizeBytes: 12 * 1024 * 1024, supabaseClient: supabase });
     assert(!badExeCheck.valid && !bigImgCheck.valid, 'Evidence validation rejects .exe MIME and >10MB image files');
 
-    // Test non-silent code expiry & buyer resend keeping money held
-    setTxLifecycleOverlay(txId, {
-      code_expires_at: new Date(Date.now() - 3600 * 1000).toISOString(),
+    // Mark buyer WhatsApp verified & mint signed HttpOnly Buyer Session cookie via REAL /api/escrow/buyer-session
+    await supabase.from('transactions').update({ buyer_phone_verified: true, buyer_phone_verified_at: new Date().toISOString() }).eq('id', txId);
+    const { sessionCookie: txBuyerCookie } = await mintBuyerSessionCookieViaApi({
+      transactionId: txId,
+      capturedWhatsapp: capturedWaForSession,
+      ipAddress: '198.51.100.70',
     });
+
+    // Test non-silent code expiry & buyer resend keeping money held
+    await supabase
+      .from('transactions')
+      .update({ code_expires_at: new Date(Date.now() - 3600 * 1000).toISOString() })
+      .eq('id', txId);
     const orderGetExpired = await getOrderGet(
-      new NextRequest(`http://localhost/api/escrow/${txId}`),
+      new NextRequest(`http://localhost/api/escrow/${txId}`, {
+        headers: { cookie: txBuyerCookie },
+      }),
       { params: Promise.resolve({ id: txId }) }
     );
     const orderExpiredJson = await orderGetExpired.json();
@@ -442,7 +753,7 @@ async function runTier1Suite() {
     const otpReqRes = await reissuePost(
       new NextRequest('http://localhost/api/escrow/reissue-code', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-forwarded-for': '198.51.100.71' },
+        headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': '198.51.100.71', cookie: txBuyerCookie },
         body: JSON.stringify({ transactionId: txId, action: 'send_otp' }),
       })
     );
@@ -450,7 +761,7 @@ async function runTier1Suite() {
     const reissueVerifyRes = await reissuePost(
       new NextRequest('http://localhost/api/escrow/reissue-code', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-forwarded-for': '198.51.100.71' },
+        headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': '198.51.100.71', cookie: txBuyerCookie },
         body: JSON.stringify({ transactionId: txId, action: 'verify_and_reissue', otp: otpReqJson.sandbox_otp }),
       })
     );
@@ -460,17 +771,23 @@ async function runTier1Suite() {
       'Buyer can verify WhatsApp OTP after code expiry to receive fresh release code with new expiry window'
     );
 
-    // Raise dispute with buyer OTP + evidence upload + check counterparty count-only visibility & signed URL ACL
-    await supabase.from('transactions').update({ buyer_phone_verified: true }).eq('id', txId);
+    // Raise dispute with buyer session + step-up dispute OTP + evidence upload + check counterparty count-only visibility & signed URL ACL
+    const dispOtpRes = await disputeSendOtpPost(
+      new NextRequest('http://localhost/api/escrow/dispute/send-otp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': '198.51.100.72', cookie: txBuyerCookie },
+        body: JSON.stringify({ transactionId: txId }),
+      })
+    );
+    const dispOtpJson = await dispOtpRes.json();
     const buyerDisputeRes = await disputePost(
       new NextRequest('http://localhost/api/escrow/dispute', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-forwarded-for': '198.51.100.72' },
+        headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': '198.51.100.72', cookie: txBuyerCookie },
         body: JSON.stringify({
           transactionId: txId,
           scenarioId: 1,
-          raisedByRole: 'BUYER',
-          useVerifiedWhatsapp: true,
+          otp: dispOtpJson.sandbox_otp,
           disputeReason: 'TEST Quality mismatch on wig length',
           evidenceFiles: [
             {
@@ -490,12 +807,16 @@ async function runTier1Suite() {
     );
 
     const vendorOrderRes = await getOrderGet(
-      new NextRequest(`http://localhost/api/escrow/${txId}?viewer=VENDOR`),
+      new NextRequest(`http://localhost/api/escrow/${txId}`, {
+        headers: { authorization: `Bearer ${t1VendorToken}` },
+      }),
       { params: Promise.resolve({ id: txId }) }
     );
     const vendorOrderJson = await vendorOrderRes.json();
     const vendorAclRes = await signedUrlGet(
-      new NextRequest(`http://localhost/api/escrow/evidence/signed-url?transactionId=${txId}&fileId=${buyerEvId}&viewerRole=VENDOR`)
+      new NextRequest(`http://localhost/api/escrow/evidence/signed-url?transactionId=${txId}&fileId=${buyerEvId}`, {
+        headers: { authorization: `Bearer ${t1VendorToken}` },
+      })
     );
     assert(
       vendorOrderJson.transaction?.evidence_summary?.counterpartyDisputeEvidenceCount === 1 &&
@@ -504,14 +825,13 @@ async function runTier1Suite() {
       'Counterparties see count ONLY of opposing evidence and get HTTP 403 if requesting signed URL for opposing evidence'
     );
 
-    // Counterparty dispute response + reminder template test
+    // Counterparty dispute response + reminder template test (session-derived VENDOR role)
     const respRes = await disputeRespondPost(
       new NextRequest('http://localhost/api/escrow/dispute/respond', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${t1VendorToken}` },
         body: JSON.stringify({
           transactionId: txId,
-          responderRole: 'VENDOR',
           responseText: 'TEST Dispatched exact 30-inch wig, ready for inspection check',
         }),
       })
@@ -525,12 +845,15 @@ async function runTier1Suite() {
     const unpaidRes = await createLinkPost(
       new NextRequest('http://localhost/api/escrow/create-link', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${t1VendorToken}`,
+          'x-vercel-forwarded-for': t1SuiteIp,
+        },
         body: JSON.stringify({
-          vendorId: testVendor.id,
-          vendorHandle: testVendor.store_name,
           itemName: 'TEST Cancelled Unpaid Bag',
           itemPrice: 12000,
+          buyerPhone: '+2348011112222',
         }),
       })
     );
@@ -541,7 +864,7 @@ async function runTier1Suite() {
     const cancelRes = await cancelPost(
       new NextRequest('http://localhost/api/escrow/cancel', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${t1VendorToken}` },
         body: JSON.stringify({ transactionId: unpaidTxId, reason: 'Out of stock before payment' }),
       })
     );
@@ -555,10 +878,12 @@ async function runTier1Suite() {
     const blockedSuspRes = await createLinkPost(
       new NextRequest('http://localhost/api/escrow/create-link', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${t1VendorToken}`,
+          'x-vercel-forwarded-for': t1SuiteIp,
+        },
         body: JSON.stringify({
-          vendorId: testVendor.id,
-          vendorHandle: testVendor.store_name,
           itemName: 'TEST Blocked By Suspension',
           itemPrice: 5000,
         }),
@@ -595,14 +920,21 @@ async function runTier1Suite() {
       'Shared rate limiter, retention cleanup, overdue dispatch flagger, and unpaid expiry job execute cleanly'
     );
 
-    // Verified Refund Destination Gate on Resolve/Refund + Buyer OTP Bank Verification
+    // Verified Refund Destination Gate on Resolve/Refund + Buyer OTP Bank Verification (requires BUYER session)
     const unverifiedDest = await resolveVerifiedRefundDestination({ id: '00000000-0000-0000-0000-000000000000' }, supabase);
     assert(unverifiedDest.verified === false, 'resolveVerifiedRefundDestination blocks unverified refunds safely');
+
+    await supabase.from('transactions').update({ buyer_phone_verified: true, buyer_phone_verified_at: new Date().toISOString() }).eq('id', unpaidTxId);
+    const unpaidBuyerMint = await mintBuyerSessionCookieViaApi({
+      transactionId: unpaidTxId,
+      capturedWhatsapp: capturedWaForSession,
+      ipAddress: '198.51.100.87',
+    });
 
     const refOtpRes = await refundDestPost(
       new NextRequest('http://localhost/api/escrow/refund-destination', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-forwarded-for': '198.51.100.88' },
+        headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': '198.51.100.88', cookie: unpaidBuyerMint.sessionCookie },
         body: JSON.stringify({ transactionId: unpaidTxId, action: 'send_otp' }),
       })
     );
@@ -610,7 +942,7 @@ async function runTier1Suite() {
     const refSaveRes = await refundDestPost(
       new NextRequest('http://localhost/api/escrow/refund-destination', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-forwarded-for': '198.51.100.88' },
+        headers: { 'content-type': 'application/json', 'x-vercel-forwarded-for': '198.51.100.88', cookie: unpaidBuyerMint.sessionCookie },
         body: JSON.stringify({
           transactionId: unpaidTxId,
           action: 'verify_and_save',
@@ -634,88 +966,54 @@ async function runTier1Suite() {
     // 6. Admin Console 7 Queues, Search (?q=), Signed-URL Evidence & Actions
     // -------------------------------------------------------------------------
     console.log('\n--- 6. ADMIN CONSOLE QUEUES, SEARCH & RECOVERY ACTIONS ---');
-    const adminId = '00000000-0000-0000-0000-000000000998';
-    process.env.ADMIN_USER_IDS = adminId;
-    const h = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
-    const p = Buffer.from(
-      JSON.stringify({
-        sub: adminId,
-        email: 'admin@relyvora.com',
-        aal: 'aal2',
-        iat: Math.floor(Date.now() / 1000) - 30,
-        amr: [{ method: 'totp', timestamp: Math.floor(Date.now() / 1000) - 30 }],
+    const admListRes = await adminListGet(
+      new NextRequest(`http://localhost/api/admin/disputes/list?q=${encodeURIComponent(txId.slice(0, 8))}`, {
+        headers: { authorization: `Bearer ${adminJwt}` },
       })
-    ).toString('base64url');
-    const adminJwt = `${h}.${p}.fakesig`;
+    );
+    const admListJson = await admListRes.json();
+    assert(
+      admListRes.status === 200 &&
+        admListJson.queues &&
+        Array.isArray(admListJson.queues.openDisputes) &&
+        Array.isArray(admListJson.queues.overdueDispatch) &&
+        Array.isArray(admListJson.queues.reviewHolds) &&
+        Array.isArray(admListJson.queues.stuckSettlements) &&
+        Array.isArray(admListJson.queues.failedWhatsappDeliveries) &&
+        Array.isArray(admListJson.queues.unmatchedOrExcessDeposits) &&
+        Array.isArray(admListJson.queues.riskFlags) &&
+        admListJson.searchMatches?.some((m: any) => m.id === txId),
+      'GET /api/admin/disputes/list returns all 7 operational queues and matches order via ?q='
+    );
 
-    const realFetchT1 = globalThis.fetch;
-    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-      const u = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-      if (u.includes('/auth/v1/user')) {
-        return new Response(
-          JSON.stringify({
-            id: adminId,
-            email: 'admin@relyvora.com',
-            email_confirmed_at: '2026-01-01T00:00:00Z',
-            app_metadata: { role: 'admin' },
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } }
-        );
-      }
-      return realFetchT1(input as any, init);
-    };
+    const admSignedRes = await signedUrlGet(
+      new NextRequest(
+        `http://localhost/api/escrow/evidence/signed-url?transactionId=${txId}&fileId=${buyerEvId}`,
+        { headers: { authorization: `Bearer ${adminJwt}` } }
+      )
+    );
+    const admSignedJson = await admSignedRes.json();
+    assert(
+      admSignedRes.status === 200 && Boolean(admSignedJson.signedUrl),
+      'AAL2 admin receives short-lived signed URL for private counterparty dispute evidence'
+    );
 
-    try {
-      const admListRes = await adminListGet(
-        new NextRequest(`http://localhost/api/admin/disputes/list?q=${encodeURIComponent(txId.slice(0, 8))}`, {
-          headers: { authorization: `Bearer ${adminJwt}` },
-        })
-      );
-      const admListJson = await admListRes.json();
-      assert(
-        admListRes.status === 200 &&
-          admListJson.queues &&
-          Array.isArray(admListJson.queues.openDisputes) &&
-          Array.isArray(admListJson.queues.overdueDispatch) &&
-          Array.isArray(admListJson.queues.reviewHolds) &&
-          Array.isArray(admListJson.queues.stuckSettlements) &&
-          Array.isArray(admListJson.queues.failedWhatsappDeliveries) &&
-          Array.isArray(admListJson.queues.unmatchedOrExcessDeposits) &&
-          Array.isArray(admListJson.queues.riskFlags) &&
-          admListJson.searchMatches?.some((m: any) => m.id === txId),
-        'GET /api/admin/disputes/list returns all 7 operational queues and matches order via ?q='
-      );
-
-      const admSignedRes = await signedUrlGet(
-        new NextRequest(
-          `http://localhost/api/escrow/evidence/signed-url?transactionId=${txId}&fileId=${buyerEvId}&viewerRole=ADMIN`,
-          { headers: { authorization: `Bearer ${adminJwt}` } }
-        )
-      );
-      const admSignedJson = await admSignedRes.json();
-      assert(
-        admSignedRes.status === 200 && Boolean(admSignedJson.signedUrl),
-        'AAL2 admin receives short-lived signed URL for private counterparty dispute evidence'
-      );
-
-      const admPhoneRes = await adminActionsPost(
-        new NextRequest('http://localhost/api/admin/actions', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', authorization: `Bearer ${adminJwt}` },
-          body: JSON.stringify({
-            action: 'change_buyer_phone',
-            transactionId: unpaidTxId,
-            newBuyerPhone: '+2348099998888',
-            reason: 'TEST admin buyer phone recovery',
-          }),
-        })
-      );
-      assert(admPhoneRes.status === 200, 'AAL2 admin can update buyer WhatsApp phone with reason & audit trail');
-    } finally {
-      globalThis.fetch = realFetchT1;
-    }
+    const admPhoneRes = await adminActionsPost(
+      new NextRequest('http://localhost/api/admin/actions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${adminJwt}` },
+        body: JSON.stringify({
+          action: 'change_buyer_phone',
+          transactionId: unpaidTxId,
+          newBuyerPhone: '+2348099998888',
+          reason: 'TEST admin buyer phone recovery',
+        }),
+      })
+    );
+    assert(admPhoneRes.status === 200, 'AAL2 admin can update buyer WhatsApp phone with reason & audit trail');
   } finally {
-    setWhatsappTransportForTests(null);
+    authMockHarness.restore();
+    clearWhatsappRetryMemoryCacheForTests();
     if (origMode === undefined) delete process.env.PAYMENTS_MODE;
     else process.env.PAYMENTS_MODE = origMode;
     if (origAppSecret === undefined) delete process.env.WHATSAPP_APP_SECRET;
@@ -728,6 +1026,7 @@ async function runTier1Suite() {
     else process.env.ADMIN_USER_IDS = origAdminIds;
 
     console.log('\n--- CLEANING UP TIER 1 STAGING TEST ROWS ---');
+    await supabase.from('rate_limit_buckets').delete().ilike('key', `%${t1SuiteIp}%`);
     if (createdEventIds.length > 0) {
       await supabase.from('webhook_events').delete().in('event_id', createdEventIds);
       await supabase.from('deposits').delete().in('anchor_event_id', createdEventIds);
@@ -744,12 +1043,13 @@ async function runTier1Suite() {
       }
     }
     for (const vid of createdVendorIds) {
+      await supabase.from('whatsapp_message_log').delete().eq('vendor_id', vid);
       await supabase.from('admin_audit_log').delete().eq('target_id', vid);
       const { error: vDelErr } = await supabase.from('vendors').delete().eq('id', vid);
       if (vDelErr) {
         await supabase
           .from('vendors')
-          .update({ store_name: `TEST - Archived T1 Vendor (${vid.slice(0, 8)})`, is_suspended: true })
+          .update({ store_name: `TEST - Archived T1 Vendor (${vid.slice(0, 8)})`, user_id: null, is_suspended: true })
           .eq('id', vid);
       }
     }

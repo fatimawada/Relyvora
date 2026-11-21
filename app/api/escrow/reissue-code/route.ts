@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import {
   generateCryptographicReleaseCode,
   computeReleaseCodeHmac,
   calculateDeliveryWindowCodeExpiration,
+  verifyReleaseCodeHmac,
 } from '@/lib/releaseCode';
-import { verifyReleaseCodeHmac } from '@/lib/releaseCode';
 import {
   getDeliveryAndLifecycleConfig,
-  mergeTransactionWithLifecycleOverlay,
-  updateTransactionWithFallback,
+  updateTransactionStrict,
 } from '@/lib/orderLifecycle';
 import { sendSystemAlert } from '@/lib/alerts';
 import { isLiveMode } from '@/lib/paymentsMode';
@@ -20,19 +20,15 @@ import {
   maskPhoneNumber,
 } from '@/lib/smsDelivery';
 import { recordLedgerEntry } from '@/lib/ledger';
+import { resolveOrderActor } from '@/lib/orderAuth';
+import { computeBuyerPhoneBindingHash } from '@/lib/buyerSession';
 
 /**
  * Release Code Reissue & Recovery Endpoint
  *
- * Supports two authorized paths:
- * 1. Buyer Self-Service Phone OTP ("Didn't receive your code? Send it again" / resend on /order/[id]):
- *    - action: 'send_otp' -> Sends a 6-digit one-time verification code to the buyer's verified WhatsApp number (rate-limited, audit-logged).
- *    - action: 'verify_and_reissue' -> Verifies OTP, generates a NEW 6-digit release code (old HMAC is immediately invalidated),
- *      computes window+grace lifetime, delivers the new plaintext code once on WhatsApp, and logs to admin_audit_log.
- * 2. Admin Recovery (Authorization: Bearer <ADMIN_API_KEY>):
- *    - Immediately reissues a new release code, delivers out-of-band, and logs to admin_audit_log.
- *
- * Security: In live mode, plaintext release codes and OTPs are NEVER returned in HTTP responses or written to logs.
+ * Authorized ONLY for:
+ * 1. Verified Buyer holding a valid signed HttpOnly Buyer Session cookie (with step-up OTP confirmation), OR
+ * 2. Authenticated AAL2 Admin Supabase session.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -50,25 +46,53 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'transactionId is required' }, { status: 400 });
     }
 
-    const authHeader = request.headers.get('authorization');
-    const adminSecret = process.env.ADMIN_API_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const isAdminRequest = Boolean(adminSecret && authHeader === `Bearer ${adminSecret}`);
-
     const supabase = getServiceSupabase();
     const isLive = isLiveMode();
 
-    // Fetch transaction state and delivery contacts
-    const { data: rawTx, error: fetchErr } = await supabase
+    const { data: tx, error: fetchErr } = await supabase
       .from('transactions')
       .select('*')
       .eq('id', transactionId)
-      .single();
+      .maybeSingle();
 
-    if (fetchErr || !rawTx) {
+    if (fetchErr) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Reissue Code Transaction Lookup Failed (Fail Closed)',
+        transactionId,
+        details: { error: fetchErr.message },
+      }).catch(() => {});
+      return NextResponse.json({ success: false, error: `Transaction lookup failed: ${fetchErr.message}` }, { status: 500 });
+    }
+
+    if (!tx) {
       return NextResponse.json({ success: false, error: 'Transaction not found' }, { status: 404 });
     }
 
-    const tx = mergeTransactionWithLifecycleOverlay(rawTx);
+    // Strict Authorization: AAL2 Admin session OR verified BUYER session
+    let isAdminRequest = false;
+    let actorRole: 'ADMIN' | 'BUYER' | null = null;
+    const resolvedAdminEmail = adminEmail;
+
+    const actor = await resolveOrderActor(request, tx, supabase);
+    if (!actor.authenticated) {
+      return NextResponse.json(
+        { success: false, code: actor.code, error: actor.error || 'Buyer or admin authentication required.' },
+        { status: actor.statusCode || 401 }
+      );
+    }
+    if (actor.role === 'ADMIN') {
+      actorRole = 'ADMIN';
+      isAdminRequest = true;
+    } else if (actor.role === 'BUYER') {
+      actorRole = 'BUYER';
+    } else {
+      return NextResponse.json(
+        { success: false, code: 'FORBIDDEN', error: 'Forbidden: Vendors cannot reissue or view buyer release codes.' },
+        { status: 403 }
+      );
+    }
 
     if (tx.status !== 'FUNDS_LOCKED' && tx.status !== 'DISPATCHED') {
       return NextResponse.json(
@@ -80,24 +104,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // =========================================================================
-    // PATH A: BUYER PHONE OTP STEP 1 (Send One-Time Code to Buyer's Phone)
-    // =========================================================================
-    if (!isAdminRequest && action === 'send_otp') {
-      const ipRate = await checkSharedRateLimit(`${clientIp}:reissue_otp`, 3, 15 * 60 * 1000, supabase);
-      const txRate = await checkSharedRateLimit(`tx:${tx.id}:reissue_otp`, 3, 15 * 60 * 1000, supabase);
-      if (!ipRate.allowed || !txRate.allowed) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'Too many resend attempts. Please wait 15 minutes before requesting another verification code.',
-          },
-          { status: 429 }
-        );
-      }
-
-      const targetPhone = tx.buyer_phone?.trim() || (isLive ? null : '+2348000001234');
-      if (!targetPhone) {
+    if (!isAdminRequest) {
+      if (!tx.buyer_phone) {
         return NextResponse.json(
           {
             success: false,
@@ -106,71 +114,95 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+      const phoneHash = computeBuyerPhoneBindingHash(tx.buyer_phone);
 
-      const otpCode = generateCryptographicReleaseCode();
-      const otpHash = computeReleaseCodeHmac(`reissue:${tx.id}`, otpCode);
-      const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      // PATH A: BUYER STEP 1 (Send OTP)
+      if (action === 'send_otp') {
+        const [ipRate, txRate, phRate] = await Promise.all([
+          checkSharedRateLimit(`${clientIp}:reissue_otp`, 5, 15 * 60 * 1000, supabase),
+          checkSharedRateLimit(`tx:${tx.id}:reissue_otp`, 3, 15 * 60 * 1000, supabase),
+          checkSharedRateLimit(`ph:${phoneHash}:reissue_otp`, 5, 15 * 60 * 1000, supabase),
+        ]);
+        if (!ipRate.allowed || !txRate.allowed || !phRate.allowed) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Too many resend attempts. Please wait 15 minutes before requesting another verification code.',
+            },
+            { status: 429 }
+          );
+        }
 
-      const { error: otpUpdateErr } = await supabase
-        .from('transactions')
-        .update({
-          dispute_otp_hash: otpHash,
-          dispute_otp_expires_at: otpExpiresAt,
-          dispute_otp_attempts: 0,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', tx.id);
+        const otpCode = generateCryptographicReleaseCode();
+        const otpHash = computeReleaseCodeHmac(`reissue:${tx.id}`, otpCode);
+        const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
-      if (otpUpdateErr) {
-        return NextResponse.json({ success: false, error: otpUpdateErr.message }, { status: 500 });
+        const { error: otpUpdateErr } = await supabase
+          .from('transactions')
+          .update({
+            dispute_otp_hash: otpHash,
+            dispute_otp_expires_at: otpExpiresAt,
+            dispute_otp_attempts: 0,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', tx.id);
+
+        if (otpUpdateErr) {
+          return NextResponse.json({ success: false, error: otpUpdateErr.message }, { status: 500 });
+        }
+
+        const maskedPhone = maskPhoneNumber(tx.buyer_phone);
+        const otpSms = await sendBuyerOtpSms({
+          transactionId: tx.id,
+          buyerPhone: tx.buyer_phone,
+          otp: otpCode,
+          purpose: 'reissue_code',
+        });
+
+        if (!otpSms.success) {
+          return NextResponse.json(
+            { success: false, error: otpSms.error || 'Failed to deliver reissue OTP via WhatsApp.' },
+            { status: 502 }
+          );
+        }
+
+        const { error: auditSendErr } = await supabase
+          .from('admin_audit_log')
+          .insert({
+            admin_email: `buyer:${maskedPhone}`,
+            action: 'BUYER_REISSUE_OTP_SENT',
+            target_type: 'transaction',
+            target_id: tx.id,
+            ip_address: clientIp,
+            metadata: { buyer_phone_masked: maskedPhone },
+          });
+        if (auditSendErr) {
+          return NextResponse.json({ success: false, error: `Audit log failed: ${auditSendErr.message}` }, { status: 500 });
+        }
+
+        return NextResponse.json({
+          success: true,
+          message: `A 6-digit one-time verification code was sent to ${maskedPhone}.`,
+          buyer_phone_masked: maskedPhone,
+          expiresInMinutes: 10,
+          ...(isLive ? {} : { sandbox_otp: otpCode }),
+        });
       }
 
-      const maskedPhone = maskPhoneNumber(targetPhone);
-      await sendBuyerOtpSms({
-        transactionId: tx.id,
-        buyerPhone: targetPhone,
-        otp: otpCode,
-        purpose: 'reissue_code',
-      });
-
-      await supabase
-        .from('admin_audit_log')
-        .insert({
-          admin_email: `buyer:${maskedPhone}`,
-          action: 'BUYER_REISSUE_OTP_SENT',
-          target_type: 'transaction',
-          target_id: tx.id,
-          ip_address: clientIp,
-          metadata: { buyer_phone_masked: maskedPhone },
-        })
-        .then(() => {}, () => {});
-
-      return NextResponse.json({
-        success: true,
-        message: `A 6-digit one-time verification code was sent to ${maskedPhone}.`,
-        buyer_phone_masked: maskedPhone,
-        expiresInMinutes: 10,
-        ...(isLive ? {} : { sandbox_otp: otpCode }),
-      });
-    }
-
-    // =========================================================================
-    // PATH B: BUYER PHONE OTP STEP 2 OR ADMIN AUTHORIZATION
-    // =========================================================================
-    let actorLabel = adminEmail;
-    let auditAction = 'REISSUE_RELEASE_CODE';
-
-    if (!isAdminRequest) {
+      // PATH B: BUYER STEP 2 (Verify OTP & Reissue)
       if (action !== 'verify_and_reissue' && !otp) {
         return NextResponse.json(
-          { success: false, error: 'Phone OTP verification or admin authorization is required.' },
-          { status: 401 }
+          { success: false, error: 'action (send_otp | verify_and_reissue) and OTP are required.' },
+          { status: 400 }
         );
       }
 
-      const ipVerifyRate = await checkSharedRateLimit(`${clientIp}:reissue_verify`, 5, 15 * 60 * 1000, supabase);
-      const txVerifyRate = await checkSharedRateLimit(`tx:${tx.id}:reissue_verify`, 3, 60 * 60 * 1000, supabase);
-      if (!ipVerifyRate.allowed || !txVerifyRate.allowed) {
+      const [ipVerifyRate, txVerifyRate, phVerifyRate] = await Promise.all([
+        checkSharedRateLimit(`${clientIp}:reissue_verify`, 8, 15 * 60 * 1000, supabase),
+        checkSharedRateLimit(`tx:${tx.id}:reissue_verify`, 3, 60 * 60 * 1000, supabase),
+        checkSharedRateLimit(`ph:${phoneHash}:reissue_verify`, 5, 60 * 60 * 1000, supabase),
+      ]);
+      if (!ipVerifyRate.allowed || !txVerifyRate.allowed || !phVerifyRate.allowed) {
         return NextResponse.json(
           {
             success: false,
@@ -210,7 +242,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const attempts = tx.dispute_otp_attempts || 0;
+      const attempts = Number(tx.dispute_otp_attempts || 0);
       if (attempts >= 3) {
         await supabase
           .from('transactions')
@@ -245,13 +277,13 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-
-      actorLabel = `buyer:${maskPhoneNumber(tx.buyer_phone)}`;
-      auditAction = 'BUYER_REISSUE_RELEASE_CODE';
     }
 
-    // Issue NEW cryptographic release code & overwrite HMAC (invalidates any previous code immediately).
-    // Even if previous code expired, buyer retains full protection: money remains held and a fresh window is issued.
+    const actorLabel = isAdminRequest
+      ? resolvedAdminEmail
+      : `buyer:${maskPhoneNumber(tx.buyer_phone)}`;
+    const auditAction = isAdminRequest ? 'REISSUE_RELEASE_CODE' : 'BUYER_REISSUE_RELEASE_CODE';
+
     const cfg = await getDeliveryAndLifecycleConfig(supabase);
     const deliveryType = tx.delivery_type === 'interstate' ? 'interstate' : 'same_city';
     const expiryCalc = calculateDeliveryWindowCodeExpiration(deliveryType, cfg.delivery);
@@ -262,7 +294,7 @@ export async function POST(request: NextRequest) {
     const now = new Date().toISOString();
     const wasExpired = Boolean(tx.code_expires_at && new Date(tx.code_expires_at).getTime() < Date.now());
 
-    const upd = await updateTransactionWithFallback(
+    const upd = await updateTransactionStrict(
       tx.id,
       {
         release_code_hash: newHmac,
@@ -284,18 +316,17 @@ export async function POST(request: NextRequest) {
 
     const maskedPhone = maskPhoneNumber(tx.buyer_phone);
 
-    // Send NEW code once to verified buyer WhatsApp number
     await sendReleaseCodeSmsOrWhatsapp({
       transactionId: tx.id,
+      vendorId: tx.vendor_id,
       buyerPhone: tx.buyer_phone,
       releaseCode: newCode,
       itemName: tx.item_name || 'Escrow Order',
       totalAmount: Number(tx.total_amount) || 0,
       vendorHandle: tx.vendor_handle || '',
-    }).catch(() => {});
+    });
 
-    // Immutable audit log
-    await supabase
+    const { error: auditErr } = await supabase
       .from('admin_audit_log')
       .insert({
         admin_email: actorLabel,
@@ -310,10 +341,11 @@ export async function POST(request: NextRequest) {
           previous_code_was_expired: wasExpired,
           new_code_expires_at: expiresAt,
         },
-      })
-      .then(() => {}, () => {});
+      });
+    if (auditErr) {
+      return NextResponse.json({ success: false, error: `Audit log insert failed: ${auditErr.message}` }, { status: 500 });
+    }
 
-    // Ledger event
     await recordLedgerEntry(
       {
         transactionId: tx.id,
@@ -326,7 +358,7 @@ export async function POST(request: NextRequest) {
         metadata: { actor: actorLabel, previous_hash_invalidated: Boolean(tx.release_code_hash), wasExpired },
       },
       supabase
-    ).catch(() => {});
+    );
 
     sendSystemAlert({
       type: 'SECURITY_LOCKOUT',
@@ -336,7 +368,7 @@ export async function POST(request: NextRequest) {
       details: {
         actor: actorLabel,
         reason,
-        buyerPhone: tx.buyer_phone,
+        maskedPhone,
         wasExpired,
       },
     }).catch(() => {});

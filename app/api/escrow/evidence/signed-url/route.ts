@@ -1,36 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdminSession } from '@/lib/adminAuth';
 import { createEvidenceSignedUrl, getAuthorizedEvidenceSummary } from '@/lib/evidenceStorage';
 import { getServiceSupabase } from '@/lib/supabaseServer';
+import { resolveOrderActor } from '@/lib/orderAuth';
+import { sendSystemAlert } from '@/lib/alerts';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const transactionId = searchParams.get('transactionId') || '';
     const fileId = searchParams.get('fileId') || '';
-    const requestedRole = String(searchParams.get('viewerRole') || 'BUYER').toUpperCase();
 
     if (!transactionId) {
       return NextResponse.json({ success: false, error: 'transactionId is required.' }, { status: 400 });
     }
 
-    if (requestedRole !== 'BUYER' && requestedRole !== 'VENDOR' && requestedRole !== 'ADMIN') {
-      return NextResponse.json({ success: false, error: 'Invalid viewerRole.' }, { status: 400 });
-    }
-
-    let effectiveRole: 'BUYER' | 'VENDOR' | 'ADMIN' = requestedRole;
-    if (requestedRole === 'ADMIN') {
-      const auth = await verifyAdminSession(request);
-      if (!auth.authorized) {
-        return NextResponse.json(
-          { success: false, error: auth.error, code: auth.code },
-          { status: auth.statusCode }
-        );
-      }
-      effectiveRole = 'ADMIN';
-    }
-
     const supabase = getServiceSupabase();
+    const { data: tx, error: txErr } = await supabase
+      .from('transactions')
+      .select('id, vendor_id, vendor_handle, buyer_phone, buyer_phone_verified, whatsapp_blocked')
+      .eq('id', transactionId)
+      .maybeSingle();
+
+    if (txErr) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Evidence Signed URL Transaction Query Failed (Fail Closed)',
+        transactionId,
+        details: { error: txErr.message },
+      }).catch(() => {});
+      return NextResponse.json({ success: false, error: `Transaction lookup failed: ${txErr.message}` }, { status: 500 });
+    }
+
+    if (!tx) {
+      return NextResponse.json({ success: false, error: 'Transaction not found.' }, { status: 404 });
+    }
+
+    // Ignore ?viewerRole= query param completely; derive role strictly from authenticated session
+    const actor = await resolveOrderActor(request, tx, supabase);
+    if (!actor.authenticated || !actor.role) {
+      return NextResponse.json(
+        { success: false, code: actor.code, error: actor.error || 'Authentication required to access order evidence.' },
+        { status: actor.statusCode || 401 }
+      );
+    }
+
+    const effectiveRole = actor.role;
 
     if (!fileId) {
       const summary = await getAuthorizedEvidenceSummary({
@@ -38,7 +53,7 @@ export async function GET(request: NextRequest) {
         viewerRole: effectiveRole,
         supabaseClient: supabase,
       });
-      return NextResponse.json({ success: true, summary });
+      return NextResponse.json({ success: true, authenticated_role: effectiveRole, summary });
     }
 
     const signed = await createEvidenceSignedUrl({
@@ -57,6 +72,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      authenticated_role: effectiveRole,
       signedUrl: signed.signedUrl,
       expiresInSeconds: signed.expiresInSeconds,
     });

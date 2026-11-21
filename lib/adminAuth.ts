@@ -11,7 +11,7 @@
  * 5. Multi-Factor Authentication requirement (AAL2 - Authenticator Assurance Level 2)
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getServiceSupabase } from './supabaseServer';
 import { createRequestSsrClient, extractRequestBearerToken } from './vendorAuth';
 import { getAdminSafetyConfigServer } from './safetyLimits';
@@ -89,29 +89,11 @@ export async function verifyAdminIdentityForMfaSetup(
 }
 
 export async function verifyAdminSession(
-  request: NextRequest, 
+  request: NextRequest,
   supabaseOverride?: any,
   options?: { requireAal2?: boolean }
 ): Promise<AdminAuthResult> {
-  // 1. Internal machine / CLI automation via server-only ADMIN_SECRET_KEY
-  const adminSecretHeader = request.headers.get('x-admin-key');
-  const serverAdminKey = process.env.ADMIN_SECRET_KEY;
-  if (serverAdminKey && adminSecretHeader && adminSecretHeader.trim() === serverAdminKey.trim()) {
-    return {
-      authorized: true,
-      statusCode: 200,
-      aal: 'aal2',
-      mfaEnrolled: true,
-      enrollmentUrl: '/admin/security',
-      user: {
-        id: '00000000-0000-0000-0000-000000000000',
-        email: 'system-admin@relyvora.com',
-        aal: 'aal2',
-      },
-    };
-  }
-
-  // 2. Obtain Supabase client (using @supabase/ssr or override)
+  // 1. Obtain Supabase client (using @supabase/ssr or bearer token)
   const ssrClient = supabaseOverride || createAdminSsrClient(request);
 
   let user: any = null;
@@ -169,17 +151,15 @@ export async function verifyAdminSession(
     .filter(Boolean);
 
   if (adminUserIds.length === 0) {
-    // Fail-closed in live / production
-    if (process.env.PAYMENTS_MODE === 'live' || process.env.NODE_ENV === 'production') {
-      return {
-        authorized: false,
-        statusCode: 403,
-        error: 'Security configuration error: ADMIN_USER_IDS is not configured on the server.',
-      };
-    }
+    return {
+      authorized: false,
+      statusCode: 403,
+      code: 'ALLOWLIST_REQUIRED',
+      error: 'Security configuration error: ADMIN_USER_IDS is not configured on the server.',
+    };
   }
 
-  if (adminUserIds.length > 0 && !adminUserIds.includes(userId)) {
+  if (!adminUserIds.includes(userId)) {
     return {
       authorized: false,
       statusCode: 403,
@@ -314,40 +294,5 @@ export async function verifyAdminSession(
       email: userEmail,
       aal: aalLevel,
     },
-  };
-}
-
-/**
- * Checks if a test or diagnostic route is accessible.
- * In live or production mode, test routes are blocked with HTTP 403.
- */
-export async function assertTestRouteAccess(
-  request: NextRequest,
-  supabaseOverride?: any
-): Promise<{ allowed: boolean; response?: NextResponse; adminEmail?: string }> {
-  const isProduction = process.env.PAYMENTS_MODE === 'live' || process.env.NODE_ENV === 'production';
-
-  if (!isProduction) {
-    return { allowed: true };
-  }
-
-  const auth = await verifyAdminSession(request, supabaseOverride);
-  if (!auth.authorized) {
-    return {
-      allowed: false,
-      response: NextResponse.json(
-        {
-          success: false,
-          error: 'Forbidden: Diagnostic and test routes are disabled in live production mode.',
-          details: auth.error,
-        },
-        { status: 403 }
-      ),
-    };
-  }
-
-  return {
-    allowed: true,
-    adminEmail: auth.user?.email,
   };
 }

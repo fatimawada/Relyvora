@@ -12,7 +12,7 @@ import {
   getPayoutSafetyConfigServer,
   resolveAndValidateVendorServer,
 } from './safetyLimits';
-import { isSchemaMissingError, sendSettlementChangeConfirmWhatsapp } from './whatsapp';
+import { sendSettlementChangeConfirmWhatsapp } from './whatsapp';
 import { sendSystemAlert } from './alerts';
 
 const STRIP_NAME_TOKENS = new Set([
@@ -43,27 +43,6 @@ const STRIP_NAME_TOKENS = new Set([
   'nig',
   'co',
 ]);
-
-const globalForVendorOverlay = globalThis as unknown as {
-  __relyvoraVendorSafetyOverlay?: Map<string, Record<string, any>>;
-};
-
-export function getVendorSafetyOverlayMap(): Map<string, Record<string, any>> {
-  if (!globalForVendorOverlay.__relyvoraVendorSafetyOverlay) {
-    globalForVendorOverlay.__relyvoraVendorSafetyOverlay = new Map();
-  }
-  return globalForVendorOverlay.__relyvoraVendorSafetyOverlay;
-}
-
-export function setVendorSafetyOverlay(vendorId: string, patch: Record<string, any>): void {
-  const map = getVendorSafetyOverlayMap();
-  const prev = map.get(vendorId) || {};
-  map.set(vendorId, { ...prev, ...patch });
-}
-
-export function getVendorSafetyOverlay(vendorId: string): Record<string, any> | undefined {
-  return getVendorSafetyOverlayMap().get(vendorId);
-}
 
 export function normalizeNameTokens(raw: string): string[] {
   const cleaned = String(raw || '')
@@ -233,7 +212,7 @@ export async function performAnchorNameEnquiry(params: {
   const isLive = process.env.PAYMENTS_MODE === 'live';
   const hasAnchorKey = Boolean((process.env.ANCHOR_SECRET_KEY || '').trim());
 
-  if (hasAnchorKey && process.env.ANCHOR_SKIP_LIVE_ENQUIRY !== 'true') {
+  if (hasAnchorKey) {
     try {
       const cp = await createAnchorCounterParty({
         bankCode: params.bankCode,
@@ -293,30 +272,23 @@ export async function checkVendorPayoutSafetyGate(params: {
   payoutHoldUntil?: string | null;
 }> {
   const supabase = params.supabaseClient || getServiceSupabase();
-  const { data: dbVendor } = await supabase
+  const { data: vendor, error } = await supabase
     .from('vendors')
-    .select('*')
+    .select('id, payout_account_verified, settlement_account_name_matched, payout_hold_until')
     .eq('id', params.vendorId)
     .maybeSingle();
 
-  const overlay = getVendorSafetyOverlay(params.vendorId) || {};
-  const vendor = { ...(overlay || {}), ...(dbVendor || {}) };
+  if (error) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Payout Safety Gate Query Failed (Fail Closed)',
+      details: { vendorId: params.vendorId, error: error.message },
+    }).catch(() => {});
+    throw new Error(`Vendor payout safety query failed: ${error.message}`);
+  }
 
-  const payoutVerified =
-    typeof vendor.payout_account_verified === 'boolean'
-      ? vendor.payout_account_verified
-      : typeof overlay.payout_account_verified === 'boolean'
-        ? overlay.payout_account_verified
-        : Boolean(vendor.settlement_account_number && vendor.settlement_bank_code);
-
-  const nameMatched =
-    typeof vendor.settlement_account_name_matched === 'boolean'
-      ? vendor.settlement_account_name_matched
-      : typeof overlay.settlement_account_name_matched === 'boolean'
-        ? overlay.settlement_account_name_matched
-        : true;
-
-  if (!payoutVerified) {
+  if (!vendor || vendor.payout_account_verified !== true) {
     return {
       allowed: false,
       code: 'PAYOUT_ACCOUNT_UNVERIFIED',
@@ -324,7 +296,7 @@ export async function checkVendorPayoutSafetyGate(params: {
     };
   }
 
-  if (!nameMatched) {
+  if (vendor.settlement_account_name_matched !== true) {
     return {
       allowed: false,
       code: 'NAME_MISMATCH',
@@ -332,7 +304,7 @@ export async function checkVendorPayoutSafetyGate(params: {
     };
   }
 
-  const holdUntilRaw = vendor.payout_hold_until || overlay.payout_hold_until || null;
+  const holdUntilRaw = vendor.payout_hold_until || null;
   if (holdUntilRaw) {
     const holdUntilMs = new Date(holdUntilRaw).getTime();
     if (Number.isFinite(holdUntilMs) && holdUntilMs > Date.now()) {
@@ -452,21 +424,17 @@ export async function requestSettlementAccountChange(params: {
       .update(patch)
       .eq('id', vendor.id);
 
-    if (updErr && isSchemaMissingError(updErr)) {
-      await supabase
-        .from('vendors')
-        .update({
-          settlement_bank_code: params.newBankCode,
-          settlement_account_number: params.newAccountNumber,
-          settlement_account_name: enquiry.resolvedAccountName,
-          updated_at: nowIso,
-        })
-        .eq('id', vendor.id);
+    if (updErr) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Settlement Account Update Failed (Fail Closed)',
+        details: { vendorId: vendor.id, error: updErr.message },
+      }).catch(() => {});
+      return { success: false, statusCode: 500, error: `Failed to update settlement account: ${updErr.message}` };
     }
 
-    setVendorSafetyOverlay(vendor.id, patch);
-
-    await supabase.from('admin_audit_log').insert({
+    const { error: auditErr } = await supabase.from('admin_audit_log').insert({
       admin_email: params.actorEmail || vendor.email,
       action: 'VENDOR_SETTLEMENT_ACCOUNT_CHANGED',
       target_type: 'vendor',
@@ -481,6 +449,9 @@ export async function requestSettlementAccountChange(params: {
       },
       created_at: nowIso,
     });
+    if (auditErr) {
+      throw new Error(`Failed persisting settlement audit log: ${auditErr.message}`);
+    }
 
     await sendSystemAlert({
       type: 'SETTLEMENT_CHANGE',
@@ -520,15 +491,19 @@ export async function requestSettlementAccountChange(params: {
     .update(pendingPatch)
     .eq('id', vendor.id);
 
-  if (pendingErr && !isSchemaMissingError(pendingErr)) {
+  if (pendingErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Staging Pending Settlement Account Update Failed (Fail Closed)',
+      details: { vendorId: vendor.id, error: pendingErr.message },
+    }).catch(() => {});
     return {
       success: false,
       statusCode: 500,
       error: `Failed to stage pending settlement account change: ${pendingErr.message}`,
     };
   }
-
-  setVendorSafetyOverlay(vendor.id, pendingPatch);
 
   const waRes = await sendSettlementChangeConfirmWhatsapp(
     {
@@ -542,7 +517,7 @@ export async function requestSettlementAccountChange(params: {
     supabase
   );
 
-  await supabase.from('admin_audit_log').insert({
+  const { error: reqAuditErr } = await supabase.from('admin_audit_log').insert({
     admin_email: params.actorEmail || vendor.email,
     action: 'VENDOR_SETTLEMENT_CHANGE_REQUESTED',
     target_type: 'vendor',
@@ -557,6 +532,9 @@ export async function requestSettlementAccountChange(params: {
     },
     created_at: nowIso,
   });
+  if (reqAuditErr) {
+    throw new Error(`Failed persisting settlement request audit log: ${reqAuditErr.message}`);
+  }
 
   if (!validation.allowed && !vendor.anchor_deposit_account_id) {
     // Allow staged settlement changes for onboarding vendors, still return 202
@@ -585,20 +563,29 @@ export async function confirmSettlementAccountChange(params: {
   error?: string;
 }> {
   const supabase = params.supabaseClient || getServiceSupabase();
-  const { data: vendor } = await supabase
+  const { data: vendor, error: fetchErr } = await supabase
     .from('vendors')
     .select('*')
     .eq('id', params.vendorId)
     .maybeSingle();
 
+  if (fetchErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Settlement Confirm Query Failed (Fail Closed)',
+      details: { vendorId: params.vendorId, error: fetchErr.message },
+    }).catch(() => {});
+    return { success: false, statusCode: 500, error: fetchErr.message };
+  }
+
   if (!vendor) {
     return { success: false, statusCode: 404, error: 'Vendor account not found.' };
   }
 
-  const overlay = getVendorSafetyOverlay(vendor.id) || {};
-  const pendingBank = vendor.pending_settlement_bank_code || overlay.pending_settlement_bank_code;
-  const pendingAcct = vendor.pending_settlement_account_number || overlay.pending_settlement_account_number;
-  const pendingName = vendor.pending_settlement_account_name || overlay.pending_settlement_account_name;
+  const pendingBank = vendor.pending_settlement_bank_code;
+  const pendingAcct = vendor.pending_settlement_account_number;
+  const pendingName = vendor.pending_settlement_account_name;
 
   if (!pendingBank || !pendingAcct || !pendingName) {
     return {
@@ -641,21 +628,17 @@ export async function confirmSettlementAccountChange(params: {
     .update(confirmPatch)
     .eq('id', vendor.id);
 
-  if (updErr && isSchemaMissingError(updErr)) {
-    await supabase
-      .from('vendors')
-      .update({
-        settlement_bank_code: pendingBank,
-        settlement_account_number: pendingAcct,
-        settlement_account_name: pendingName,
-        updated_at: nowIso,
-      })
-      .eq('id', vendor.id);
+  if (updErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Settlement Account Confirmation Update Failed (Fail Closed)',
+      details: { vendorId: vendor.id, error: updErr.message },
+    }).catch(() => {});
+    return { success: false, statusCode: 500, error: updErr.message };
   }
 
-  setVendorSafetyOverlay(vendor.id, confirmPatch);
-
-  await supabase.from('admin_audit_log').insert({
+  const { error: confAuditErr } = await supabase.from('admin_audit_log').insert({
     admin_email: params.actorEmail || vendor.email,
     action: 'VENDOR_SETTLEMENT_CHANGE_CONFIRMED',
     target_type: 'vendor',
@@ -670,6 +653,9 @@ export async function confirmSettlementAccountChange(params: {
     },
     created_at: nowIso,
   });
+  if (confAuditErr) {
+    throw new Error(`Failed persisting settlement confirmation audit log: ${confAuditErr.message}`);
+  }
 
   await sendSystemAlert({
     type: 'SETTLEMENT_CHANGE',

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import {
-  createTransaction,
+  supabase,
   getTransactions,
 } from '@/lib/supabase';
 import { Transaction, VendorMetrics } from '@/lib/types';
@@ -48,22 +48,70 @@ export default function VendorDashboardPage() {
   const [generatedTx, setGeneratedTx] = useState<Transaction | null>(null);
   const [whatsappNotice, setWhatsappNotice] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isSigningIn, setIsSigningIn] = useState(false);
   const liveMode = isLiveMode();
 
   const pricing = useMemo(() => {
     return calculatePricing(itemPriceInput);
   }, [itemPriceInput]);
 
-  const loadTransactions = async () => {
+  const getVendorAuthHeaders = async (): Promise<Record<string, string>> => {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  const refreshAuthAndTransactions = async () => {
     setIsLoading(true);
-    const { data } = await getTransactions();
-    setTransactions(data);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const email = sessionData?.session?.user?.email || null;
+    setSessionEmail(email);
+    if (email) {
+      const { data } = await getTransactions();
+      setTransactions(data);
+    } else {
+      setTransactions([]);
+    }
     setIsLoading(false);
   };
 
+  const loadTransactions = refreshAuthAndTransactions;
+
   useEffect(() => {
-    loadTransactions();
+    refreshAuthAndTransactions();
   }, []);
+
+  const handleVendorSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+    setIsSigningIn(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: loginEmail.trim(),
+        password: loginPassword,
+      });
+      if (error) {
+        setLoginError(error.message);
+      } else {
+        setLoginPassword('');
+        await refreshAuthAndTransactions();
+      }
+    } catch (err: any) {
+      setLoginError(err?.message || 'Sign-in failed.');
+    } finally {
+      setIsSigningIn(false);
+    }
+  };
+
+  const handleVendorSignOut = async () => {
+    await supabase.auth.signOut();
+    setSessionEmail(null);
+    setTransactions([]);
+  };
 
   const metrics: VendorMetrics = useMemo(() => {
     let lockedInEscrow = 0;
@@ -99,59 +147,34 @@ export default function VendorDashboardPage() {
     setIsSubmitting(true);
     setWhatsappNotice(null);
     try {
-      const activeVendorHandle = vendorHandle.trim() || '@LagosHairPlug';
-
-      try {
-        const res = await fetch('/api/escrow/create-link', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            itemName: itemName.trim(),
-            itemPrice: pricing.itemPrice,
-            deliveryFee: pricing.deliveryFee,
-            deliveryType,
-            vendorHandle: activeVendorHandle,
-            buyerPhone: buyerPhone.trim() || null,
-            buyerWhatsappConsent,
-            buyerNotes: buyerNotes.trim() || null,
-          }),
-        });
-
-        const json = await res.json();
-        if (json.success && json.transaction) {
-          setGeneratedTx(json.transaction);
-          setBuyerWhatsappConsent(false);
-          if (json.whatsapp_error) {
-            setWhatsappNotice(json.whatsapp_error);
-          }
-          await loadTransactions();
-          return;
-        } else if (json.error) {
-          alert(`Link creation rejected: ${json.error}`);
-          return;
-        }
-      } catch (serverErr) {
-        console.warn('Network issue reaching /api/escrow/create-link, using fallback:', serverErr);
-      }
-
-      const { data, error } = await createTransaction({
-        item_name: itemName.trim(),
-        item_price: pricing.itemPrice,
-        protection_fee: pricing.protectionFee,
-        total_amount: pricing.totalAmount,
-        vendor_handle: activeVendorHandle,
-        buyer_phone: buyerPhone.trim() || null,
-        buyer_notes: buyerNotes.trim() || null,
-        status: 'AWAITING_PAYMENT',
+      const authHeaders = await getVendorAuthHeaders();
+      const res = await fetch('/api/escrow/create-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({
+          itemName: itemName.trim(),
+          itemPrice: pricing.itemPrice,
+          deliveryFee: pricing.deliveryFee,
+          deliveryType,
+          buyerPhone: buyerPhone.trim() || null,
+          buyerWhatsappConsent,
+          buyerNotes: buyerNotes.trim() || null,
+        }),
       });
 
-      if (data) {
-        setGeneratedTx(data);
+      const json = await res.json();
+      if (res.ok && json.success && json.transaction) {
+        setGeneratedTx(json.transaction);
         setBuyerWhatsappConsent(false);
+        if (json.whatsapp_error) {
+          setWhatsappNotice(json.whatsapp_error);
+        }
         await loadTransactions();
-      } else if (error) {
-        alert(`Could not create link: ${error}`);
+      } else {
+        alert(`Link creation rejected: ${json.error || `HTTP ${res.status}`}`);
       }
+    } catch (err: any) {
+      alert(`Could not create payment link: ${err?.message || 'Network error'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -166,12 +189,12 @@ export default function VendorDashboardPage() {
 
     setCancellingId(tx.id);
     try {
+      const authHeaders = await getVendorAuthHeaders();
       const res = await fetch('/api/escrow/cancel', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           transactionId: tx.id,
-          cancelledBy: 'VENDOR',
           reason: reason.trim(),
         }),
       });
@@ -238,6 +261,15 @@ export default function VendorDashboardPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {sessionEmail && (
+            <button
+              type="button"
+              onClick={handleVendorSignOut}
+              className="px-3 py-2 text-xs font-semibold text-muted hover:text-main bg-site rounded-xl border border-border cursor-pointer"
+            >
+              Sign Out ({sessionEmail})
+            </button>
+          )}
           <button
             onClick={loadTransactions}
             disabled={isLoading}
@@ -249,6 +281,57 @@ export default function VendorDashboardPage() {
           </button>
         </div>
       </div>
+
+      {!sessionEmail && !isLoading && (
+        <div className="bg-surface p-5 sm:p-6 rounded-3xl border border-amber-500/30 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h2 className="text-base font-heading font-semibold text-main">
+                Sign in to create protected links &amp; manage orders
+              </h2>
+              <p className="text-xs text-muted mt-0.5">
+                Escrow link creation and vendor dashboards require an authenticated, KYC-verified Relyvora vendor session.
+              </p>
+            </div>
+            <Link
+              href="/vendor/onboarding"
+              className="text-xs font-bold text-accent hover:underline shrink-0"
+            >
+              New vendor? Complete KYC onboarding →
+            </Link>
+          </div>
+          {loginError && (
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-semibold text-rose-700 dark:text-rose-300">
+              {loginError}
+            </div>
+          )}
+          <form onSubmit={handleVendorSignIn} className="grid sm:grid-cols-3 gap-3">
+            <input
+              type="email"
+              required
+              placeholder="Vendor email"
+              value={loginEmail}
+              onChange={(e) => setLoginEmail(e.target.value)}
+              className="bg-site border border-border rounded-xl px-3 py-2.5 text-xs text-main"
+            />
+            <input
+              type="password"
+              required
+              placeholder="Password"
+              value={loginPassword}
+              onChange={(e) => setLoginPassword(e.target.value)}
+              className="bg-site border border-border rounded-xl px-3 py-2.5 text-xs text-main"
+            />
+            <button
+              type="submit"
+              disabled={isSigningIn}
+              className="px-4 py-2.5 rounded-xl bg-accent text-[#071229] font-bold text-xs cursor-pointer disabled:opacity-50"
+            >
+              {isSigningIn ? 'Signing in...' : 'Sign In as Vendor'}
+            </button>
+          </form>
+        </div>
+      )}
 
       {/* Regulated Settlement Activation Banner */}
       <div className="bg-navy-900 text-white p-5 sm:p-6 rounded-3xl border border-accent/30 shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4">

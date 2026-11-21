@@ -2,7 +2,9 @@ import crypto from 'crypto';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { sendSystemAlert } from '@/lib/alerts';
 import { isLiveMode } from '@/lib/paymentsMode';
-import { getHotSettings } from '@/lib/safetyLimits';
+import { getHotSettings, requireHotSetting } from '@/lib/safetyLimits';
+import { logError, logWarn } from '@/lib/logger';
+import { resolveNigerianBankName } from '@/lib/nigerianBanks';
 
 export type WhatsappDeliveryStatus =
   | 'not_sent'
@@ -22,6 +24,7 @@ export interface WhatsappTemplateDefinition {
   addSecurityRecommendation?: boolean;
   codeExpirationMinutes?: number | null;
   bodyText: string;
+  footerText?: string;
   buttons?: Array<{
     type: 'QUICK_REPLY' | 'URL' | 'OTP';
     otpType?: 'COPY_CODE';
@@ -47,13 +50,14 @@ export const WHATSAPP_TEMPLATES: Record<
     category: 'UTILITY',
     language: 'en',
     bodyText:
-      "Hello, {{1}} created a Relyvora escrow payment link for *{{2}}* (Total: *{{3}}*). Funds are held in escrow until you inspect the delivery and give the rider your 6-digit release code.\n\nPlease confirm below that you requested this link to view the bank transfer details, or tap 'Not me' if you did not request this order.",
+      'Hello. {{1}} has created a payment link on Relyvora for {{2}} (₦{{3}}). Your payment is securely held until your order is delivered. Tap Continue to open your payment page.',
+    footerText: 'Secured by Relyvora Escrow',
     buttons: [
-      { type: 'QUICK_REPLY', text: 'Confirm this is me' },
-      { type: 'QUICK_REPLY', text: 'Not me' },
+      { type: 'QUICK_REPLY', text: 'Continue' },
+      { type: 'QUICK_REPLY', text: 'Not my order' },
       {
         type: 'URL',
-        text: 'View Payment Link',
+        text: 'Open payment page',
         urlExample: 'https://ng.relyvora.com/pay/{{1}}',
       },
     ],
@@ -65,7 +69,7 @@ export const WHATSAPP_TEMPLATES: Record<
     messageSendTtlSeconds: -1, // 30-day Meta max TTL (prevents 10-minute default drop on offline Nigerian phones)
     addSecurityRecommendation: false,
     codeExpirationMinutes: null,
-    bodyText: '*{{1}}* is your verification code.',
+    bodyText: '{{1}} is your verification code.',
     buttons: [
       {
         type: 'OTP',
@@ -79,7 +83,7 @@ export const WHATSAPP_TEMPLATES: Record<
     category: 'UTILITY',
     language: 'en',
     bodyText:
-      'Good news: {{1}} marked your order *{{2}}* (Ref: {{4}}) as dispatched with {{3}}. Inspect your package before handing over your 6-digit release code.',
+      'Good news: {{1}} marked your order {{2}} (Ref: {{3}}) as dispatched with {{4}}. Please inspect your package carefully on arrival before finalizing order handover on Relyvora.',
     buttons: [
       {
         type: 'URL',
@@ -93,7 +97,7 @@ export const WHATSAPP_TEMPLATES: Record<
     category: 'UTILITY',
     language: 'en',
     bodyText:
-      'Reminder for *{{1}}* from {{2}}: your delivery inspection window ends in {{3}}. If your order has arrived intact, share your 6-digit code with the rider; if anything is wrong or missing, open your order page immediately.',
+      'Reminder for {{1}} from {{2}}: your delivery inspection window ends in {{3}}. If your order arrived intact, complete handover with the rider; if anything is wrong or missing, open your order page immediately.',
     buttons: [
       { type: 'QUICK_REPLY', text: 'Report Problem' },
       {
@@ -108,7 +112,7 @@ export const WHATSAPP_TEMPLATES: Record<
     category: 'UTILITY',
     language: 'en',
     bodyText:
-      'Relyvora escrow update for *{{1}}*: {{2}}. Please review the timeline and submit any response or evidence on your order page before {{3}}.',
+      'Relyvora escrow update for {{1}}: {{2}}. Please review the timeline and submit any response or evidence on your order page before {{3}}.',
     buttons: [
       {
         type: 'URL',
@@ -119,34 +123,42 @@ export const WHATSAPP_TEMPLATES: Record<
   },
   verification_otp_v1: {
     name: 'verification_otp_v1',
-    category: 'UTILITY',
+    category: 'AUTHENTICATION',
     language: 'en',
-    bodyText:
-      '{{1}} is your Relyvora verification code for {{2}}. This code expires in 10 minutes. Do not share it with anyone.',
+    addSecurityRecommendation: false,
+    codeExpirationMinutes: null,
+    bodyText: '{{1}} is your verification code.',
+    buttons: [
+      {
+        type: 'OTP',
+        otpType: 'COPY_CODE',
+        text: 'Copy code',
+      },
+    ],
   },
   vendor_phone_verify_v1: {
     name: 'vendor_phone_verify_v1',
     category: 'UTILITY',
     language: 'en',
     bodyText:
-      'Hello {{1}}, please confirm this WhatsApp number belongs to your Relyvora vendor account ({{2}}).',
-    buttons: [{ type: 'QUICK_REPLY', text: 'Confirm this is my business number' }],
+      'Hello {{1}}, please tap below to link this WhatsApp number to your Relyvora merchant account ({{2}}).',
+    buttons: [{ type: 'QUICK_REPLY', text: 'Yes, this is my number' }],
   },
   settlement_change_confirm_v1: {
     name: 'settlement_change_confirm_v1',
     category: 'UTILITY',
     language: 'en',
     bodyText:
-      'Security alert for {{1}}: A request was made to change your Relyvora settlement bank account to ****{{2}} (Bank {{3}}). Tap confirm if you authorized this; payouts will be held for {{4}} hours after confirmation.',
-    buttons: [{ type: 'QUICK_REPLY', text: 'Confirm bank change' }],
+      'Account update notice for {{1}}: A request was submitted to update your Relyvora payout bank account to the account ending in {{2}} at {{3}}. Tap Approve bank change below if you requested this; payouts will pause for {{4}} hours once approved.',
+    buttons: [{ type: 'QUICK_REPLY', text: 'Approve bank change' }],
   },
   payout_cooling_notice_v1: {
     name: 'payout_cooling_notice_v1',
     category: 'UTILITY',
     language: 'en',
     bodyText:
-      'Your Relyvora release code for *{{1}}* ({{2}}) was entered. Giving the code releases the money. For your protection, payout is held for {{3}} hours until {{4}}. Reply PROBLEM or tap below immediately if anything is wrong with your item.',
-    buttons: [{ type: 'QUICK_REPLY', text: 'PROBLEM' }],
+      'Handover update for {{1}} ({{2}}): Order completion was submitted. For your protection, payout is held for {{3}} hours until {{4}}. Tap Problem below immediately if anything is wrong with your item.',
+    buttons: [{ type: 'QUICK_REPLY', text: 'Problem' }],
   },
 };
 
@@ -169,54 +181,7 @@ export interface WhatsappTransportResult {
   status?: 'queued' | 'sent' | 'failed';
 }
 
-export type WhatsappTransportFn = (
-  payload: MetaTemplatePayload,
-  meta: {
-    transactionId?: string;
-    templateName: string;
-    phoneNumberId?: string;
-  }
-) => Promise<WhatsappTransportResult>;
-
-export interface TxWhatsappFallbackState {
-  buyer_whatsapp_consent: boolean;
-  buyer_phone_verified: boolean;
-  buyer_phone_verified_at: string | null;
-  whatsapp_message_id: string | null;
-  whatsapp_delivery_status: WhatsappDeliveryStatus;
-  whatsapp_blocked: boolean;
-}
-
-interface OutboundLogMemoryEntry {
-  message_id: string;
-  transaction_id: string | null;
-  vendor_id: string | null;
-  vendor_handle: string | null;
-  recipient_phone_hash: string;
-  masked_number: string;
-  template_name: string;
-  status: string;
-  error_code: string | null;
-  created_at: string;
-}
-
-export interface BuyerPhoneVerificationRecord {
-  transaction_id: string;
-  phone_hash: string;
-  masked_phone: string;
-  verified: boolean;
-  verification_method: 'WHATSAPP_QUICK_REPLY' | 'WHATSAPP_INBOUND';
-  whatsapp_message_id: string | null;
-  verified_at: string;
-}
-
 interface GlobalWhatsappStore {
-  transportOverride: WhatsappTransportFn | null;
-  txStates: Map<string, TxWhatsappFallbackState>;
-  buyerPhoneVerifications?: Map<string, BuyerPhoneVerificationRecord>;
-  dncHashes: Map<string, { masked_phone: string; reason: WhatsappDncReason; source_transaction_id?: string | null; created_at: string }>;
-  outboundLogs: OutboundLogMemoryEntry[];
-  webhookEvents: Set<string>;
   recentPayloadsByWamid?: Map<
     string,
     {
@@ -236,56 +201,13 @@ const globalForWhatsapp = globalThis as unknown as {
 function getWhatsappStore(): GlobalWhatsappStore {
   if (!globalForWhatsapp.__relyvoraWhatsappStore) {
     globalForWhatsapp.__relyvoraWhatsappStore = {
-      transportOverride: null,
-      txStates: new Map(),
-      buyerPhoneVerifications: new Map(),
-      dncHashes: new Map(),
-      outboundLogs: [],
-      webhookEvents: new Set(),
       recentPayloadsByWamid: new Map(),
     };
-  }
-  if (!globalForWhatsapp.__relyvoraWhatsappStore.buyerPhoneVerifications) {
-    globalForWhatsapp.__relyvoraWhatsappStore.buyerPhoneVerifications = new Map();
   }
   if (!globalForWhatsapp.__relyvoraWhatsappStore.recentPayloadsByWamid) {
     globalForWhatsapp.__relyvoraWhatsappStore.recentPayloadsByWamid = new Map();
   }
   return globalForWhatsapp.__relyvoraWhatsappStore;
-}
-
-/**
- * Allows automated tests to inject a deterministic Meta Cloud API transport mock.
- */
-export function setWhatsappTransportForTests(fn: WhatsappTransportFn | null) {
-  getWhatsappStore().transportOverride = fn;
-}
-
-/**
- * Resets in-memory fallback caches and test mocks (tests only).
- */
-export function resetWhatsappTestState() {
-  const store = getWhatsappStore();
-  store.transportOverride = null;
-  store.txStates.clear();
-  store.buyerPhoneVerifications?.clear();
-  store.dncHashes.clear();
-  store.outboundLogs = [];
-  store.webhookEvents.clear();
-  store.recentPayloadsByWamid?.clear();
-}
-
-export function isSchemaMissingError(err: any): boolean {
-  const code = String(err?.code || '');
-  const msg = String(err?.message || '').toLowerCase();
-  return (
-    code === '42P01' ||
-    code === '42703' ||
-    code === 'PGRST204' ||
-    code === 'PGRST205' ||
-    msg.includes('does not exist') ||
-    msg.includes('schema cache')
-  );
 }
 
 /**
@@ -349,12 +271,16 @@ export function getPayBaseUrl(): string {
   return 'https://staging.relyvora.com';
 }
 
-export function formatNairaForTemplate(amount: number): string {
+export function formatNumberForTemplate(amount: number): string {
   const numeric = Number(amount) || 0;
-  return `₦${numeric.toLocaleString('en-NG', {
+  return numeric.toLocaleString('en-NG', {
     minimumFractionDigits: numeric % 1 === 0 ? 0 : 2,
     maximumFractionDigits: 2,
-  })}`;
+  });
+}
+
+export function formatNairaForTemplate(amount: number): string {
+  return `₦${formatNumberForTemplate(amount)}`;
 }
 
 /**
@@ -365,36 +291,26 @@ export async function isPhoneOnDoNotContact(
   supabaseClient?: ReturnType<typeof getServiceSupabase>
 ): Promise<{ blocked: boolean; reason?: string }> {
   const phoneHash = hashWhatsappPhone(e164Phone);
-  const store = getWhatsappStore();
+  const supabase = supabaseClient || getServiceSupabase();
+  const { data, error } = await supabase
+    .from('whatsapp_do_not_contact')
+    .select('reason')
+    .eq('phone_hash', phoneHash)
+    .maybeSingle();
 
-  const memHit = store.dncHashes.get(phoneHash);
-  if (memHit) {
-    return { blocked: true, reason: memHit.reason };
+  if (error) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'WhatsApp DNC Registry Lookup Failed (Fail Closed)',
+      details: { error: error.message },
+    }).catch(() => {});
+    throw new Error(`WhatsApp DNC lookup failed: ${error.message}`);
   }
 
-  try {
-    const supabase = supabaseClient || getServiceSupabase();
-    const { data, error } = await supabase
-      .from('whatsapp_do_not_contact')
-      .select('reason')
-      .eq('phone_hash', phoneHash)
-      .maybeSingle();
-
-    if (error && !isSchemaMissingError(error)) {
-      console.warn('DNC lookup error:', error.message);
-    }
-    if (data?.reason) {
-      store.dncHashes.set(phoneHash, {
-        masked_phone: maskWhatsappNumber(e164Phone),
-        reason: data.reason as WhatsappDncReason,
-        created_at: new Date().toISOString(),
-      });
-      return { blocked: true, reason: data.reason };
-    }
-  } catch (err) {
-    console.warn('DNC lookup exception:', (err as Error)?.message);
+  if (data?.reason) {
+    return { blocked: true, reason: data.reason };
   }
-
   return { blocked: false };
 }
 
@@ -415,78 +331,179 @@ export async function addPhoneToDoNotContact(
   const maskedPhone = maskWhatsappNumber(e164);
   const now = new Date().toISOString();
 
-  getWhatsappStore().dncHashes.set(phoneHash, {
-    masked_phone: maskedPhone,
-    reason: params.reason,
-    source_transaction_id: params.transactionId || null,
-    created_at: now,
-  });
+  const supabase = supabaseClient || getServiceSupabase();
+  const { error } = await supabase
+    .from('whatsapp_do_not_contact')
+    .upsert(
+      {
+        phone_hash: phoneHash,
+        masked_phone: maskedPhone,
+        reason: params.reason,
+        source_transaction_id: params.transactionId || null,
+        created_at: now,
+      },
+      { onConflict: 'phone_hash' }
+    );
 
-  try {
-    const supabase = supabaseClient || getServiceSupabase();
-    const { error } = await supabase
-      .from('whatsapp_do_not_contact')
-      .upsert(
-        {
-          phone_hash: phoneHash,
-          masked_phone: maskedPhone,
-          reason: params.reason,
-          source_transaction_id: params.transactionId || null,
-          created_at: now,
-        },
-        { onConflict: 'phone_hash' }
-      );
-
-    if (error && !isSchemaMissingError(error)) {
-      console.warn('DNC insert error:', error.message);
-    }
-  } catch (err) {
-    console.warn('DNC insert exception:', (err as Error)?.message);
+  if (error) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'WhatsApp DNC Registry Insert Failed (Fail Closed)',
+      transactionId: params.transactionId || undefined,
+      details: { error: error.message },
+    }).catch(() => {});
+    throw new Error(`WhatsApp DNC insert failed: ${error.message}`);
   }
 }
 
 export async function getWhatsappDailyLimits(
-  supabaseClient?: ReturnType<typeof getServiceSupabase>
+  _supabaseClient?: ReturnType<typeof getServiceSupabase>
 ): Promise<{ maxVendorDaily: number; maxBuyerDaily: number }> {
-  const envVendor = Number(process.env.MAX_DAILY_VENDOR_WHATSAPP_MESSAGES || 50);
-  const envBuyer = Number(process.env.MAX_DAILY_BUYER_WHATSAPP_MESSAGES || 5);
-  let maxVendorDaily = Number.isFinite(envVendor) && envVendor > 0 ? envVendor : 50;
-  let maxBuyerDaily = Number.isFinite(envBuyer) && envBuyer > 0 ? envBuyer : 5;
-
-  try {
-    const supabase = supabaseClient || getServiceSupabase();
-    const { data, error } = await supabase
-      .from('system_settings')
-      .select('key, value')
-      .in('key', ['max_daily_vendor_whatsapp_messages', 'max_daily_buyer_whatsapp_messages']);
-
-    if (!error && Array.isArray(data)) {
-      for (const row of data) {
-        const parsed = Number(row.value);
-        if (row.key === 'max_daily_vendor_whatsapp_messages' && Number.isFinite(parsed) && parsed > 0) {
-          maxVendorDaily = parsed;
-        }
-        if (row.key === 'max_daily_buyer_whatsapp_messages' && Number.isFinite(parsed) && parsed > 0) {
-          maxBuyerDaily = parsed;
-        }
-      }
-    }
-  } catch {
-    // keep env/default limits
+  const settings = await getHotSettings();
+  const maxVendorRaw = await requireHotSetting(settings, 'max_daily_vendor_whatsapp_messages');
+  const maxBuyerRaw = await requireHotSetting(settings, 'max_daily_buyer_whatsapp_messages');
+  const maxVendorDaily = Number(maxVendorRaw);
+  const maxBuyerDaily = Number(maxBuyerRaw);
+  if (!Number.isFinite(maxVendorDaily) || maxVendorDaily <= 0 || !Number.isFinite(maxBuyerDaily) || maxBuyerDaily <= 0) {
+    throw new Error('Invalid WhatsApp daily cap settings in system_settings.');
   }
-
   return { maxVendorDaily, maxBuyerDaily };
 }
 
-export function isPhoneAllowedByStagingList(e164Phone: string): boolean {
-  const rawList = (process.env.WHATSAPP_ALLOWED_RECIPIENTS || '').trim();
-  if (!rawList) return true;
-  const allowed = rawList
+export interface WhatsappRecipientFilterStatus {
+  environment: 'production' | 'staging';
+  state:
+    | 'unset'
+    | 'empty'
+    | 'enforced'
+    | 'invalid_nonempty'
+    | 'set_ignored_in_production';
+  enforced: boolean;
+  configuredCount: number;
+  allowedNumbers: string[];
+}
+
+export function getWhatsappRecipientFilterStatus(
+  env: Record<string, string | undefined> = process.env
+): WhatsappRecipientFilterStatus {
+  const isProduction = env.VERCEL_ENV === 'production';
+  const rawValue = env.WHATSAPP_ALLOWED_RECIPIENTS;
+
+  if (rawValue === undefined) {
+    return {
+      environment: isProduction ? 'production' : 'staging',
+      state: 'unset',
+      enforced: false,
+      configuredCount: 0,
+      allowedNumbers: [],
+    };
+  }
+
+  const trimmed = String(rawValue).trim();
+  if (!trimmed) {
+    return {
+      environment: isProduction ? 'production' : 'staging',
+      state: 'empty',
+      enforced: false,
+      configuredCount: 0,
+      allowedNumbers: [],
+    };
+  }
+
+  const rawEntries = trimmed
     .split(',')
-    .map((p) => normalizeWhatsappPhone(p))
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const normalizedAllowed = rawEntries
+    .map((entry) => normalizeWhatsappPhone(entry))
     .filter((p): p is string => Boolean(p));
-  if (allowed.length === 0) return true;
-  return allowed.includes(e164Phone);
+
+  if (isProduction) {
+    // CRITICAL INVARIANT: Production must NEVER silently block real customer WhatsApp messages.
+    return {
+      environment: 'production',
+      state: 'set_ignored_in_production',
+      enforced: false,
+      configuredCount: rawEntries.length,
+      allowedNumbers: normalizedAllowed,
+    };
+  }
+
+  if (normalizedAllowed.length === 0) {
+    return {
+      environment: 'staging',
+      state: 'invalid_nonempty',
+      enforced: true,
+      configuredCount: rawEntries.length,
+      allowedNumbers: [],
+    };
+  }
+
+  return {
+    environment: 'staging',
+    state: 'enforced',
+    enforced: true,
+    configuredCount: normalizedAllowed.length,
+    allowedNumbers: normalizedAllowed,
+  };
+}
+
+let lastProdAllowlistAlertMs = 0;
+
+export function evaluateWhatsappRecipientPolicy(
+  e164Phone: string,
+  env: Record<string, string | undefined> = process.env
+): { allowed: boolean; status: WhatsappRecipientFilterStatus; reason?: string } {
+  const status = getWhatsappRecipientFilterStatus(env);
+
+  if (status.environment === 'production') {
+    if (status.state === 'set_ignored_in_production') {
+      logError('WHATSAPP_ALLOWED_RECIPIENTS_IGNORED_IN_PRODUCTION', {
+        configuredCount: status.configuredCount,
+        note: 'Production never blocks buyers via staging WHATSAPP_ALLOWED_RECIPIENTS.',
+      });
+      if (Date.now() - lastProdAllowlistAlertMs >= 60_000) {
+        lastProdAllowlistAlertMs = Date.now();
+        void sendSystemAlert({
+          type: 'SYSTEM_FAILURE',
+          severity: 'WARNING',
+          title: 'WHATSAPP_ALLOWED_RECIPIENTS Set in Production (Ignored)',
+          details: {
+            configuredCount: status.configuredCount,
+            note: 'Production ignored WHATSAPP_ALLOWED_RECIPIENTS so buyer traffic is not silently blocked.',
+          },
+        }).catch(() => {});
+      }
+    }
+    return { allowed: true, status };
+  }
+
+  if (status.state === 'unset' || status.state === 'empty') {
+    return { allowed: true, status };
+  }
+
+  if (status.state === 'invalid_nonempty') {
+    logWarn('STAGING_WHATSAPP_ALLOWLIST_INVALID_ENTRIES', {
+      configuredCount: status.configuredCount,
+    });
+    return {
+      allowed: false,
+      status,
+      reason: 'Staging WHATSAPP_ALLOWED_RECIPIENTS contains no valid phone numbers.',
+    };
+  }
+
+  const matched = status.allowedNumbers.includes(e164Phone);
+  return {
+    allowed: matched,
+    status,
+    reason: matched ? undefined : 'Recipient number is not in staging WHATSAPP_ALLOWED_RECIPIENTS.',
+  };
+}
+
+export function isPhoneAllowedByStagingList(e164Phone: string): boolean {
+  return evaluateWhatsappRecipientPolicy(e164Phone).allowed;
 }
 
 export async function checkWhatsappDailyCaps(
@@ -499,49 +516,45 @@ export async function checkWhatsappDailyCaps(
   utcDayStart.setUTCHours(0, 0, 0, 0);
   const dayStartIso = utcDayStart.toISOString();
 
-  const store = getWhatsappStore();
-  let vendorCount = store.outboundLogs.filter(
-    (entry) =>
-      params.vendorId &&
-      entry.vendor_id === params.vendorId &&
-      entry.created_at >= dayStartIso &&
-      entry.status !== 'blocked'
-  ).length;
-  let buyerCount = store.outboundLogs.filter(
-    (entry) =>
-      entry.recipient_phone_hash === phoneHash &&
-      entry.created_at >= dayStartIso &&
-      entry.status !== 'blocked'
-  ).length;
-
-  try {
-    const supabase = supabaseClient || getServiceSupabase();
-    if (params.vendorId) {
-      const { count: vCount, error: vErr } = await supabase
-        .from('whatsapp_message_log')
-        .select('id', { count: 'exact', head: true })
-        .eq('vendor_id', params.vendorId)
-        .neq('status', 'blocked')
-        .gte('created_at', dayStartIso);
-
-      if (!vErr && typeof vCount === 'number') {
-        vendorCount = Math.max(vendorCount, vCount);
-      }
-    }
-
-    const { count: bCount, error: bErr } = await supabase
+  const supabase = supabaseClient || getServiceSupabase();
+  let vendorCount = 0;
+  if (params.vendorId) {
+    const { count: vCount, error: vErr } = await supabase
       .from('whatsapp_message_log')
       .select('id', { count: 'exact', head: true })
-      .eq('recipient_phone_hash', phoneHash)
+      .eq('vendor_id', params.vendorId)
       .neq('status', 'blocked')
       .gte('created_at', dayStartIso);
 
-    if (!bErr && typeof bCount === 'number') {
-      buyerCount = Math.max(buyerCount, bCount);
+    if (vErr) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'WhatsApp Vendor Daily Cap Query Failed (Fail Closed)',
+        details: { vendorId: params.vendorId, error: vErr.message },
+      }).catch(() => {});
+      throw new Error(`WhatsApp vendor daily cap query failed: ${vErr.message}`);
     }
-  } catch {
-    // use memory count if table is unavailable
+    vendorCount = vCount || 0;
   }
+
+  const { count: bCount, error: bErr } = await supabase
+    .from('whatsapp_message_log')
+    .select('id', { count: 'exact', head: true })
+    .eq('recipient_phone_hash', phoneHash)
+    .neq('status', 'blocked')
+    .gte('created_at', dayStartIso);
+
+  if (bErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'WhatsApp Buyer Daily Cap Query Failed (Fail Closed)',
+      details: { error: bErr.message },
+    }).catch(() => {});
+    throw new Error(`WhatsApp buyer daily cap query failed: ${bErr.message}`);
+  }
+  const buyerCount = bCount || 0;
 
   if (params.vendorId && vendorCount >= maxVendorDaily) {
     return {
@@ -581,7 +594,8 @@ export async function logWhatsappOutbound(
   const maskedNumber = maskWhatsappNumber(entry.e164Phone);
   const now = new Date().toISOString();
 
-  getWhatsappStore().outboundLogs.push({
+  const supabase = supabaseClient || getServiceSupabase();
+  const { error } = await supabase.from('whatsapp_message_log').insert({
     message_id: entry.messageId,
     transaction_id: entry.transactionId || null,
     vendor_id: entry.vendorId || null,
@@ -592,41 +606,25 @@ export async function logWhatsappOutbound(
     status: entry.status,
     error_code: entry.errorCode || null,
     created_at: now,
+    updated_at: now,
   });
 
-  try {
-    const supabase = supabaseClient || getServiceSupabase();
-    const { error } = await supabase.from('whatsapp_message_log').insert({
-      message_id: entry.messageId,
-      transaction_id: entry.transactionId || null,
-      vendor_id: entry.vendorId || null,
-      vendor_handle: entry.vendorHandle || null,
-      recipient_phone_hash: phoneHash,
-      masked_number: maskedNumber,
-      template_name: entry.templateName,
-      status: entry.status,
-      error_code: entry.errorCode || null,
-      created_at: now,
-      updated_at: now,
-    });
-
-    if (error && !isSchemaMissingError(error)) {
-      console.warn('WhatsApp audit log insert error:', error.message);
-    }
-  } catch (err) {
-    console.warn('WhatsApp audit log exception:', (err as Error)?.message);
+  if (error) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'WhatsApp Audit Log Insert Failed (Fail Closed)',
+      transactionId: entry.transactionId || undefined,
+      details: { templateName: entry.templateName, error: error.message },
+    }).catch(() => {});
+    throw new Error(`WhatsApp audit log insert failed: ${error.message}`);
   }
-}
-
-export function getInMemoryOutboundLogsForTests(): OutboundLogMemoryEntry[] {
-  return [...getWhatsappStore().outboundLogs];
 }
 
 export async function checkAndAlertWhatsappAnomalies(
   context: { eventType: 'failed' | 'not_me' | 'stop'; transactionId?: string | null; maskedPhone?: string },
   supabaseClient?: ReturnType<typeof getServiceSupabase>
 ): Promise<void> {
-  const store = getWhatsappStore();
   if (context.eventType === 'not_me' || context.eventType === 'stop') {
     await sendSystemAlert({
       type: 'SECURITY_LOCKOUT',
@@ -643,28 +641,29 @@ export async function checkAndAlertWhatsappAnomalies(
     return;
   }
 
-  // High failure rate check across recent messages
   const utcDayStart = new Date();
   utcDayStart.setUTCHours(0, 0, 0, 0);
-  const recent = store.outboundLogs.filter((l) => l.created_at >= utcDayStart.toISOString());
-  let total = recent.length;
-  let failed = recent.filter((l) => l.status === 'failed').length;
 
-  try {
-    const supabase = supabaseClient || getServiceSupabase();
-    const { data, error } = await supabase
-      .from('whatsapp_message_log')
-      .select('status')
-      .gte('created_at', utcDayStart.toISOString())
-      .limit(100);
+  const supabase = supabaseClient || getServiceSupabase();
+  const { data, error } = await supabase
+    .from('whatsapp_message_log')
+    .select('status')
+    .gte('created_at', utcDayStart.toISOString())
+    .limit(100);
 
-    if (!error && Array.isArray(data) && data.length > total) {
-      total = data.length;
-      failed = data.filter((r) => r.status === 'failed').length;
-    }
-  } catch {
-    // use memory metrics
+  if (error) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'WhatsApp Anomaly Metrics Query Failed (Fail Closed)',
+      transactionId: context.transactionId || undefined,
+      details: { error: error.message },
+    }).catch(() => {});
+    throw new Error(`WhatsApp anomaly check query failed: ${error.message}`);
   }
+
+  const total = Array.isArray(data) ? data.length : 0;
+  const failed = Array.isArray(data) ? data.filter((r) => r.status === 'failed').length : 0;
 
   if (failed >= 3 && total > 0 && failed / total >= 0.3) {
     await sendSystemAlert({
@@ -681,53 +680,47 @@ export async function checkAndAlertWhatsappAnomalies(
   }
 }
 
+export interface TxWhatsappStatePatch {
+  buyer_whatsapp_consent?: boolean;
+  buyer_phone_verified?: boolean;
+  buyer_phone_verified_at?: string | null;
+  whatsapp_message_id?: string | null;
+  whatsapp_delivery_status?: WhatsappDeliveryStatus;
+  whatsapp_blocked?: boolean;
+}
+
 /**
- * Persists WhatsApp state for a transaction to DB (if migrated) AND in-memory state overlay.
+ * Persists WhatsApp state for a transaction strictly to public.transactions.
  */
 export async function updateTransactionWhatsappState(
   transactionId: string,
-  patch: Partial<TxWhatsappFallbackState>,
+  patch: TxWhatsappStatePatch,
   supabaseClient?: ReturnType<typeof getServiceSupabase>
 ): Promise<void> {
-  const store = getWhatsappStore();
-  const prev = store.txStates.get(transactionId) || {
-    buyer_whatsapp_consent: false,
-    buyer_phone_verified: false,
-    buyer_phone_verified_at: null,
-    whatsapp_message_id: null,
-    whatsapp_delivery_status: 'not_sent' as WhatsappDeliveryStatus,
-    whatsapp_blocked: false,
-  };
+  const supabase = supabaseClient || getServiceSupabase();
+  const { error } = await supabase
+    .from('transactions')
+    .update({
+      ...patch,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', transactionId);
 
-  store.txStates.set(transactionId, { ...prev, ...patch });
-
-  try {
-    const supabase = supabaseClient || getServiceSupabase();
-    const { error } = await supabase
-      .from('transactions')
-      .update({
-        ...patch,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', transactionId);
-
-    if (error && !isSchemaMissingError(error)) {
-      console.warn('Failed updating transaction WhatsApp fields:', error.message);
-    }
-  } catch {
-    // non-fatal when running against unmigrated sandbox DB
+  if (error) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Transaction WhatsApp State Update Failed (Fail Closed)',
+      transactionId,
+      details: { error: error.message },
+    }).catch(() => {});
+    throw new Error(`Failed updating transaction WhatsApp state: ${error.message}`);
   }
 }
 
-export function getTransactionWhatsappFallbackState(
-  transactionId: string
-): TxWhatsappFallbackState | undefined {
-  return getWhatsappStore().txStates.get(transactionId);
-}
-
 /**
- * Records a buyer WhatsApp phone verification in public.buyer_phone_verifications
- * (storing only SHA-256 hash + masked number, never plaintext) and in-memory overlay.
+ * Records a buyer WhatsApp phone verification strictly in public.buyer_phone_verifications
+ * (storing only SHA-256 hash + masked number, never plaintext).
  */
 export async function recordBuyerPhoneVerification(
   input: {
@@ -746,92 +739,68 @@ export async function recordBuyerPhoneVerification(
   const method = input.verificationMethod || 'WHATSAPP_QUICK_REPLY';
   const wamid = input.whatsappMessageId || null;
 
-  const store = getWhatsappStore();
-  if (!store.buyerPhoneVerifications) {
-    store.buyerPhoneVerifications = new Map();
-  }
-  store.buyerPhoneVerifications.set(input.transactionId, {
-    transaction_id: input.transactionId,
-    phone_hash: phoneHash,
-    masked_phone: maskedPhone,
-    verified: true,
-    verification_method: method,
-    whatsapp_message_id: wamid,
-    verified_at: verifiedAt,
-  });
+  const supabase = supabaseClient || getServiceSupabase();
+  const { error } = await supabase
+    .from('buyer_phone_verifications')
+    .upsert(
+      {
+        transaction_id: input.transactionId,
+        phone_hash: phoneHash,
+        masked_phone: maskedPhone,
+        verified: true,
+        verification_method: method,
+        whatsapp_message_id: wamid,
+        verified_at: verifiedAt,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'transaction_id' }
+    );
 
-  try {
-    const supabase = supabaseClient || getServiceSupabase();
-    const { error } = await supabase
-      .from('buyer_phone_verifications')
-      .upsert(
-        {
-          transaction_id: input.transactionId,
-          phone_hash: phoneHash,
-          masked_phone: maskedPhone,
-          verified: true,
-          verification_method: method,
-          whatsapp_message_id: wamid,
-          verified_at: verifiedAt,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'transaction_id' }
-      );
-
-    if (error && !isSchemaMissingError(error)) {
-      console.warn('Failed recording buyer_phone_verifications row:', error.message);
-    }
-  } catch {
-    // non-fatal when running against unmigrated staging/sandbox DB
+  if (error) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Buyer Phone Verification Persistence Failed (Fail Closed)',
+      transactionId: input.transactionId,
+      details: { error: error.message },
+    }).catch(() => {});
+    throw new Error(`Failed recording buyer_phone_verifications row: ${error.message}`);
   }
 }
 
 /**
- * Revokes buyer WhatsApp phone verification in public.buyer_phone_verifications (STOP / "Not me").
+ * Revokes buyer WhatsApp phone verification strictly in public.buyer_phone_verifications (STOP / "Not me").
  */
 export async function revokeBuyerPhoneVerification(
   transactionId: string,
   supabaseClient?: ReturnType<typeof getServiceSupabase>
 ): Promise<void> {
-  const store = getWhatsappStore();
-  const existing = store.buyerPhoneVerifications?.get(transactionId);
-  if (existing) {
-    store.buyerPhoneVerifications?.set(transactionId, {
-      ...existing,
+  const supabase = supabaseClient || getServiceSupabase();
+  const { error } = await supabase
+    .from('buyer_phone_verifications')
+    .update({
       verified: false,
-    });
+      updated_at: new Date().toISOString(),
+    })
+    .eq('transaction_id', transactionId);
+
+  if (error) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Buyer Phone Verification Revocation Failed (Fail Closed)',
+      transactionId,
+      details: { error: error.message },
+    }).catch(() => {});
+    throw new Error(`Failed revoking buyer_phone_verifications row: ${error.message}`);
   }
-
-  try {
-    const supabase = supabaseClient || getServiceSupabase();
-    const { error } = await supabase
-      .from('buyer_phone_verifications')
-      .update({
-        verified: false,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('transaction_id', transactionId);
-
-    if (error && !isSchemaMissingError(error)) {
-      console.warn('Failed revoking buyer_phone_verifications row:', error.message);
-    }
-  } catch {
-    // non-fatal when running against unmigrated staging/sandbox DB
-  }
-}
-
-export function getInMemoryBuyerPhoneVerification(
-  transactionId: string
-): BuyerPhoneVerificationRecord | undefined {
-  return getWhatsappStore().buyerPhoneVerifications?.get(transactionId);
 }
 
 export const WHATSAPP_DB_COLUMNS =
   'buyer_whatsapp_consent, buyer_phone_verified, buyer_phone_verified_at, whatsapp_message_id, whatsapp_delivery_status, whatsapp_blocked';
 
 /**
- * Queries a single transaction selecting WhatsApp verification columns when migrated,
- * falling back cleanly if the SQL migration has not yet been applied to staging.
+ * Queries a single transaction selecting WhatsApp verification columns strictly (fail closed).
  */
 export async function selectTransactionWithWhatsapp<T extends Record<string, any>>(
   supabase: ReturnType<typeof getServiceSupabase>,
@@ -839,61 +808,53 @@ export async function selectTransactionWithWhatsapp<T extends Record<string, any
   baseColumns: string
 ): Promise<{ data: T | null; error: any }> {
   const withWaCols = `${baseColumns}, ${WHATSAPP_DB_COLUMNS}`;
-  const first = await supabase
+  const { data: txDataRaw, error: txErr } = await supabase
     .from('transactions')
     .select(withWaCols)
     .eq('id', id)
     .maybeSingle();
 
-  let txData: Record<string, any> | null = null;
-  if (!first.error) {
-    txData = (first.data as unknown as Record<string, any>) || null;
-  } else if (isSchemaMissingError(first.error)) {
-    const fallback = await supabase
-      .from('transactions')
-      .select(baseColumns)
-      .eq('id', id)
-      .maybeSingle();
-    if (fallback.error) {
-      return { data: null, error: fallback.error };
-    }
-    txData = (fallback.data as unknown as Record<string, any>) || null;
-  } else {
-    return { data: null, error: first.error };
+  if (txErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Transaction WhatsApp Select Failed (Fail Closed)',
+      transactionId: id,
+      details: { error: txErr.message },
+    }).catch(() => {});
+    return { data: null, error: txErr };
   }
 
+  let txData = (txDataRaw as unknown as Record<string, any>) || null;
   if (!txData) {
     return { data: null, error: null };
   }
 
-  const memBlocked = getWhatsappStore().txStates.get(id)?.whatsapp_blocked;
-  if (!txData.buyer_phone_verified && !txData.whatsapp_blocked && !memBlocked) {
-    try {
-      const { data: bpv, error: bpvErr } = await supabase
-        .from('buyer_phone_verifications')
-        .select('verified, verified_at')
-        .eq('transaction_id', id)
-        .eq('verified', true)
-        .maybeSingle();
+  if (!txData.buyer_phone_verified && !txData.whatsapp_blocked) {
+    const { data: bpv, error: bpvErr } = await supabase
+      .from('buyer_phone_verifications')
+      .select('verified, verified_at')
+      .eq('transaction_id', id)
+      .eq('verified', true)
+      .maybeSingle();
 
-      if (!bpvErr && bpv?.verified) {
-        txData = {
-          ...txData,
-          buyer_phone_verified: true,
-          buyer_phone_verified_at: bpv.verified_at ?? txData.buyer_phone_verified_at ?? null,
-        };
-      } else if (bpvErr && isSchemaMissingError(bpvErr)) {
-        const memBpv = getWhatsappStore().buyerPhoneVerifications?.get(id);
-        if (memBpv?.verified) {
-          txData = {
-            ...txData,
-            buyer_phone_verified: true,
-            buyer_phone_verified_at: memBpv.verified_at ?? txData.buyer_phone_verified_at ?? null,
-          };
-        }
-      }
-    } catch {
-      // non-fatal when running against unmigrated staging/sandbox DB
+    if (bpvErr) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'buyer_phone_verifications Select Failed (Fail Closed)',
+        transactionId: id,
+        details: { error: bpvErr.message },
+      }).catch(() => {});
+      return { data: null, error: bpvErr };
+    }
+
+    if (bpv?.verified) {
+      txData = {
+        ...txData,
+        buyer_phone_verified: true,
+        buyer_phone_verified_at: bpv.verified_at ?? txData.buyer_phone_verified_at ?? null,
+      };
     }
   }
 
@@ -904,39 +865,33 @@ export async function selectTransactionWithWhatsapp<T extends Record<string, any
 }
 
 /**
- * Queries transaction list selecting WhatsApp verification columns when migrated,
- * falling back cleanly if the SQL migration has not yet been applied to staging.
+ * Queries transaction list selecting WhatsApp verification columns strictly (fail closed).
  */
 export async function selectTransactionsListWithWhatsapp<T extends Record<string, any>>(
   supabase: ReturnType<typeof getServiceSupabase>,
   vendorHandle: string | null,
   baseColumns: string
 ): Promise<{ data: T[]; error: any }> {
-  const buildQuery = (cols: string) => {
-    let q = supabase
-      .from('transactions')
-      .select(cols)
-      .order('created_at', { ascending: false });
-    if (vendorHandle) {
-      q = q.eq('vendor_handle', vendorHandle.trim());
-    }
-    return q;
-  };
-
-  const first = await buildQuery(`${baseColumns}, ${WHATSAPP_DB_COLUMNS}`);
-  if (!first.error) {
-    return { data: (first.data as unknown as T[]) || [], error: null };
+  let q = supabase
+    .from('transactions')
+    .select(`${baseColumns}, ${WHATSAPP_DB_COLUMNS}`)
+    .order('created_at', { ascending: false });
+  if (vendorHandle) {
+    q = q.eq('vendor_handle', vendorHandle.trim());
   }
 
-  if (isSchemaMissingError(first.error)) {
-    const fallback = await buildQuery(baseColumns);
-    return {
-      data: (fallback.data as unknown as T[]) || [],
-      error: fallback.error,
-    };
+  const { data, error } = await q;
+  if (error) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Transaction List WhatsApp Select Failed (Fail Closed)',
+      details: { error: error.message },
+    }).catch(() => {});
+    return { data: [], error };
   }
 
-  return { data: [], error: first.error };
+  return { data: (data as unknown as T[]) || [], error: null };
 }
 
 /**
@@ -955,20 +910,26 @@ export async function verifyVendorEligibleForWhatsapp(
   let vendor: { kyc_status?: string; is_allowlisted?: boolean } | null = null;
 
   if (isUuid && params.vendorId) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('vendors')
       .select('kyc_status, is_allowlisted')
       .eq('id', params.vendorId)
       .maybeSingle();
+    if (error) {
+      throw new Error(`Vendor WhatsApp eligibility lookup failed: ${error.message}`);
+    }
     vendor = data;
   } else if (params.vendorHandle) {
     const cleanHandle = params.vendorHandle.trim().toLowerCase().replace(/^@/, '');
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('vendors')
       .select('kyc_status, is_allowlisted')
       .or(`store_name.ilike.%${cleanHandle}%,email.ilike.%${cleanHandle}%`)
       .limit(1)
       .maybeSingle();
+    if (error) {
+      throw new Error(`Vendor WhatsApp eligibility lookup failed: ${error.message}`);
+    }
     vendor = data;
   }
 
@@ -983,10 +944,8 @@ export async function verifyVendorEligibleForWhatsapp(
   }
 
   const hotSettings = await getHotSettings();
-  const allowlistMode =
-    hotSettings.vendor_allowlist_mode !== undefined
-      ? Boolean(hotSettings.vendor_allowlist_mode === true || hotSettings.vendor_allowlist_mode === 'true')
-      : false;
+  const allowlistRaw = await requireHotSetting(hotSettings, 'vendor_allowlist_mode');
+  const allowlistMode = Boolean(allowlistRaw === true || allowlistRaw === 'true');
   if (allowlistMode && vendor.is_allowlisted !== true) {
     return {
       eligible: false,
@@ -1000,31 +959,15 @@ export async function verifyVendorEligibleForWhatsapp(
  * Redacts virtual account details whenever an order is blocked or its buyer WhatsApp number is not yet verified.
  */
 export function applyWhatsappVerificationRedaction<T extends Record<string, any>>(tx: T): T {
-  const fallback = tx?.id ? getTransactionWhatsappFallbackState(tx.id) : undefined;
-  const bpvFallback = tx?.id ? getInMemoryBuyerPhoneVerification(tx.id) : undefined;
-  const buyerPhoneVerified =
-    typeof tx.buyer_phone_verified === 'boolean'
-      ? tx.buyer_phone_verified || Boolean(fallback?.buyer_phone_verified) || Boolean(bpvFallback?.verified)
-      : Boolean(fallback?.buyer_phone_verified) || Boolean(bpvFallback?.verified);
-
-  const whatsappBlocked =
-    typeof tx.whatsapp_blocked === 'boolean'
-      ? tx.whatsapp_blocked || Boolean(fallback?.whatsapp_blocked)
-      : Boolean(fallback?.whatsapp_blocked);
-
+  const buyerPhoneVerified = Boolean(tx.buyer_phone_verified);
+  const whatsappBlocked = Boolean(tx.whatsapp_blocked);
   const whatsappDeliveryStatus: WhatsappDeliveryStatus =
     tx.whatsapp_delivery_status && tx.whatsapp_delivery_status !== 'not_sent'
       ? tx.whatsapp_delivery_status
-      : fallback?.whatsapp_delivery_status || 'not_sent';
-
-  const buyerWhatsappConsent =
-    typeof tx.buyer_whatsapp_consent === 'boolean'
-      ? tx.buyer_whatsapp_consent || Boolean(fallback?.buyer_whatsapp_consent)
-      : Boolean(fallback?.buyer_whatsapp_consent);
-
-  const buyerPhoneVerifiedAt =
-    tx.buyer_phone_verified_at || fallback?.buyer_phone_verified_at || (bpvFallback?.verified ? bpvFallback.verified_at : null) || null;
-  const whatsappMessageId = tx.whatsapp_message_id || fallback?.whatsapp_message_id || null;
+      : 'not_sent';
+  const buyerWhatsappConsent = Boolean(tx.buyer_whatsapp_consent);
+  const buyerPhoneVerifiedAt = tx.buyer_phone_verified_at || null;
+  const whatsappMessageId = tx.whatsapp_message_id || null;
 
   const isVerifiedAndUnblocked = buyerPhoneVerified && !whatsappBlocked;
 
@@ -1072,6 +1015,68 @@ function rememberDispatchedPayload(
   }
 }
 
+export function extractTemplateBodyVariableCount(bodyText: string): number {
+  const matches = [...bodyText.matchAll(/\{\{(\d+)\}\}/g)];
+  if (matches.length === 0) return 0;
+  const indices = [...new Set(matches.map((m) => Number(m[1])))].sort((a, b) => a - b);
+  return indices[indices.length - 1] || 0;
+}
+
+/**
+ * Validates that a constructed Meta Cloud API payload strictly matches the defined
+ * body variable count and button parameters in WHATSAPP_TEMPLATES.
+ */
+export function validateWhatsappTemplatePayload(payload: MetaTemplatePayload): void {
+  const tplName = payload?.template?.name as keyof typeof WHATSAPP_TEMPLATES | undefined;
+  const def = tplName ? WHATSAPP_TEMPLATES[tplName] : undefined;
+  if (!def) {
+    throw new Error(`Unknown WhatsApp template: "${String(tplName || '')}".`);
+  }
+
+  const expectedBodyVars = extractTemplateBodyVariableCount(def.bodyText);
+  const bodyComp = (payload.template.components || []).find((c) => c.type === 'body') as
+    | { parameters?: unknown[] }
+    | undefined;
+  const actualBodyVars = Array.isArray(bodyComp?.parameters) ? bodyComp.parameters.length : 0;
+
+  if (actualBodyVars !== expectedBodyVars) {
+    throw new Error(
+      `WhatsApp template "${def.name}" expects ${expectedBodyVars} body parameter(s), got ${actualBodyVars}.`
+    );
+  }
+
+  const defButtons = def.buttons || [];
+  const btnComps = (payload.template.components || []).filter((c) => c.type === 'button') as Array<{
+    index?: string;
+    sub_type?: string;
+    parameters?: Array<{ type?: string; payload?: string; text?: string }>;
+  }>;
+
+  for (let i = 0; i < defButtons.length; i++) {
+    const btnDef = defButtons[i];
+    const comp = btnComps.find((c) => String(c.index) === String(i));
+    if (btnDef.type === 'QUICK_REPLY') {
+      if (!comp || comp.sub_type !== 'quick_reply' || !comp.parameters?.[0]?.payload) {
+        throw new Error(
+          `WhatsApp template "${def.name}" quick reply button ${i} ("${btnDef.text}") requires an explicit server payload.`
+        );
+      }
+    } else if (btnDef.type === 'URL' && /\{\{\d+\}\}/.test(btnDef.urlExample || '')) {
+      if (!comp || comp.sub_type !== 'url' || !comp.parameters?.[0]?.text) {
+        throw new Error(
+          `WhatsApp template "${def.name}" dynamic URL button ${i} ("${btnDef.text}") requires a URL parameter.`
+        );
+      }
+    } else if (btnDef.type === 'OTP') {
+      if (!comp || comp.sub_type !== 'url' || !comp.parameters?.[0]?.text) {
+        throw new Error(
+          `WhatsApp template "${def.name}" OTP copy-code button ${i} requires a 1-time code parameter.`
+        );
+      }
+    }
+  }
+}
+
 async function dispatchMetaWhatsappTemplate(
   payload: MetaTemplatePayload,
   meta: {
@@ -1080,24 +1085,13 @@ async function dispatchMetaWhatsappTemplate(
     isRetry?: boolean;
   }
 ): Promise<WhatsappTransportResult> {
-  const store = getWhatsappStore();
-  if (store.transportOverride) {
-    const res = await store.transportOverride(payload, {
-      ...meta,
-      phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || 'test_phone_id',
-    });
-    if (res.ok) {
-      rememberDispatchedPayload(res.messageId, payload, meta);
-    }
-    return res;
-  }
-
+  validateWhatsappTemplatePayload(payload);
   const accessToken = (process.env.WHATSAPP_ACCESS_TOKEN || '').trim();
   const phoneNumberId = (process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim();
   const apiVersion = (process.env.WHATSAPP_API_VERSION || 'v21.0').trim();
 
   if (!accessToken || !phoneNumberId) {
-    if (!isLiveMode() && process.env.NODE_ENV !== 'production') {
+    if (!isLiveMode()) {
       const simId = `wamid.sim_${crypto.randomBytes(8).toString('hex')}`;
       console.log(
         `[WHATSAPP SANDBOX] Template=${meta.templateName} To=${maskWhatsappNumber(payload.to)} Tx=${meta.transactionId || 'n/a'} MessageId=${simId}`
@@ -1139,7 +1133,8 @@ async function dispatchMetaWhatsappTemplate(
 }
 
 /**
- * Dispatches `payment_link_v1` (UTILITY) with Quick Replies ("Confirm this is me", "Not me")
+ * Dispatches `payment_link_v1` (UTILITY) with Quick Replies ("Continue", "Not my order")
+ * carrying explicit payload IDs (`CONFIRM_ORDER:<txId>`, `NOT_ME_ORDER:<txId>`)
  * and dynamic URL button suffix `<transactionId>`.
  */
 export async function sendPaymentLinkWhatsappTemplate(
@@ -1275,7 +1270,7 @@ export async function sendPaymentLinkWhatsappTemplate(
     return { success: false, status: 'failed', error: capCheck.error };
   }
 
-  const formattedAmount = formatNairaForTemplate(params.totalAmount);
+  const formattedAmount = formatNumberForTemplate(params.totalAmount);
   const metaPayload: MetaTemplatePayload = {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -1384,6 +1379,27 @@ export async function sendReleaseCodeWhatsappTemplate(
     return { success: false, maskedPhone, error: 'Missing or invalid buyer WhatsApp number.' };
   }
 
+  if (!isPhoneAllowedByStagingList(e164)) {
+    await logWhatsappOutbound(
+      {
+        messageId: `blocked_staging_${crypto.randomBytes(6).toString('hex')}`,
+        transactionId: params.transactionId,
+        vendorId: params.vendorId,
+        vendorHandle: params.vendorDisplayName,
+        e164Phone: e164,
+        templateName: 'release_code_v1',
+        status: 'blocked',
+        errorCode: 'STAGING_ALLOWLIST_BLOCK',
+      },
+      supabaseClient
+    );
+    return {
+      success: false,
+      maskedPhone,
+      error: 'Buyer phone not in staging WHATSAPP_ALLOWED_RECIPIENTS.',
+    };
+  }
+
   const dnc = await isPhoneOnDoNotContact(e164, supabaseClient);
   if (dnc.blocked) {
     return { success: false, maskedPhone, error: 'Recipient opted out on WhatsApp.' };
@@ -1453,7 +1469,7 @@ export async function sendOtpWhatsappTemplate(
     transactionId: string;
     buyerPhone: string;
     otp: string;
-    purpose: 'dispute' | 'reissue' | 'refund_account';
+    purpose: 'dispute' | 'reissue' | 'refund_account' | 'buyer_session';
   },
   supabaseClient?: ReturnType<typeof getServiceSupabase>
 ): Promise<{ success: boolean; maskedPhone: string; error?: string }> {
@@ -1463,17 +1479,30 @@ export async function sendOtpWhatsappTemplate(
     return { success: false, maskedPhone, error: 'Missing or invalid buyer WhatsApp number.' };
   }
 
+  if (!isPhoneAllowedByStagingList(e164)) {
+    await logWhatsappOutbound(
+      {
+        messageId: `blocked_staging_${crypto.randomBytes(6).toString('hex')}`,
+        transactionId: params.transactionId,
+        e164Phone: e164,
+        templateName: 'verification_otp_v1',
+        status: 'blocked',
+        errorCode: 'STAGING_ALLOWLIST_BLOCK',
+      },
+      supabaseClient
+    );
+    return {
+      success: false,
+      maskedPhone,
+      error: 'Buyer phone not in staging WHATSAPP_ALLOWED_RECIPIENTS.',
+    };
+  }
+
   const dnc = await isPhoneOnDoNotContact(e164, supabaseClient);
   if (dnc.blocked) {
     return { success: false, maskedPhone, error: 'Recipient opted out on WhatsApp.' };
   }
 
-  const label =
-    params.purpose === 'dispute'
-      ? 'freezing your escrow order'
-      : params.purpose === 'refund_account'
-        ? 'confirming your Relyvora refund bank account'
-        : 'reissuing your release code';
   const metaPayload: MetaTemplatePayload = {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -1487,7 +1516,14 @@ export async function sendOtpWhatsappTemplate(
           type: 'body',
           parameters: [
             { type: 'text', text: params.otp },
-            { type: 'text', text: label },
+          ],
+        },
+        {
+          type: 'button',
+          sub_type: 'url',
+          index: '0',
+          parameters: [
+            { type: 'text', text: params.otp },
           ],
         },
       ],
@@ -1556,33 +1592,26 @@ export async function claimWhatsappWebhookEvent(
   eventType: string,
   supabaseClient?: ReturnType<typeof getServiceSupabase>
 ): Promise<boolean> {
-  const store = getWhatsappStore();
-  if (store.webhookEvents.has(eventKey)) {
-    return false;
-  }
+  const supabase = supabaseClient || getServiceSupabase();
+  const { error } = await supabase.from('whatsapp_webhook_events').insert({
+    event_key: eventKey,
+    event_type: eventType,
+    created_at: new Date().toISOString(),
+  });
 
-  try {
-    const supabase = supabaseClient || getServiceSupabase();
-    const { error } = await supabase.from('whatsapp_webhook_events').insert({
-      event_key: eventKey,
-      event_type: eventType,
-      created_at: new Date().toISOString(),
-    });
-
-    if (error) {
-      if (error.code === '23505') {
-        store.webhookEvents.add(eventKey);
-        return false;
-      }
-      if (!isSchemaMissingError(error)) {
-        console.warn('Webhook replay check error:', error.message);
-      }
+  if (error) {
+    if (error.code === '23505') {
+      return false;
     }
-  } catch {
-    // fallback to memory replay cache if table missing
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'WhatsApp Webhook Replay Claim Failed (Fail Closed)',
+      details: { eventKey, eventType, error: error.message },
+    }).catch(() => {});
+    throw new Error(`WhatsApp webhook replay check failed: ${error.message}`);
   }
 
-  store.webhookEvents.add(eventKey);
   return true;
 }
 
@@ -1677,6 +1706,7 @@ export async function sendSettlementChangeConfirmWhatsapp(
     vendorPhone: string;
     newAccountLast4: string;
     newBankCode: string;
+    newBankName?: string;
     waitHours: number;
   },
   supabaseClient?: ReturnType<typeof getServiceSupabase>
@@ -1699,6 +1729,12 @@ export async function sendSettlementChangeConfirmWhatsapp(
     return { success: false, status: 'failed', error: `Recipient opted out (${dnc.reason}).` };
   }
 
+  const cleanDigits = String(params.newAccountLast4 || '').replace(/[^0-9]/g, '');
+  const accountLast4 =
+    cleanDigits.slice(-4) ||
+    String(params.newAccountLast4 || '').replace(/\*/g, '').trim().slice(-4);
+  const resolvedBankName = resolveNigerianBankName(params.newBankName || params.newBankCode);
+
   const payload: MetaTemplatePayload = {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
@@ -1712,8 +1748,8 @@ export async function sendSettlementChangeConfirmWhatsapp(
           type: 'body',
           parameters: [
             { type: 'text', text: params.vendorDisplayName },
-            { type: 'text', text: params.newAccountLast4 },
-            { type: 'text', text: params.newBankCode },
+            { type: 'text', text: accountLast4 },
+            { type: 'text', text: resolvedBankName },
             { type: 'text', text: String(params.waitHours) },
           ],
         },
@@ -1843,13 +1879,13 @@ export async function sendCoolingWindowWhatsappNotice(
 }
 
 /**
- * Tier 1 Item 1: Exact Cloud API template upsert setting `message_send_ttl_seconds: -1` (30 days)
+ * Tier 1 Item 1: Exact Cloud API template payload setting `message_send_ttl_seconds: -1` (30 days)
  * on the `release_code_v1` AUTHENTICATION template so codes are not dropped when offline.
  */
 export function buildMetaReleaseCodeTemplatePayload() {
   return {
     name: WHATSAPP_TEMPLATES.release_code_v1.name,
-    category: 'AUTHENTICATION',
+    category: 'AUTHENTICATION' as const,
     language: 'en',
     message_send_ttl_seconds: -1,
     components: [
@@ -1871,19 +1907,96 @@ export function buildMetaReleaseCodeTemplatePayload() {
   };
 }
 
-export async function upsertMetaReleaseCodeTemplateTtl(params?: {
-  wabaId?: string;
-  accessToken?: string;
-  apiVersion?: string;
-}): Promise<{ ok: boolean; status?: number; templateId?: string; payload: ReturnType<typeof buildMetaReleaseCodeTemplatePayload>; error?: string }> {
+/**
+ * Cloud API template payload for `verification_otp_v1` (AUTHENTICATION, default 10-minute TTL,
+ * copy-code button, no security recommendation line, no expiry line).
+ */
+export function buildMetaVerificationOtpTemplatePayload() {
+  return {
+    name: WHATSAPP_TEMPLATES.verification_otp_v1.name,
+    category: 'AUTHENTICATION' as const,
+    language: 'en',
+    components: [
+      {
+        type: 'BODY',
+        add_security_recommendation: false,
+      },
+      {
+        type: 'BUTTONS',
+        buttons: [
+          {
+            type: 'OTP',
+            otp_type: 'COPY_CODE',
+            text: 'Copy code',
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function redactMetaTokensInValue(input: unknown, accessToken?: string): unknown {
+  const cleanString = (raw: string): string => {
+    let out = raw;
+    if (accessToken && accessToken.trim().length >= 8) {
+      out = out.split(accessToken.trim()).join('[REDACTED_TOKEN]');
+    }
+    out = out.replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [REDACTED]');
+    out = out.replace(/EAA[A-Za-z0-9]{10,}/g, '[REDACTED_META_TOKEN]');
+    return out;
+  };
+
+  if (typeof input === 'string') return cleanString(input);
+  if (Array.isArray(input)) return input.map((v) => redactMetaTokensInValue(v, accessToken));
+  if (input && typeof input === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+      if (/token|secret|authorization|password/i.test(k)) {
+        out[k] = '[REDACTED]';
+      } else {
+        out[k] = redactMetaTokensInValue(v, accessToken);
+      }
+    }
+    return out;
+  }
+  return input;
+}
+
+export interface MetaTemplateUpsertResult {
+  ok: boolean;
+  templateName: 'release_code_v1' | 'verification_otp_v1';
+  httpStatus?: number;
+  status?: number;
+  templateId?: string;
+  payload:
+    | ReturnType<typeof buildMetaReleaseCodeTemplatePayload>
+    | ReturnType<typeof buildMetaVerificationOtpTemplatePayload>;
+  responseBody?: unknown;
+  metaErrorCode?: number | string | null;
+  metaErrorSubcode?: number | string | null;
+  error?: string;
+}
+
+export async function upsertMetaAuthTemplate(
+  templateName: 'release_code_v1' | 'verification_otp_v1',
+  params?: {
+    wabaId?: string;
+    accessToken?: string;
+    apiVersion?: string;
+  }
+): Promise<MetaTemplateUpsertResult> {
   const wabaId = (params?.wabaId || process.env.WHATSAPP_WABA_ID || '').trim();
   const accessToken = (params?.accessToken || process.env.WHATSAPP_ACCESS_TOKEN || '').trim();
   const apiVersion = (params?.apiVersion || process.env.WHATSAPP_API_VERSION || 'v21.0').trim();
-  const payload = buildMetaReleaseCodeTemplatePayload();
+  const payload =
+    templateName === 'release_code_v1'
+      ? buildMetaReleaseCodeTemplatePayload()
+      : buildMetaVerificationOtpTemplatePayload();
 
   if (!wabaId || !accessToken) {
     return {
       ok: false,
+      templateName,
       payload,
       error: 'WHATSAPP_WABA_ID and WHATSAPP_ACCESS_TOKEN are required to publish template updates to Meta Graph API.',
     };
@@ -1898,19 +2011,71 @@ export async function upsertMetaReleaseCodeTemplateTtl(params?: {
       },
       body: JSON.stringify(payload),
     });
-    const data = await res.json().catch(() => ({}));
+    const rawText = await res.text();
+    let parsed: any = {};
+    try {
+      parsed = rawText ? JSON.parse(rawText) : {};
+    } catch {
+      parsed = { rawText };
+    }
+    const sanitizedBody = redactMetaTokensInValue(parsed, accessToken);
     if (!res.ok) {
       return {
         ok: false,
+        templateName,
+        httpStatus: res.status,
         status: res.status,
         payload,
-        error: data?.error?.message || `Meta template API HTTP ${res.status}`,
+        responseBody: sanitizedBody,
+        metaErrorCode: parsed?.error?.code ?? null,
+        metaErrorSubcode: parsed?.error?.error_subcode ?? null,
+        error: String(
+          redactMetaTokensInValue(
+            parsed?.error?.message || `Meta template API HTTP ${res.status}`,
+            accessToken
+          )
+        ),
       };
     }
-    return { ok: true, status: res.status, templateId: data?.id, payload };
+    return {
+      ok: true,
+      templateName,
+      httpStatus: res.status,
+      status: res.status,
+      templateId: parsed?.id,
+      payload,
+      responseBody: sanitizedBody,
+      metaErrorCode: null,
+      metaErrorSubcode: null,
+    };
   } catch (err: any) {
-    return { ok: false, payload, error: err?.message || 'Network error calling Meta template API' };
+    return {
+      ok: false,
+      templateName,
+      payload,
+      error: String(
+        redactMetaTokensInValue(err?.message || 'Network error calling Meta template API', accessToken)
+      ),
+    };
   }
+}
+
+export async function upsertMetaAuthenticationTemplates(params?: {
+  wabaId?: string;
+  accessToken?: string;
+  apiVersion?: string;
+}): Promise<MetaTemplateUpsertResult[]> {
+  const releaseRes = await upsertMetaAuthTemplate('release_code_v1', params);
+  const otpRes = await upsertMetaAuthTemplate('verification_otp_v1', params);
+  return [releaseRes, otpRes];
+}
+
+export async function upsertMetaReleaseCodeTemplateTtl(params?: {
+  wabaId?: string;
+  accessToken?: string;
+  apiVersion?: string;
+}): Promise<MetaTemplateUpsertResult> {
+  return upsertMetaAuthTemplate('release_code_v1', params);
 }
 
 /**
@@ -1954,8 +2119,8 @@ export async function sendOrderDispatchedWhatsapp(
           parameters: [
             { type: 'text', text: params.vendorDisplayName },
             { type: 'text', text: params.itemName },
-            { type: 'text', text: params.courierLabel },
             { type: 'text', text: params.trackingRef || params.transactionId.slice(0, 8) },
+            { type: 'text', text: params.courierLabel },
           ],
         },
         {
@@ -2181,17 +2346,25 @@ export async function handleFailedOrUndeliveredWhatsappStatus(
   const txId = params.transactionId || cached?.transactionId || null;
 
   let alreadyRetried = Boolean(cached && (cached.retryCount || 0) >= 1);
-  try {
-    const { data: existingLog } = await supabase
-      .from('whatsapp_message_log')
-      .select('retry_count')
-      .eq('message_id', params.wamid)
-      .maybeSingle();
-    if (Number(existingLog?.retry_count || 0) >= 1) {
-      alreadyRetried = true;
-    }
-  } catch {
-    // ignore if unmigrated
+  const { data: existingLog, error: logReadErr } = await supabase
+    .from('whatsapp_message_log')
+    .select('retry_count')
+    .eq('message_id', params.wamid)
+    .maybeSingle();
+
+  if (logReadErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'WhatsApp Retry Count Query Failed (Fail Closed)',
+      transactionId: txId || undefined,
+      details: { wamid: params.wamid, error: logReadErr.message },
+    }).catch(() => {});
+    throw new Error(`WhatsApp retry count query failed: ${logReadErr.message}`);
+  }
+
+  if (Number(existingLog?.retry_count || 0) >= 1) {
+    alreadyRetried = true;
   }
 
   let retried = false;
@@ -2211,11 +2384,13 @@ export async function handleFailedOrUndeliveredWhatsappStatus(
     retryMessageId = retryRes.messageId;
     retryError = retryRes.error;
 
-    await supabase
+    const { error: retryUpdErr } = await supabase
       .from('whatsapp_message_log')
       .update({ retry_count: 1 })
-      .eq('message_id', params.wamid)
-      .then(() => {}, () => {});
+      .eq('message_id', params.wamid);
+    if (retryUpdErr) {
+      throw new Error(`Failed updating whatsapp_message_log retry_count: ${retryUpdErr.message}`);
+    }
 
     const e164 = normalizeWhatsappPhone(cached.payload.to) || cached.payload.to;
     await logWhatsappOutbound(

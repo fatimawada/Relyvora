@@ -1,5 +1,7 @@
+import { assertPaymentsModeConsistency } from './lib/paymentsModeCheck.mjs';
+
 /** @type {import('next').NextConfig} */
-const nextConfig = {
+const baseConfig = {
   reactStrictMode: true,
   env: {
     ANCHOR_BRAND_APPROVED:
@@ -17,4 +19,8 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+export default function nextConfig() {
+  // Fail the build immediately if PAYMENTS_MODE and NEXT_PUBLIC_PAYMENTS_MODE disagree.
+  assertPaymentsModeConsistency(process.env);
+  return baseConfig;
+}

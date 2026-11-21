@@ -2,18 +2,16 @@ import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { sendSystemAlert } from '@/lib/alerts';
-import { confirmSettlementAccountChange, setVendorSafetyOverlay } from '@/lib/payoutSafety';
+import { confirmSettlementAccountChange } from '@/lib/payoutSafety';
 import { recordDisputeAndDemoteIfNeeded } from '@/lib/vendorTiers';
-import { updateTransactionWithFallback } from '@/lib/orderLifecycle';
+import { updateTransactionStrict } from '@/lib/orderLifecycle';
 import {
   addPhoneToDoNotContact,
   applyWhatsappVerificationRedaction,
   checkAndAlertWhatsappAnomalies,
   claimWhatsappWebhookEvent,
-  getInMemoryOutboundLogsForTests,
   handleFailedOrUndeliveredWhatsappStatus,
   isPhoneOnDoNotContact,
-  isSchemaMissingError,
   maskWhatsappNumber,
   normalizeWhatsappPhone,
   recordBuyerPhoneVerification,
@@ -66,43 +64,42 @@ async function resolveTransactionIdFromContextOrPhone(
   if (explicitTxId) return explicitTxId;
 
   if (contextWamid) {
-    const memMatch = getInMemoryOutboundLogsForTests().find(
-      (entry) => entry.message_id === contextWamid && entry.transaction_id
-    );
-    if (memMatch?.transaction_id) return memMatch.transaction_id;
+    const { data: logRow, error: logErr } = await supabase
+      .from('whatsapp_message_log')
+      .select('transaction_id')
+      .eq('message_id', contextWamid)
+      .maybeSingle();
 
-    try {
-      const { data: logRow } = await supabase
-        .from('whatsapp_message_log')
-        .select('transaction_id')
-        .eq('message_id', contextWamid)
-        .maybeSingle();
-      if (logRow?.transaction_id) return logRow.transaction_id;
-    } catch {
-      // ignore if schema unmigrated
+    if (logErr) {
+      throw new Error(`whatsapp_message_log query failed: ${logErr.message}`);
     }
+    if (logRow?.transaction_id) return logRow.transaction_id;
 
-    try {
-      const { data: txRow } = await supabase
-        .from('transactions')
-        .select('id')
-        .eq('whatsapp_message_id', contextWamid)
-        .maybeSingle();
-      if (txRow?.id) return txRow.id;
-    } catch {
-      // ignore if column missing
+    const { data: txRow, error: txErr } = await supabase
+      .from('transactions')
+      .select('id')
+      .eq('whatsapp_message_id', contextWamid)
+      .maybeSingle();
+
+    if (txErr) {
+      throw new Error(`transactions.whatsapp_message_id query failed: ${txErr.message}`);
     }
+    if (txRow?.id) return txRow.id;
   }
 
   if (senderE164) {
     const localZero = senderE164.startsWith('+234') ? `0${senderE164.slice(4)}` : senderE164;
-    const { data: recentTxs } = await supabase
+    const { data: recentTxs, error: recentErr } = await supabase
       .from('transactions')
       .select('id, buyer_phone')
       .eq('status', 'AWAITING_PAYMENT')
       .or(`buyer_phone.eq.${senderE164},buyer_phone.eq.${localZero}`)
       .order('created_at', { ascending: false })
       .limit(1);
+
+    if (recentErr) {
+      throw new Error(`transactions recent phone lookup failed: ${recentErr.message}`);
+    }
 
     if (recentTxs && recentTxs.length > 0) {
       return recentTxs[0].id;
@@ -112,10 +109,24 @@ async function resolveTransactionIdFromContextOrPhone(
   return null;
 }
 
+async function writeWhatsappAuditLog(
+  supabase: ReturnType<typeof getServiceSupabase>,
+  row: {
+    admin_email: string;
+    action: string;
+    target_type: string;
+    target_id: string;
+    metadata?: Record<string, any>;
+  }
+) {
+  const { error } = await supabase.from('admin_audit_log').insert(row);
+  if (error) {
+    throw new Error(`Failed writing WhatsApp audit log (${row.action}): ${error.message}`);
+  }
+}
+
 /**
  * Meta WhatsApp Cloud API Webhook Receiver (POST)
- * Handles Quick Replies ("Confirm this is me", "Not me", "PROBLEM", "Report Problem", settlement change, vendor phone),
- * global STOP opt-outs, and delivery statuses (incl. automatic 1x retry + alert on failed/undelivered).
  */
 export async function POST(request: NextRequest) {
   try {
@@ -163,9 +174,7 @@ export async function POST(request: NextRequest) {
           const buttonPayload = String(
             msg?.button?.payload || msg?.interactive?.button_reply?.id || ''
           ).trim();
-          const textBody = String(
-            msg?.button?.text || msg?.interactive?.button_reply?.title || msg?.text?.body || ''
-          ).trim();
+          const freeTextBody = msg?.type === 'text' ? String(msg?.text?.body || '').trim() : '';
           const contextWamid = msg?.context?.id ? String(msg.context.id) : null;
           const maskedSender = maskWhatsappNumber(senderE164 || msg?.from);
 
@@ -174,8 +183,8 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          // 1. Honour STOP-style opt-out replies globally
-          if (isStopOptOutMessage(textBody) || isStopOptOutMessage(buttonPayload)) {
+          // 1. Honour STOP-style free-text opt-out replies globally (regulatory opt-out)
+          if (freeTextBody && isStopOptOutMessage(freeTextBody)) {
             await addPhoneToDoNotContact(
               { phone: senderE164, reason: 'STOP_REPLY' },
               supabase
@@ -184,11 +193,15 @@ export async function POST(request: NextRequest) {
             const localZero = senderE164.startsWith('+234')
               ? `0${senderE164.slice(4)}`
               : senderE164;
-            const { data: openTxs } = await supabase
+            const { data: openTxs, error: openErr } = await supabase
               .from('transactions')
               .select('id, buyer_phone')
               .eq('status', 'AWAITING_PAYMENT')
               .or(`buyer_phone.eq.${senderE164},buyer_phone.eq.${localZero}`);
+
+            if (openErr) {
+              throw new Error(`Failed querying open transactions on STOP: ${openErr.message}`);
+            }
 
             for (const openTx of openTxs || []) {
               if (normalizeWhatsappPhone(openTx.buyer_phone) === senderE164) {
@@ -201,16 +214,13 @@ export async function POST(request: NextRequest) {
               }
             }
 
-            await supabase
-              .from('admin_audit_log')
-              .insert({
-                admin_email: 'system:whatsapp_webhook',
-                action: 'WHATSAPP_GLOBAL_STOP_OPT_OUT',
-                target_type: 'whatsapp_dnc',
-                target_id: maskedSender,
-                metadata: { masked_phone: maskedSender },
-              })
-              .then(() => {}, () => {});
+            await writeWhatsappAuditLog(supabase, {
+              admin_email: 'system:whatsapp_webhook',
+              action: 'WHATSAPP_GLOBAL_STOP_OPT_OUT',
+              target_type: 'whatsapp_dnc',
+              target_id: maskedSender,
+              metadata: { masked_phone: maskedSender },
+            });
 
             await checkAndAlertWhatsappAnomalies(
               { eventType: 'stop', maskedPhone: maskedSender },
@@ -221,17 +231,12 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          // 2. "Not me" Quick Reply / text
-          if (
-            buttonPayload.startsWith('NOT_ME_ORDER:') ||
-            textBody.toLowerCase() === 'not me'
-          ) {
-            const explicitTxId = buttonPayload.startsWith('NOT_ME_ORDER:')
-              ? buttonPayload.slice('NOT_ME_ORDER:'.length).trim()
-              : null;
+          // 2. Quick Reply payload "NOT_ME_ORDER:<txId>" (never act on button label text)
+          if (buttonPayload.startsWith('NOT_ME_ORDER:')) {
+            const explicitTxId = buttonPayload.slice('NOT_ME_ORDER:'.length).trim();
             const txId = await resolveTransactionIdFromContextOrPhone(
               supabase,
-              explicitTxId,
+              explicitTxId || null,
               contextWamid,
               senderE164
             );
@@ -250,16 +255,13 @@ export async function POST(request: NextRequest) {
               await revokeBuyerPhoneVerification(txId, supabase);
             }
 
-            await supabase
-              .from('admin_audit_log')
-              .insert({
-                admin_email: 'system:whatsapp_webhook',
-                action: 'WHATSAPP_NOT_ME_BLOCKED',
-                target_type: 'transaction',
-                target_id: txId || maskedSender,
-                metadata: { masked_phone: maskedSender },
-              })
-              .then(() => {}, () => {});
+            await writeWhatsappAuditLog(supabase, {
+              admin_email: 'system:whatsapp_webhook',
+              action: 'WHATSAPP_NOT_ME_BLOCKED',
+              target_type: 'transaction',
+              target_id: txId || maskedSender,
+              metadata: { masked_phone: maskedSender },
+            });
 
             await checkAndAlertWhatsappAnomalies(
               { eventType: 'not_me', transactionId: txId, maskedPhone: maskedSender },
@@ -270,17 +272,12 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          // 3. "Confirm this is me" Quick Reply / text
-          if (
-            buttonPayload.startsWith('CONFIRM_ORDER:') ||
-            textBody.toLowerCase() === 'confirm this is me'
-          ) {
-            const explicitTxId = buttonPayload.startsWith('CONFIRM_ORDER:')
-              ? buttonPayload.slice('CONFIRM_ORDER:'.length).trim()
-              : null;
+          // 3. Quick Reply payload "CONFIRM_ORDER:<txId>" (never act on button label text)
+          if (buttonPayload.startsWith('CONFIRM_ORDER:')) {
+            const explicitTxId = buttonPayload.slice('CONFIRM_ORDER:'.length).trim();
             const txId = await resolveTransactionIdFromContextOrPhone(
               supabase,
-              explicitTxId,
+              explicitTxId || null,
               contextWamid,
               senderE164
             );
@@ -290,11 +287,15 @@ export async function POST(request: NextRequest) {
               continue;
             }
 
-            const { data: tx } = await selectTransactionWithWhatsapp<any>(
+            const { data: tx, error: txLookupErr } = await selectTransactionWithWhatsapp<any>(
               supabase,
               txId,
               'id, buyer_phone, status'
             );
+
+            if (txLookupErr) {
+              throw new Error(`Transaction lookup failed during WhatsApp confirm: ${txLookupErr.message}`);
+            }
 
             if (!tx) {
               results.push({ type: 'message', action: 'CONFIRM_IGNORED', reason: 'order_not_found' });
@@ -342,36 +343,30 @@ export async function POST(request: NextRequest) {
               supabase
             );
 
-            await supabase
-              .from('admin_audit_log')
-              .insert({
-                admin_email: 'system:whatsapp_webhook',
-                action: 'WHATSAPP_PHONE_VERIFIED',
-                target_type: 'transaction',
-                target_id: txId,
-                metadata: { masked_phone: maskedSender },
-              })
-              .then(() => {}, () => {});
+            await writeWhatsappAuditLog(supabase, {
+              admin_email: 'system:whatsapp_webhook',
+              action: 'WHATSAPP_PHONE_VERIFIED',
+              target_type: 'transaction',
+              target_id: txId,
+              metadata: { masked_phone: maskedSender },
+            });
 
             results.push({ type: 'message', action: 'PHONE_VERIFIED', transactionId: txId });
             continue;
           }
 
-          // 4. Cooling Window / Delivery Reminder Dispute Freeze ("PROBLEM", "PROBLEM_ORDER:", "DISPUTE_ORDER:")
+          // 4. Cooling Window / Delivery Reminder Dispute Freeze ("PROBLEM_ORDER:" or "DISPUTE_ORDER:" payload only)
           if (
             buttonPayload.startsWith('PROBLEM_ORDER:') ||
-            buttonPayload.startsWith('DISPUTE_ORDER:') ||
-            /^problem\b/i.test(textBody)
+            buttonPayload.startsWith('DISPUTE_ORDER:')
           ) {
             const explicitTxId = buttonPayload.startsWith('PROBLEM_ORDER:')
               ? buttonPayload.slice('PROBLEM_ORDER:'.length).trim()
-              : buttonPayload.startsWith('DISPUTE_ORDER:')
-                ? buttonPayload.slice('DISPUTE_ORDER:'.length).trim()
-                : null;
+              : buttonPayload.slice('DISPUTE_ORDER:'.length).trim();
 
             const txId = await resolveTransactionIdFromContextOrPhone(
               supabase,
-              explicitTxId,
+              explicitTxId || null,
               contextWamid,
               senderE164
             );
@@ -381,11 +376,15 @@ export async function POST(request: NextRequest) {
               continue;
             }
 
-            const { data: tx } = await supabase
+            const { data: tx, error: pTxErr } = await supabase
               .from('transactions')
               .select('id, vendor_id, vendor_handle, buyer_phone, status')
               .eq('id', txId)
               .maybeSingle();
+
+            if (pTxErr) {
+              throw new Error(`Failed loading order for PROBLEM dispute: ${pTxErr.message}`);
+            }
 
             if (!tx) {
               results.push({ type: 'message', action: 'PROBLEM_IGNORED', reason: 'order_not_found' });
@@ -398,7 +397,7 @@ export async function POST(request: NextRequest) {
               continue;
             }
 
-            if (['RELEASED', 'VENDOR_PAID', 'REFUNDED', 'EXPIRED', 'CANCELLED'].includes(tx.status)) {
+            if (['RELEASED', 'RELEASING', 'VENDOR_PAID', 'REFUNDED', 'EXPIRED', 'CANCELLED'].includes(tx.status)) {
               results.push({
                 type: 'message',
                 action: 'PROBLEM_ALREADY_FINALIZED',
@@ -414,7 +413,7 @@ export async function POST(request: NextRequest) {
               ? 'Buyer reported issue from delivery reminder WhatsApp alert.'
               : 'Buyer reported PROBLEM via WhatsApp during release/cooling window.';
 
-            await updateTransactionWithFallback(
+            const upd = await updateTransactionStrict(
               txId,
               {
                 status: 'DISPUTED',
@@ -427,24 +426,26 @@ export async function POST(request: NextRequest) {
               },
               supabase
             );
+            if (!upd.success) {
+              throw new Error(`Failed freezing dispute from WhatsApp webhook: ${upd.error}`);
+            }
 
-            await recordDisputeAndDemoteIfNeeded({
-              vendorId: tx.vendor_id,
-              transactionId: txId,
-              reason: reasonText,
-              supabaseClient: supabase,
-            }).catch(() => {});
+            if (tx.vendor_id) {
+              await recordDisputeAndDemoteIfNeeded({
+                vendorId: tx.vendor_id,
+                transactionId: txId,
+                reason: reasonText,
+                supabaseClient: supabase,
+              });
+            }
 
-            await supabase
-              .from('admin_audit_log')
-              .insert({
-                admin_email: 'system:whatsapp_webhook',
-                action: isReminderButton ? 'WHATSAPP_REMINDER_DISPUTED' : 'WHATSAPP_PROBLEM_PAYOUT_FROZEN',
-                target_type: 'transaction',
-                target_id: txId,
-                metadata: { masked_phone: maskedSender, previous_status: tx.status },
-              })
-              .then(() => {}, () => {});
+            await writeWhatsappAuditLog(supabase, {
+              admin_email: 'system:whatsapp_webhook',
+              action: isReminderButton ? 'WHATSAPP_REMINDER_DISPUTED' : 'WHATSAPP_PROBLEM_PAYOUT_FROZEN',
+              target_type: 'transaction',
+              target_id: txId,
+              metadata: { masked_phone: maskedSender, previous_status: tx.status },
+            });
 
             await sendSystemAlert({
               type: 'NEW_DISPUTE',
@@ -468,11 +469,15 @@ export async function POST(request: NextRequest) {
           // 5. Vendor Settlement Bank Change Confirmation ("CONFIRM_SETTLEMENT_CHANGE:<vendorId>")
           if (buttonPayload.startsWith('CONFIRM_SETTLEMENT_CHANGE:')) {
             const vendorId = buttonPayload.slice('CONFIRM_SETTLEMENT_CHANGE:'.length).trim();
-            const { data: vRow } = await supabase
+            const { data: vRow, error: vErr } = await supabase
               .from('vendors')
               .select('id, phone_number')
               .eq('id', vendorId)
               .maybeSingle();
+
+            if (vErr) {
+              throw new Error(`Vendor lookup failed for settlement confirmation: ${vErr.message}`);
+            }
 
             if (!vRow) {
               results.push({ type: 'message', action: 'SETTLEMENT_CHANGE_VENDOR_NOT_FOUND', vendorId });
@@ -501,11 +506,15 @@ export async function POST(request: NextRequest) {
           // 6. Vendor Open-Signup Phone Confirmation ("CONFIRM_VENDOR_PHONE:<vendorId>")
           if (buttonPayload.startsWith('CONFIRM_VENDOR_PHONE:')) {
             const vendorId = buttonPayload.slice('CONFIRM_VENDOR_PHONE:'.length).trim();
-            const { data: vRow } = await supabase
+            const { data: vRow, error: vLookupErr } = await supabase
               .from('vendors')
               .select('id, phone_number')
               .eq('id', vendorId)
               .maybeSingle();
+
+            if (vLookupErr) {
+              throw new Error(`Vendor lookup failed for phone confirmation: ${vLookupErr.message}`);
+            }
 
             if (!vRow || normalizeWhatsappPhone(vRow.phone_number) !== senderE164) {
               results.push({ type: 'message', action: 'VENDOR_PHONE_REJECTED', vendorId });
@@ -513,20 +522,18 @@ export async function POST(request: NextRequest) {
             }
 
             const nowIso = new Date().toISOString();
-            await supabase
+            const { error: vUpdErr } = await supabase
               .from('vendors')
               .update({
                 phone_verified: true,
                 phone_verified_at: nowIso,
                 updated_at: nowIso,
               })
-              .eq('id', vendorId)
-              .then(() => {}, () => {});
+              .eq('id', vendorId);
 
-            setVendorSafetyOverlay(vendorId, {
-              phone_verified: true,
-              phone_verified_at: nowIso,
-            });
+            if (vUpdErr) {
+              throw new Error(`Failed updating vendor phone_verified: ${vUpdErr.message}`);
+            }
 
             results.push({ type: 'message', action: 'VENDOR_PHONE_VERIFIED', vendorId });
             continue;
@@ -558,37 +565,31 @@ export async function POST(request: NextRequest) {
           const errorCode = st?.errors?.[0]?.code ? String(st.errors[0].code) : null;
           const errorTitle = st?.errors?.[0]?.title ? String(st.errors[0].title) : null;
 
-          try {
-            const { error: logErr } = await supabase
-              .from('whatsapp_message_log')
-              .update({
-                status: mappedStatus,
-                error_code: errorCode,
-                updated_at: new Date().toISOString(),
-              })
-              .eq('message_id', wamid);
-            if (logErr && !isSchemaMissingError(logErr)) {
-              console.warn('WhatsApp status log update warning:', logErr.message);
-            }
-          } catch {
-            // ignore schema mismatch
+          const { data: logUpdatedRows, error: logErr } = await supabase
+            .from('whatsapp_message_log')
+            .update({
+              status: mappedStatus,
+              error_code: errorCode,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('message_id', wamid)
+            .select('transaction_id');
+
+          if (logErr) {
+            throw new Error(`Failed updating whatsapp_message_log status: ${logErr.message}`);
           }
 
-          let txId: string | null =
-            getInMemoryOutboundLogsForTests().find((l) => l.message_id === wamid)?.transaction_id ||
-            null;
-
+          let txId: string | null = logUpdatedRows?.[0]?.transaction_id || null;
           if (!txId) {
-            try {
-              const { data: logRow } = await supabase
-                .from('whatsapp_message_log')
-                .select('transaction_id')
-                .eq('message_id', wamid)
-                .maybeSingle();
-              if (logRow?.transaction_id) txId = logRow.transaction_id;
-            } catch {
-              // ignore
+            const { data: txByWamid, error: txLookupErr } = await supabase
+              .from('transactions')
+              .select('id')
+              .eq('whatsapp_message_id', wamid)
+              .maybeSingle();
+            if (txLookupErr) {
+              throw new Error(`Failed looking up transaction by whatsapp_message_id: ${txLookupErr.message}`);
             }
+            if (txByWamid?.id) txId = txByWamid.id;
           }
 
           let retryOutcome: { retried: boolean; retryMessageId?: string } | null = null;

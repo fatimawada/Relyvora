@@ -76,26 +76,28 @@ export default function BuyerCheckoutPage() {
     async function load() {
       if (!id) return;
       setIsLoading(true);
-      const { data, error } = await getTransactionById(id);
+      const { data, error, code, transactionPreview } = await getTransactionById(id);
       if (data) {
         setTransaction(data);
         if (data.buyer_terms_accepted_at) {
           setBuyerTermsAccepted(true);
         }
+      } else if (code === 'AUTH_REQUIRED' && transactionPreview?.status) {
+        router.push(`/order/${encodeURIComponent(id)}`);
       } else {
         setError(error || 'Transaction not found.');
       }
       setIsLoading(false);
     }
     load();
-  }, [id]);
+  }, [id, router]);
 
   // Real-time polling for incoming bank transfer and WhatsApp confirmation status
   useEffect(() => {
     if (!id || !transaction || transaction.status !== 'AWAITING_PAYMENT') return;
 
     const interval = setInterval(async () => {
-      const { data } = await getTransactionById(id);
+      const { data, code, transactionPreview } = await getTransactionById(id);
       if (data) {
         if (
           data.status !== transaction.status ||
@@ -107,6 +109,8 @@ export default function BuyerCheckoutPage() {
         if (data.status === 'FUNDS_LOCKED') {
           router.push(`/order/${data.id}?new_payment=true`);
         }
+      } else if (code === 'AUTH_REQUIRED' && transactionPreview?.status === 'FUNDS_LOCKED') {
+        router.push(`/order/${encodeURIComponent(id)}?new_payment=true`);
       }
     }, 4000);
 

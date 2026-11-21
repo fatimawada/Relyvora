@@ -1,28 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabaseServer';
-import { verifyAdminSession } from '@/lib/adminAuth';
 import { checkSharedRateLimit, getClientIp } from '@/lib/rateLimit';
+import { sendSystemAlert } from '@/lib/alerts';
+import { resolveOrderActor } from '@/lib/orderAuth';
 import {
   EvidenceCategory,
   EvidenceUploaderRole,
   uploadOrderEvidenceFile,
 } from '@/lib/evidenceStorage';
-import { mergeTransactionWithLifecycleOverlay, updateTransactionWithFallback } from '@/lib/orderLifecycle';
+import { updateTransactionStrict } from '@/lib/orderLifecycle';
 
 export async function POST(request: NextRequest) {
   try {
-    const clientIp = getClientIp(request);
-    const rl = await checkSharedRateLimit(`${clientIp}:evidence_upload`, 25, 15 * 60 * 1000);
-    if (!rl.allowed) {
-      return NextResponse.json(
-        { success: false, error: 'Too many file uploads. Please wait before uploading again.' },
-        { status: 429 }
-      );
-    }
-
     const contentType = request.headers.get('content-type') || '';
     let transactionId = '';
-    let uploadedByRole: EvidenceUploaderRole = 'BUYER';
     let evidenceCategory: EvidenceCategory = 'DISPUTE_EVIDENCE';
     let scenarioId: number | null = null;
     let description: string | null = null;
@@ -33,7 +24,6 @@ export async function POST(request: NextRequest) {
     if (contentType.includes('multipart/form-data')) {
       const formData = await request.formData();
       transactionId = String(formData.get('transactionId') || '').trim();
-      uploadedByRole = String(formData.get('uploadedByRole') || 'BUYER').toUpperCase() as EvidenceUploaderRole;
       evidenceCategory = String(formData.get('evidenceCategory') || 'DISPUTE_EVIDENCE').toUpperCase() as EvidenceCategory;
       const rawScenario = formData.get('scenarioId');
       scenarioId = rawScenario ? Number(rawScenario) : null;
@@ -47,7 +37,6 @@ export async function POST(request: NextRequest) {
     } else {
       const body = await request.json();
       transactionId = String(body?.transactionId || '').trim();
-      uploadedByRole = String(body?.uploadedByRole || 'BUYER').toUpperCase() as EvidenceUploaderRole;
       evidenceCategory = String(body?.evidenceCategory || 'DISPUTE_EVIDENCE').toUpperCase() as EvidenceCategory;
       scenarioId = body?.scenarioId ? Number(body.scenarioId) : null;
       description = body?.description ? String(body.description) : null;
@@ -66,31 +55,63 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!['BUYER', 'VENDOR', 'ADMIN'].includes(uploadedByRole)) {
-      return NextResponse.json({ success: false, error: 'Invalid uploadedByRole.' }, { status: 400 });
-    }
     if (!['DISPUTE_EVIDENCE', 'DISPATCH_PROOF', 'DELIVERY_HANDOVER_PROOF'].includes(evidenceCategory)) {
       return NextResponse.json({ success: false, error: 'Invalid evidenceCategory.' }, { status: 400 });
     }
 
-    if (uploadedByRole === 'ADMIN') {
-      const auth = await verifyAdminSession(request);
-      if (!auth.authorized) {
-        return NextResponse.json({ success: false, error: auth.error }, { status: auth.statusCode });
-      }
+    const supabase = getServiceSupabase();
+    const { data: tx, error: txErr } = await supabase
+      .from('transactions')
+      .select('id, vendor_id, vendor_handle, buyer_phone, buyer_phone_verified, whatsapp_blocked, status, dispatch_proof_count, handover_proof_count')
+      .eq('id', transactionId)
+      .maybeSingle();
+
+    if (txErr) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Evidence Upload Transaction Query Failed (Fail Closed)',
+        transactionId,
+        details: { error: txErr.message },
+      }).catch(() => {});
+      return NextResponse.json({ success: false, error: `Transaction lookup failed: ${txErr.message}` }, { status: 500 });
     }
 
-    const supabase = getServiceSupabase();
-    const { data: rawTx, error: txErr } = await supabase
-      .from('transactions')
-      .select('*')
-      .eq('id', transactionId)
-      .single();
-
-    if (txErr || !rawTx) {
+    if (!tx) {
       return NextResponse.json({ success: false, error: 'Transaction not found.' }, { status: 404 });
     }
-    const tx = mergeTransactionWithLifecycleOverlay(rawTx);
+
+    // Derive uploader role strictly from authenticated session (ignore client uploadedByRole)
+    const actor = await resolveOrderActor(request, tx, supabase);
+    if (!actor.authenticated || !actor.role) {
+      return NextResponse.json(
+        { success: false, code: actor.code, error: actor.error || 'Authentication required to upload evidence.' },
+        { status: actor.statusCode || 401 }
+      );
+    }
+    const uploadedByRole: EvidenceUploaderRole = actor.role;
+
+    if (
+      (evidenceCategory === 'DISPATCH_PROOF' || evidenceCategory === 'DELIVERY_HANDOVER_PROOF') &&
+      uploadedByRole === 'BUYER'
+    ) {
+      return NextResponse.json(
+        { success: false, code: 'FORBIDDEN', error: 'Buyers cannot upload vendor dispatch or handover proof.' },
+        { status: 403 }
+      );
+    }
+
+    const clientIp = getClientIp(request);
+    const [ipRl, txRl] = await Promise.all([
+      checkSharedRateLimit(`${clientIp}:evidence_upload`, 25, 15 * 60 * 1000, supabase),
+      checkSharedRateLimit(`tx:${transactionId}:evidence_upload`, 25, 15 * 60 * 1000, supabase),
+    ]);
+    if (!ipRl.allowed || !txRl.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Too many file uploads. Please wait before uploading again.' },
+        { status: 429 }
+      );
+    }
 
     const res = await uploadOrderEvidenceFile({
       transactionId,
@@ -109,17 +130,29 @@ export async function POST(request: NextRequest) {
     }
 
     if (evidenceCategory === 'DISPATCH_PROOF') {
-      await updateTransactionWithFallback(
+      const upd = await updateTransactionStrict(
         transactionId,
         { dispatch_proof_count: Number(tx.dispatch_proof_count || 0) + 1 },
         supabase
       );
+      if (!upd.success) {
+        return NextResponse.json(
+          { success: false, error: upd.error || 'Failed updating dispatch proof counter.' },
+          { status: 500 }
+        );
+      }
     } else if (evidenceCategory === 'DELIVERY_HANDOVER_PROOF') {
-      await updateTransactionWithFallback(
+      const upd = await updateTransactionStrict(
         transactionId,
         { handover_proof_count: Number(tx.handover_proof_count || 0) + 1 },
         supabase
       );
+      if (!upd.success) {
+        return NextResponse.json(
+          { success: false, error: upd.error || 'Failed updating handover proof counter.' },
+          { status: 500 }
+        );
+      }
     }
 
     return NextResponse.json(

@@ -2,33 +2,65 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { closeAnchorVirtualNuban } from '@/lib/anchor';
 import { sendSystemAlert } from '@/lib/alerts';
+import { resolveOrderActor } from '@/lib/orderAuth';
 import {
   executeBuyerOrderRefund,
   getDeliveryAndLifecycleConfig,
-  mergeTransactionWithLifecycleOverlay,
-  updateTransactionWithFallback,
+  updateTransactionStrict,
 } from '@/lib/orderLifecycle';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { transactionId, reason, cancelledBy = 'VENDOR' } = body || {};
+    const { transactionId, reason } = body || {};
 
-    if (!transactionId) {
+    if (!transactionId || typeof transactionId !== 'string') {
       return NextResponse.json({ success: false, error: 'transactionId is required.' }, { status: 400 });
     }
 
     const supabase = getServiceSupabase();
-    const { data: rawTx, error: txErr } = await supabase
+    const { data: tx, error: txErr } = await supabase
       .from('transactions')
       .select('*')
       .eq('id', transactionId)
-      .single();
+      .maybeSingle();
 
-    if (txErr || !rawTx) {
+    if (txErr) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Cancel Transaction Lookup Failed (Fail Closed)',
+        transactionId,
+        details: { error: txErr.message },
+      }).catch(() => {});
+      return NextResponse.json({ success: false, error: `Transaction lookup failed: ${txErr.message}` }, { status: 500 });
+    }
+
+    if (!tx) {
       return NextResponse.json({ success: false, error: 'Transaction not found.' }, { status: 404 });
     }
-    const tx = mergeTransactionWithLifecycleOverlay(rawTx);
+
+    // Strict authentication: ONLY owning Vendor or AAL2 Admin may cancel; derive cancelledBy from session
+    const actor = await resolveOrderActor(request, tx, supabase);
+    if (!actor.authenticated) {
+      return NextResponse.json(
+        { success: false, code: actor.code, error: actor.error || 'Authentication required.' },
+        { status: actor.statusCode || 401 }
+      );
+    }
+
+    if (actor.role !== 'VENDOR' && actor.role !== 'ADMIN') {
+      return NextResponse.json(
+        { success: false, code: 'FORBIDDEN', error: 'Only the owning vendor or admin may cancel this order.' },
+        { status: 403 }
+      );
+    }
+
+    const serverCancelledBy =
+      actor.role === 'ADMIN'
+        ? `ADMIN:${actor.adminUserId || 'admin'}`
+        : `VENDOR:${actor.vendorId || tx.vendor_handle}`;
+
     const nowIso = new Date().toISOString();
     const cleanReason = String(reason || 'Cancelled by vendor before dispatch').trim();
 
@@ -49,12 +81,12 @@ export async function POST(request: NextRequest) {
     // Case 1: Unpaid pre-payment cancellation -> close Virtual NUBAN & mark CANCELLED
     if (tx.status === 'AWAITING_PAYMENT' && Number(tx.amount_paid || 0) <= 0) {
       const closedRes = await closeAnchorVirtualNuban(tx.virtual_nuban_id);
-      await updateTransactionWithFallback(
+      const upd = await updateTransactionStrict(
         tx.id,
         {
           status: 'CANCELLED',
           cancelled_at: nowIso,
-          cancelled_by: String(cancelledBy),
+          cancelled_by: serverCancelledBy,
           cancellation_reason: cleanReason,
           virtual_account_closed: closedRes.closed,
           updated_at: nowIso,
@@ -62,13 +94,20 @@ export async function POST(request: NextRequest) {
         supabase
       );
 
+      if (!upd.success) {
+        return NextResponse.json(
+          { success: false, error: upd.error || 'Failed to mark order cancelled.' },
+          { status: 500 }
+        );
+      }
+
       await sendSystemAlert({
         type: 'ADMIN_ACTION',
         severity: 'WARNING',
         title: `Vendor Cancelled Unpaid Order (${tx.id.slice(0, 8)})`,
         transactionId: tx.id,
         vendorHandle: tx.vendor_handle,
-        details: { reason: cleanReason, virtualAccountClosed: closedRes.closed },
+        details: { reason: cleanReason, cancelledBy: serverCancelledBy, virtualAccountClosed: closedRes.closed },
       }).catch(() => {});
 
       return NextResponse.json({
@@ -93,7 +132,7 @@ export async function POST(request: NextRequest) {
       reasonTag: 'VENDOR_CANCEL_REFUND',
       targetStatus: 'REFUNDED',
       referenceKey: `cancel_${tx.id}`,
-      adminEmail: `vendor:${tx.vendor_handle || 'vendor'}`,
+      adminEmail: serverCancelledBy,
       supabaseClient: supabase,
     });
 
@@ -104,15 +143,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await updateTransactionWithFallback(
+    const upd = await updateTransactionStrict(
       tx.id,
       {
         cancelled_at: nowIso,
-        cancelled_by: String(cancelledBy),
+        cancelled_by: serverCancelledBy,
         cancellation_reason: cleanReason,
+        updated_at: nowIso,
       },
       supabase
     );
+
+    if (!upd.success) {
+      return NextResponse.json(
+        { success: false, error: upd.error || 'Failed to record cancellation metadata.' },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       success: true,

@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { checkSharedRateLimit, getClientIp } from '@/lib/rateLimit';
-import { computeReleaseCodeHmac, generateCryptographicReleaseCode } from '@/lib/releaseCode';
+import {
+  computeReleaseCodeHmac,
+  generateCryptographicReleaseCode,
+  verifyReleaseCodeHmac,
+} from '@/lib/releaseCode';
 import { isLiveMode } from '@/lib/paymentsMode';
 import { sendOtpWhatsappTemplate } from '@/lib/whatsapp';
 import { maskPhoneNumber } from '@/lib/smsDelivery';
 import { verifyAndSaveBuyerRefundAccount } from '@/lib/refundDestination';
+import { resolveOrderActor } from '@/lib/orderAuth';
+import { computeBuyerPhoneBindingHash } from '@/lib/buyerSession';
+import { sendSystemAlert } from '@/lib/alerts';
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,29 +33,61 @@ export async function POST(request: NextRequest) {
     const { data: tx, error: txErr } = await supabase
       .from('transactions')
       .select(
-        'id, status, buyer_phone, vendor_handle, dispute_otp_hash, dispute_otp_expires_at, dispute_otp_attempts'
+        'id, vendor_id, vendor_handle, status, buyer_phone, buyer_phone_verified, whatsapp_blocked, dispute_otp_hash, dispute_otp_expires_at, dispute_otp_attempts'
       )
       .eq('id', transactionId)
-      .single();
+      .maybeSingle();
 
-    if (txErr || !tx) {
+    if (txErr) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Refund Destination Transaction Lookup Failed (Fail Closed)',
+        transactionId,
+        details: { error: txErr.message },
+      }).catch(() => {});
+      return NextResponse.json({ success: false, error: `Transaction lookup failed: ${txErr.message}` }, { status: 500 });
+    }
+
+    if (!tx) {
       return NextResponse.json({ success: false, error: 'Transaction not found.' }, { status: 404 });
     }
 
+    // Strict Buyer Session enforcement (Vendor and anonymous callers cannot modify buyer refund account)
+    const actor = await resolveOrderActor(request, tx, supabase);
+    if (!actor.authenticated) {
+      return NextResponse.json(
+        { success: false, code: actor.code, error: actor.error || 'Buyer authentication required.' },
+        { status: actor.statusCode || 401 }
+      );
+    }
+
+    if (actor.role !== 'BUYER') {
+      return NextResponse.json(
+        { success: false, code: 'FORBIDDEN', error: 'Forbidden: Only the verified buyer may manage the refund bank account.' },
+        { status: 403 }
+      );
+    }
+
+    if (!tx.buyer_phone) {
+      return NextResponse.json(
+        { success: false, error: 'No verified buyer WhatsApp number linked to this transaction.' },
+        { status: 400 }
+      );
+    }
+
+    const phoneHash = computeBuyerPhoneBindingHash(tx.buyer_phone);
+
     if (action === 'send_otp') {
-      const rl = await checkSharedRateLimit(`${clientIp}:${tx.id}:refund_otp`, 3, 15 * 60 * 1000, supabase);
-      if (!rl.allowed) {
+      const [ipRl, txRl, phRl] = await Promise.all([
+        checkSharedRateLimit(`${clientIp}:refund_otp`, 5, 15 * 60 * 1000, supabase),
+        checkSharedRateLimit(`tx:${tx.id}:refund_otp`, 3, 15 * 60 * 1000, supabase),
+        checkSharedRateLimit(`ph:${phoneHash}:refund_otp`, 5, 15 * 60 * 1000, supabase),
+      ]);
+      if (!ipRl.allowed || !txRl.allowed || !phRl.allowed) {
         return NextResponse.json(
           { success: false, error: 'Too many OTP requests. Please wait 15 minutes.' },
           { status: 429 }
-        );
-      }
-
-      const targetPhone = tx.buyer_phone?.trim() || (isLive ? null : '+2348000001234');
-      if (!targetPhone) {
-        return NextResponse.json(
-          { success: false, error: 'No buyer phone number linked to this transaction.' },
-          { status: 400 }
         );
       }
 
@@ -57,7 +95,7 @@ export async function POST(request: NextRequest) {
       const otpHash = computeReleaseCodeHmac(`refund_dest:${tx.id}`, otpCode);
       const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
-      await supabase
+      const { error: otpSaveErr } = await supabase
         .from('transactions')
         .update({
           dispute_otp_hash: otpHash,
@@ -67,16 +105,27 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', tx.id);
 
-      const maskedPhone = maskPhoneNumber(targetPhone);
-      await sendOtpWhatsappTemplate(
+      if (otpSaveErr) {
+        return NextResponse.json({ success: false, error: `Failed storing OTP: ${otpSaveErr.message}` }, { status: 500 });
+      }
+
+      const maskedPhone = maskPhoneNumber(tx.buyer_phone);
+      const sendRes = await sendOtpWhatsappTemplate(
         {
           transactionId: tx.id,
-          buyerPhone: targetPhone,
+          buyerPhone: tx.buyer_phone,
           otp: otpCode,
           purpose: 'refund_account',
         },
         supabase
       );
+
+      if (!sendRes.success) {
+        return NextResponse.json(
+          { success: false, error: sendRes.error || 'Failed to send refund verification OTP via WhatsApp.' },
+          { status: 502 }
+        );
+      }
 
       return NextResponse.json({
         success: true,
@@ -87,12 +136,16 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'verify_and_save') {
-      const rl = await checkSharedRateLimit(`${clientIp}:${tx.id}:refund_verify`, 5, 15 * 60 * 1000, supabase);
-      if (!rl.allowed) {
+      const [ipRl, txRl, phRl] = await Promise.all([
+        checkSharedRateLimit(`${clientIp}:refund_verify`, 8, 15 * 60 * 1000, supabase),
+        checkSharedRateLimit(`tx:${tx.id}:refund_verify`, 5, 15 * 60 * 1000, supabase),
+        checkSharedRateLimit(`ph:${phoneHash}:refund_verify`, 8, 15 * 60 * 1000, supabase),
+      ]);
+      if (!ipRl.allowed || !txRl.allowed || !phRl.allowed) {
         return NextResponse.json({ success: false, error: 'Too many verification attempts.' }, { status: 429 });
       }
 
-      if (!otp || typeof otp !== 'string' || otp.trim().length !== 6) {
+      if (!otp || typeof otp !== 'string' || !/^\d{6}$/.test(otp.trim())) {
         return NextResponse.json({ success: false, error: 'A valid 6-digit OTP is required.' }, { status: 400 });
       }
 
@@ -115,11 +168,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const computedHash = computeReleaseCodeHmac(`refund_dest:${tx.id}`, otp.trim());
-      const expBuf = Buffer.from(tx.dispute_otp_hash, 'hex');
-      const cmpBuf = Buffer.from(computedHash, 'hex');
-      const isValidOtp = expBuf.length === cmpBuf.length && crypto.timingSafeEqual(expBuf, cmpBuf);
-
+      const isValidOtp = verifyReleaseCodeHmac(`refund_dest:${tx.id}`, otp.trim(), tx.dispute_otp_hash);
       if (!isValidOtp) {
         await supabase
           .from('transactions')
@@ -140,7 +189,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: saved.error }, { status: 422 });
       }
 
-      await supabase
+      const { error: clearErr } = await supabase
         .from('transactions')
         .update({
           dispute_otp_hash: null,
@@ -148,8 +197,11 @@ export async function POST(request: NextRequest) {
           dispute_otp_attempts: 0,
         })
         .eq('id', tx.id);
+      if (clearErr) {
+        return NextResponse.json({ success: false, error: `Failed clearing OTP state: ${clearErr.message}` }, { status: 500 });
+      }
 
-      await supabase
+      const { error: auditErr } = await supabase
         .from('admin_audit_log')
         .insert({
           admin_email: `buyer:${maskPhoneNumber(tx.buyer_phone)}`,
@@ -162,8 +214,10 @@ export async function POST(request: NextRequest) {
             maskedAccount: saved.destination.maskedAccount,
             bankCode: saved.destination.bankCode,
           },
-        })
-        .then(() => {}, () => {});
+        });
+      if (auditErr) {
+        return NextResponse.json({ success: false, error: `Failed writing audit log: ${auditErr.message}` }, { status: 500 });
+      }
 
       return NextResponse.json({
         success: true,

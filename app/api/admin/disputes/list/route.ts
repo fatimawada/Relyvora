@@ -1,16 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { verifyAdminSession } from '@/lib/adminAuth';
-import { listRiskFlagsAndHolds, getTxRiskFallback, hashPhoneSignal } from '@/lib/riskEngine';
-import { getAdminAuditFallbackLogs } from '@/lib/adminSafety';
+import { sendSystemAlert } from '@/lib/alerts';
+import { listRiskFlagsAndHolds, hashPhoneSignal } from '@/lib/riskEngine';
 import { getHotSettings, isCheckoutEnabledServer, isPayoutsEnabledServer } from '@/lib/safetyLimits';
-import {
-  getDeliveryAndLifecycleConfig,
-  mergeTransactionWithLifecycleOverlay,
-} from '@/lib/orderLifecycle';
+import { getDeliveryAndLifecycleConfig } from '@/lib/orderLifecycle';
 import { listOrderEvidenceRecords } from '@/lib/evidenceStorage';
 import { resolveVerifiedRefundDestination } from '@/lib/refundDestination';
-import { getInMemoryOutboundLogsForTests } from '@/lib/whatsapp';
+
+function failClosedDbError(label: string, err: { message: string }) {
+  void sendSystemAlert({
+    type: 'SYSTEM_FAILURE',
+    severity: 'CRITICAL',
+    title: `Admin Disputes List Query Failed: ${label}`,
+    details: { error: err.message },
+  }).catch(() => {});
+  return new Error(`Admin dashboard query failed (${label}): ${err.message}`);
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -39,29 +45,23 @@ export async function GET(request: NextRequest) {
       .limit(200);
 
     if (txErr) {
-      console.warn('Failed to fetch disputes/transactions from Supabase:', txErr.message);
-      return NextResponse.json({ success: false, error: txErr.message }, { status: 500 });
+      throw failClosedDbError('transactions', txErr);
     }
 
     const lcCfg = await getDeliveryAndLifecycleConfig(supabase);
     const nowMs = Date.now();
     const stuckCutoffMs = nowMs - lcCfg.lifecycle.stuck_settlement_minutes * 60 * 1000;
 
-    const enrichedBase = (allTxs || []).map((rawTx: any) => {
-      const tx = mergeTransactionWithLifecycleOverlay(rawTx);
-      const rf = getTxRiskFallback(tx.id);
-      return {
-        ...tx,
-        risk_score: typeof tx.risk_score === 'number' ? tx.risk_score : rf?.risk_score || 0,
-        risk_signals: Array.isArray(tx.risk_signals) ? tx.risk_signals : rf?.risk_signals || [],
-        review_hold: typeof tx.review_hold === 'boolean' ? tx.review_hold : Boolean(rf?.review_hold),
-        review_hold_reason: tx.review_hold_reason ?? rf?.review_hold_reason ?? null,
-        order_blocked: typeof tx.order_blocked === 'boolean' ? tx.order_blocked : Boolean(rf?.order_blocked),
-        order_block_reason: tx.order_block_reason ?? rf?.order_block_reason ?? null,
-      };
-    });
+    const enrichedBase = (allTxs || []).map((tx: any) => ({
+      ...tx,
+      risk_score: typeof tx.risk_score === 'number' ? tx.risk_score : 0,
+      risk_signals: Array.isArray(tx.risk_signals) ? tx.risk_signals : [],
+      review_hold: Boolean(tx.review_hold),
+      review_hold_reason: tx.review_hold_reason ?? null,
+      order_blocked: Boolean(tx.order_blocked),
+      order_block_reason: tx.order_block_reason ?? null,
+    }));
 
-    // Apply optional ?q= filter (order ID, vendor handle, phone number hashed match)
     let searchPhoneHash: string | null = null;
     if (searchQuery && /\d{7,}/.test(searchQuery.replace(/\D/g, ''))) {
       searchPhoneHash = hashPhoneSignal(searchQuery);
@@ -81,7 +81,6 @@ export async function GET(request: NextRequest) {
 
     const filteredTxs = enrichedBase.filter(matchesQuery);
 
-    // Enrich disputes & priority orders with evidence metadata & masked refund state
     const disputesRaw = filteredTxs
       .filter((tx: any) => tx.status === 'DISPUTED' || tx.status === 'RESOLVING' || tx.dispute_reason !== null || tx.resolved_at !== null)
       .sort((a: any, b: any) => {
@@ -124,57 +123,62 @@ export async function GET(request: NextRequest) {
       return updatedMs <= stuckCutoffMs;
     });
 
-    const { data: failedWaRows } = await supabase
-      .from('whatsapp_message_log')
-      .select('id, message_id, transaction_id, vendor_handle, masked_number, template_name, status, error_code, created_at')
-      .in('status', ['failed', 'blocked'])
-      .order('created_at', { ascending: false })
-      .limit(50);
+    const [
+      { data: failedWaRows, error: waErr },
+      { data: unmatchedDeposits, error: depErr },
+      { data: resolutions, error: resErr },
+      { data: auditRows, error: auditErr },
+      { data: vendorRows, error: venErr },
+      { data: settingsRows, error: setErr },
+      { data: ledgerRows, error: ledErr },
+    ] = await Promise.all([
+      supabase
+        .from('whatsapp_message_log')
+        .select('id, message_id, transaction_id, vendor_handle, masked_number, template_name, status, error_code, created_at')
+        .in('status', ['failed', 'blocked'])
+        .order('created_at', { ascending: false })
+        .limit(50),
+      supabase
+        .from('deposits')
+        .select('id, anchor_event_id, transaction_id, amount, status, sender_name, created_at')
+        .in('status', ['REFUND_PENDING', 'EXCESS_DEPOSIT', 'LATE_DEPOSIT', 'LATE_AFTER_TERMINAL'])
+        .order('created_at', { ascending: false })
+        .limit(50),
+      supabase
+        .from('dispute_resolutions')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50),
+      supabase
+        .from('admin_audit_log')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50),
+      supabase
+        .from('vendors')
+        .select('id, store_name, email, kyc_status, tier, compliance_strikes, is_suspended, suspension_reason, suspended_at, phone_verified, is_allowlisted, completed_orders_count, successful_sales_count, disputes_count')
+        .order('created_at', { ascending: false })
+        .limit(100),
+      supabase
+        .from('system_settings')
+        .select('key, value, description, updated_at')
+        .order('key', { ascending: true }),
+      supabase
+        .from('transaction_ledger')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50),
+    ]);
 
-    const memFailedWa = getInMemoryOutboundLogsForTests().filter(
-      (l) => l.status === 'failed' || l.status === 'blocked'
-    );
-    const failedWhatsappDeliveries =
-      Array.isArray(failedWaRows) && failedWaRows.length > 0 ? failedWaRows : memFailedWa;
-
-    const { data: unmatchedDeposits } = await supabase
-      .from('deposits')
-      .select('id, anchor_event_id, transaction_id, amount_naira, status, sender_name, created_at')
-      .in('status', ['UNMATCHED', 'LATE_AFTER_TERMINAL', 'EXCESS'])
-      .order('created_at', { ascending: false })
-      .limit(50);
+    if (waErr) throw failClosedDbError('whatsapp_message_log', waErr);
+    if (depErr) throw failClosedDbError('deposits', depErr);
+    if (resErr) throw failClosedDbError('dispute_resolutions', resErr);
+    if (auditErr) throw failClosedDbError('admin_audit_log', auditErr);
+    if (venErr) throw failClosedDbError('vendors', venErr);
+    if (setErr) throw failClosedDbError('system_settings', setErr);
+    if (ledErr) throw failClosedDbError('transaction_ledger', ledErr);
 
     const excessOrderRows = filteredTxs.filter((tx: any) => Number(tx.excess_amount || 0) > 0);
-
-    const { data: resolutions } = await supabase
-      .from('dispute_resolutions')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(50);
-
-    const { data: auditRows } = await supabase
-      .from('admin_audit_log')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(50);
-
-    const { data: vendorRows } = await supabase
-      .from('vendors')
-      .select('id, store_name, email, kyc_status, tier, compliance_strikes, is_suspended, suspension_reason, suspended_at, phone_verified, is_allowlisted, completed_orders_count, successful_sales_count, disputes_count')
-      .order('created_at', { ascending: false })
-      .limit(100);
-
-    const { data: settingsRows } = await supabase
-      .from('system_settings')
-      .select('key, value, description, updated_at')
-      .order('key', { ascending: true });
-
-    const { data: ledgerRows } = await supabase
-      .from('transaction_ledger')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(50);
-
     const riskFlags = await listRiskFlagsAndHolds(supabase);
     const hotSettings = await getHotSettings();
     const checkoutEnabled = await isCheckoutEnabledServer();
@@ -190,9 +194,12 @@ export async function GET(request: NextRequest) {
         overdueDispatch,
         reviewHolds: heldTransactions,
         stuckSettlements,
-        failedWhatsappDeliveries,
+        failedWhatsappDeliveries: failedWaRows || [],
         unmatchedOrExcessDeposits: [
-          ...(unmatchedDeposits || []),
+          ...(unmatchedDeposits || []).map((d: any) => ({
+            ...d,
+            amount_naira: Number(d.amount ?? d.amount_naira ?? 0),
+          })),
           ...excessOrderRows.map((tx: any) => ({
             id: `excess_${tx.id}`,
             transaction_id: tx.id,
@@ -209,8 +216,7 @@ export async function GET(request: NextRequest) {
       recentLedger: ledgerRows || [],
       resolutions: resolutions || [],
       riskFlags,
-      recentAdminActions:
-        Array.isArray(auditRows) && auditRows.length > 0 ? auditRows : getAdminAuditFallbackLogs(50),
+      recentAdminActions: auditRows || [],
       incidentSwitches: {
         checkout_enabled: checkoutEnabled,
         payouts_enabled: payoutsEnabled,

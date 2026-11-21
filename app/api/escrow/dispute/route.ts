@@ -1,28 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { recordLedgerEntry } from '@/lib/ledger';
 import { sendSystemAlert } from '@/lib/alerts';
 import { getClientIp, checkSharedRateLimit } from '@/lib/rateLimit';
+import { verifyReleaseCodeHmac } from '@/lib/releaseCode';
+import { resolveOrderActor } from '@/lib/orderAuth';
 import { SAFE_TRANSACTION_PUBLIC_COLUMNS } from '@/lib/transactionSelect';
 import {
   DISPUTE_SCENARIOS,
   calculateBusinessHoursDeadline,
 } from '@/lib/disputeScenarios';
-import {
-  getDeliveryAndLifecycleConfig,
-  mergeTransactionWithLifecycleOverlay,
-  updateTransactionWithFallback,
-} from '@/lib/orderLifecycle';
+import { getDeliveryAndLifecycleConfig } from '@/lib/orderLifecycle';
 import {
   uploadOrderEvidenceFile,
   validateEvidenceFileInput,
 } from '@/lib/evidenceStorage';
-import { verifyVendorOnboardingSession } from '@/lib/vendorAuth';
 import { recordDisputeAndDemoteIfNeeded } from '@/lib/vendorTiers';
 import {
-  applyWhatsappVerificationRedaction,
-  isSchemaMissingError,
   maskWhatsappNumber,
   sendDisputeOpenedOrUpdatedWhatsapp,
 } from '@/lib/whatsapp';
@@ -30,26 +24,12 @@ import { logInfo } from '@/lib/logger';
 
 export async function POST(request: NextRequest) {
   try {
-    const clientIp = getClientIp(request);
-    const supabase = getServiceSupabase();
-
-    // 1. Rate Limiting: Max 5 dispute verification submissions per 15 minutes (shared DB bucket)
-    const rateCheck = await checkSharedRateLimit(`${clientIp}:dispute_verify`, 5, 15 * 60 * 1000, supabase);
-    if (!rateCheck.allowed) {
-      return NextResponse.json(
-        { success: false, error: 'Too many dispute attempts. Please wait 15 minutes before submitting again.' },
-        { status: 429 }
-      );
-    }
-
     const body = await request.json();
     const {
       transactionId,
       disputeReason,
       otp,
-      useVerifiedWhatsapp = false,
       scenarioId,
-      raisedByRole = 'BUYER',
       evidenceFiles = [],
     } = body || {};
 
@@ -60,7 +40,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const role: 'BUYER' | 'VENDOR' = String(raisedByRole).toUpperCase() === 'VENDOR' ? 'VENDOR' : 'BUYER';
     const cleanReason = disputeReason.trim();
     const scenarioNum = scenarioId !== undefined && scenarioId !== null ? Number(scenarioId) : null;
     if (scenarioNum !== null && (!Number.isInteger(scenarioNum) || scenarioNum < 1 || scenarioNum > 8)) {
@@ -70,14 +49,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate attached evidence files upfront before locking state
+    const supabase = getServiceSupabase();
+
+    // 1. Validate attached evidence files upfront (including filename & magic bytes)
     if (Array.isArray(evidenceFiles) && evidenceFiles.length > 0) {
       for (const f of evidenceFiles) {
         const b64 = String(f?.base64Data || '').replace(/^data:[^;]+;base64,/, '');
-        const sizeBytes = Buffer.byteLength(b64, 'base64');
+        const buf = b64 ? Buffer.from(b64, 'base64') : undefined;
         const check = await validateEvidenceFileInput({
           mimeType: String(f?.mimeType || ''),
-          fileSizeBytes: sizeBytes,
+          fileSizeBytes: buf ? buf.byteLength : 0,
+          fileBuffer: buf,
+          originalFilename: f?.fileName || null,
           supabaseClient: supabase,
         });
         if (!check.valid) {
@@ -86,24 +69,67 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 2. Fetch existing transaction + overlay
-    const { data: rawExisting, error: fetchErr } = await supabase
+    // 2. Fetch existing transaction (fail closed on DB errors)
+    const { data: existing, error: fetchErr } = await supabase
       .from('transactions')
       .select('*')
       .eq('id', transactionId)
-      .single();
+      .maybeSingle();
 
-    if (fetchErr || !rawExisting) {
+    if (fetchErr) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Dispute Transaction Lookup Failed (Fail Closed)',
+        transactionId,
+        details: { error: fetchErr.message },
+      }).catch(() => {});
+      return NextResponse.json({ success: false, error: `Transaction lookup failed: ${fetchErr.message}` }, { status: 500 });
+    }
+
+    if (!existing) {
       return NextResponse.json({ success: false, error: 'Transaction not found.' }, { status: 404 });
     }
 
-    const existing = mergeTransactionWithLifecycleOverlay(rawExisting);
-    const waState = applyWhatsappVerificationRedaction(existing);
-
-    // 3. Status Eligibility
-    if (existing.status === 'RELEASED') {
+    // 3. Strictly authenticate actor role (NEVER trust raisedByRole or useVerifiedWhatsapp from body)
+    const actor = await resolveOrderActor(request, existing, supabase);
+    if (!actor.authenticated) {
       return NextResponse.json(
-        { success: false, error: 'Cannot dispute a transaction that has already been released.' },
+        { success: false, code: actor.code, error: actor.error || 'Authentication required to open a dispute.' },
+        { status: actor.statusCode || 401 }
+      );
+    }
+
+    if (actor.role !== 'BUYER' && actor.role !== 'VENDOR') {
+      return NextResponse.json(
+        { success: false, code: 'FORBIDDEN', error: 'Only the verified buyer or owning vendor can raise a dispute.' },
+        { status: 403 }
+      );
+    }
+    const role: 'BUYER' | 'VENDOR' = actor.role;
+
+    // 4. Dual Rate Limiting (IP + Transaction ID)
+    const clientIp = getClientIp(request);
+    const [ipRl, txRl] = await Promise.all([
+      checkSharedRateLimit(`${clientIp}:dispute_verify`, 8, 15 * 60 * 1000, supabase),
+      checkSharedRateLimit(`tx:${transactionId}:dispute_verify`, 6, 15 * 60 * 1000, supabase),
+    ]);
+    if (!ipRl.allowed || !txRl.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Too many dispute attempts. Please wait 15 minutes before submitting again.' },
+        { status: 429 }
+      );
+    }
+
+    // 5. Status & Post-Code Acceptance Eligibility
+    if (
+      existing.status === 'RELEASED' ||
+      existing.status === 'RELEASING' ||
+      existing.status === 'VENDOR_PAID' ||
+      existing.code_verified_at
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Cannot dispute a transaction after the release code has been accepted.' },
         { status: 400 }
       );
     }
@@ -122,189 +148,140 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4. Party Authentication (Buyer OTP or verified WhatsApp link; Vendor signed-in session)
-    if (role === 'VENDOR') {
-      const vendorSession = await verifyVendorOnboardingSession(request);
-      if (!vendorSession.authorized || !vendorSession.user) {
+    // 6. Step-Up Buyer OTP Verification (when BUYER raises dispute)
+    if (role === 'BUYER') {
+      if (!otp || typeof otp !== 'string' || !/^\d{6}$/.test(otp.trim())) {
         return NextResponse.json(
-          { success: false, error: vendorSession.error || 'Vendor authentication required to raise a dispute.' },
-          { status: vendorSession.statusCode || 401 }
+          { success: false, error: 'A valid 6-digit verification code (OTP) sent to the buyer WhatsApp is required.' },
+          { status: 400 }
         );
       }
 
-      const { data: vRow } = await supabase
-        .from('vendors')
-        .select('id, store_name, email')
-        .eq('user_id', vendorSession.user.id)
-        .maybeSingle();
-
-      const matchesVendor =
-        (existing.vendor_id && vRow?.id === existing.vendor_id) ||
-        (vRow?.store_name && existing.vendor_handle?.toLowerCase() === vRow.store_name.toLowerCase());
-
-      if (!vRow || !matchesVendor) {
+      const cleanOtp = otp.trim();
+      if (!existing.dispute_otp_hash || !existing.dispute_otp_expires_at) {
         return NextResponse.json(
-          { success: false, error: 'Forbidden: Only the vendor on this order can open a vendor dispute.' },
+          {
+            success: false,
+            error: 'No active dispute verification code found. Request a fresh OTP before raising a dispute.',
+            requiresOtpRequest: true,
+          },
+          { status: 400 }
+        );
+      }
+
+      if (new Date(existing.dispute_otp_expires_at).getTime() < Date.now()) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'The dispute verification code has expired. Please request a new code.',
+            requiresOtpRequest: true,
+          },
+          { status: 400 }
+        );
+      }
+
+      const attempts = Number(existing.dispute_otp_attempts || 0);
+      if (attempts >= 3) {
+        await supabase
+          .from('transactions')
+          .update({ dispute_otp_hash: null, dispute_otp_expires_at: null })
+          .eq('id', transactionId);
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Maximum verification attempts exceeded (3/3). Please request a new verification code.',
+            requiresOtpRequest: true,
+          },
           { status: 403 }
         );
       }
-    } else {
-      const canUseVerifiedWa = Boolean(useVerifiedWhatsapp && waState.buyer_phone_verified === true);
-      if (!canUseVerifiedWa) {
-        if (!otp || typeof otp !== 'string' || otp.trim().length !== 6) {
-          return NextResponse.json(
-            { success: false, error: 'A valid 6-digit verification code (OTP) sent to the buyer phone is required.' },
-            { status: 400 }
-          );
-        }
 
-        const cleanOtp = otp.trim();
-        if (!existing.dispute_otp_hash || !existing.dispute_otp_expires_at) {
-          return NextResponse.json(
-            {
-              success: false,
-              error: 'No active verification code found. Please request a new OTP sent to your phone before raising a dispute.',
-              requiresOtpRequest: true,
-            },
-            { status: 400 }
-          );
-        }
+      const isValidOtp = verifyReleaseCodeHmac(`dispute:${transactionId}`, cleanOtp, existing.dispute_otp_hash);
+      if (!isValidOtp) {
+        const nextAttempts = attempts + 1;
+        await supabase
+          .from('transactions')
+          .update({ dispute_otp_attempts: nextAttempts })
+          .eq('id', transactionId);
 
-        if (new Date(existing.dispute_otp_expires_at).getTime() < Date.now()) {
-          return NextResponse.json(
-            {
-              success: false,
-              error: 'The verification code has expired. Please request a new code.',
-              requiresOtpRequest: true,
-            },
-            { status: 400 }
-          );
-        }
-
-        const attempts = existing.dispute_otp_attempts || 0;
-        if (attempts >= 3) {
-          await supabase
-            .from('transactions')
-            .update({ dispute_otp_hash: null, dispute_otp_expires_at: null })
-            .eq('id', transactionId);
-
-          return NextResponse.json(
-            {
-              success: false,
-              error: 'Maximum verification attempts exceeded (3/3). Please request a new verification code.',
-              requiresOtpRequest: true,
-            },
-            { status: 403 }
-          );
-        }
-
-        const secret = process.env.RELEASE_CODE_PEPPER || 'relyvora_dispute_otp_pepper_secret';
-        const computedHash = crypto
-          .createHmac('sha256', secret)
-          .update(`${transactionId}:${cleanOtp}`)
-          .digest('hex');
-
-        const expectedBuf = Buffer.from(existing.dispute_otp_hash, 'hex');
-        const computedBuf = Buffer.from(computedHash, 'hex');
-
-        const isValidOtp =
-          expectedBuf.length === computedBuf.length &&
-          crypto.timingSafeEqual(expectedBuf, computedBuf);
-
-        if (!isValidOtp) {
-          const nextAttempts = attempts + 1;
-          await supabase
-            .from('transactions')
-            .update({ dispute_otp_attempts: nextAttempts })
-            .eq('id', transactionId);
-
-          const remaining = 3 - nextAttempts;
-          return NextResponse.json(
-            {
-              success: false,
-              error: `Invalid verification code. ${remaining > 0 ? `${remaining} attempt(s) remaining.` : 'Lockout triggered. Please request a new code.'}`,
-              attemptsRemaining: remaining,
-            },
-            { status: 400 }
-          );
-        }
+        const remaining = 3 - nextAttempts;
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Invalid verification code. ${remaining > 0 ? `${remaining} attempt(s) remaining.` : 'Lockout triggered. Please request a new code.'}`,
+            attemptsRemaining: remaining,
+          },
+          { status: 400 }
+        );
       }
     }
 
-    // 5. Row-locked transition to DISPUTED + review_hold = true + Business-Hours SLA deadline
+    // 7. Row-locked transition to DISPUTED via RPC (strictly fail closed — no fallback)
     const nowIso = new Date().toISOString();
     const lcConfig = await getDeliveryAndLifecycleConfig(supabase);
     const sc = scenarioNum ? DISPUTE_SCENARIOS.find((s) => s.id === scenarioNum) : null;
     const deadlineDate = calculateBusinessHoursDeadline(nowIso, sc?.slaHours || 24, lcConfig.disputePolicy);
     const deadlineIso = deadlineDate.toISOString();
 
-    let updated: any = null;
     const { data: rpcRes, error: rpcErr } = await supabase.rpc('rpc_raise_dispute_with_lock', {
       p_transaction_id: transactionId,
-      p_dispute_reason: cleanReason,
-      p_dispute_scenario: scenarioNum,
-      p_raised_by_role: role,
+      p_raised_by: role,
+      p_scenario_id: scenarioNum,
+      p_reason: cleanReason,
       p_response_deadline_at: deadlineIso,
     });
 
-    if (!rpcErr && rpcRes) {
-      if (!rpcRes.success) {
-        return NextResponse.json(
-          { success: false, error: rpcRes.message || 'Cannot raise dispute in current order status.' },
-          { status: 400 }
-        );
-      }
-      const { data: fetchedAfterRpc } = await supabase
-        .from('transactions')
-        .select(SAFE_TRANSACTION_PUBLIC_COLUMNS)
-        .eq('id', transactionId)
-        .single();
-      updated = fetchedAfterRpc;
-    } else if (!rpcErr || isSchemaMissingError(rpcErr)) {
-      const { data: fallbackUpdated, error: updateErr } = await supabase
-        .from('transactions')
-        .update({
-          status: 'DISPUTED',
-          dispute_reason: cleanReason,
-          disputed_at: nowIso,
-          dispute_otp_hash: null,
-          dispute_otp_expires_at: null,
-          dispute_otp_attempts: 0,
-          updated_at: nowIso,
-        })
-        .eq('id', transactionId)
-        .in('status', ['FUNDS_LOCKED', 'DISPATCHED'])
-        .select(SAFE_TRANSACTION_PUBLIC_COLUMNS)
-        .single();
-
-      if (updateErr || !fallbackUpdated) {
-        return NextResponse.json(
-          { success: false, error: updateErr?.message || 'Dispute state transition conflict.' },
-          { status: 409 }
-        );
-      }
-      updated = fallbackUpdated;
-    } else {
-      return NextResponse.json({ success: false, error: rpcErr.message }, { status: 500 });
+    if (rpcErr || !rpcRes) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'RPC rpc_raise_dispute_with_lock Failed (Fail Closed)',
+        transactionId,
+        details: { error: rpcErr?.message || 'Empty RPC response' },
+      }).catch(() => {});
+      return NextResponse.json(
+        { success: false, error: rpcErr?.message || 'Dispute lock RPC failed.' },
+        { status: 500 }
+      );
     }
 
-    await updateTransactionWithFallback(
-      transactionId,
-      {
-        status: 'DISPUTED',
-        dispute_reason: cleanReason,
-        disputed_at: nowIso,
-        review_hold: true,
-        review_hold_reason: `Dispute opened by ${role}: ${cleanReason}`,
-        dispute_raised_by: role,
-        dispute_response_deadline_at: deadlineIso,
-        ...(scenarioNum ? { dispute_scenario: scenarioNum } : {}),
-        updated_at: nowIso,
-      },
-      supabase
-    );
+    if (!rpcRes.success) {
+      return NextResponse.json(
+        { success: false, error: rpcRes.error || rpcRes.message || 'Cannot raise dispute in current order status.' },
+        { status: Number(rpcRes.status_code) || 400 }
+      );
+    }
 
-    // 6. Upload initial private evidence files if supplied
+    // Clear dispute OTP fields cleanly
+    const { data: updated, error: postRpcErr } = await supabase
+      .from('transactions')
+      .update({
+        dispute_otp_hash: null,
+        dispute_otp_expires_at: null,
+        dispute_otp_attempts: 0,
+        review_hold_reason: `Dispute opened by ${role}: ${cleanReason}`,
+        updated_at: nowIso,
+      })
+      .eq('id', transactionId)
+      .select(SAFE_TRANSACTION_PUBLIC_COLUMNS)
+      .single();
+
+    if (postRpcErr || !updated) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Post-Dispute RPC Update Failed (Fail Closed)',
+        transactionId,
+        details: { error: postRpcErr?.message || 'Empty transaction after update' },
+      }).catch(() => {});
+      return NextResponse.json(
+        { success: false, error: postRpcErr?.message || 'Failed updating post-dispute metadata.' },
+        { status: 500 }
+      );
+    }
+
+    // 8. Upload initial private evidence files if supplied
     const uploadedEvidenceIds: string[] = [];
     if (Array.isArray(evidenceFiles)) {
       for (const f of evidenceFiles) {
@@ -321,13 +298,17 @@ export async function POST(request: NextRequest) {
           description: f.description || null,
           supabaseClient: supabase,
         });
-        if (up.success && up.record) {
-          uploadedEvidenceIds.push(up.record.id);
+        if (!up.success || !up.record) {
+          return NextResponse.json(
+            { success: false, error: up.error || 'Failed storing attached dispute evidence.' },
+            { status: 500 }
+          );
         }
+        uploadedEvidenceIds.push(up.record.id);
       }
     }
 
-    // 7. Record Dispute Freeze in Immutable Audit Ledger & evaluate vendor tier impact
+    // 9. Record Dispute Freeze in Immutable Audit Ledger & evaluate vendor tier impact
     await recordLedgerEntry(
       {
         transactionId,
@@ -348,14 +329,16 @@ export async function POST(request: NextRequest) {
       supabase
     );
 
-    await recordDisputeAndDemoteIfNeeded({
-      vendorId: existing.vendor_id,
-      transactionId,
-      reason: `Dispute opened (${role}): ${cleanReason}`,
-      supabaseClient: supabase,
-    }).catch(() => {});
+    if (existing.vendor_id) {
+      await recordDisputeAndDemoteIfNeeded({
+        vendorId: existing.vendor_id,
+        transactionId,
+        reason: `Dispute opened (${role}): ${cleanReason}`,
+        supabaseClient: supabase,
+      });
+    }
 
-    // 8. Notify counterparty via WhatsApp `dispute_opened_v1` & send ops alert (masked PII only)
+    // 10. Notify counterparty via WhatsApp `dispute_opened_v1` & send ops alert
     const deadlineText = deadlineDate.toLocaleString('en-NG', { timeZone: 'Africa/Lagos', dateStyle: 'medium', timeStyle: 'short' });
     if (role === 'BUYER' && existing.vendor_id) {
       const { data: vendorRow } = await supabase

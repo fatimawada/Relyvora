@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { runDailyReconciliation } from '@/lib/reconciliation';
 import {
@@ -6,6 +7,7 @@ import {
   retryStuckSettlementLegs,
 } from '@/lib/orderLifecycle';
 import { runRetentionCleanup } from '@/lib/retentionCleanup';
+import { sendSystemAlert } from '@/lib/alerts';
 
 export async function GET(request: NextRequest) {
   return handleCronReconcile(request);
@@ -17,23 +19,35 @@ export async function POST(request: NextRequest) {
 
 async function handleCronReconcile(request: NextRequest) {
   try {
-    // 1. Verify Vercel Cron Secret Header
+    // 1. Strict Fail-Closed Bearer Secret Authentication (NEVER skipped in any environment)
     const authHeader = request.headers.get('authorization');
-    const cronSecret = process.env.CRON_SECRET;
+    const cronSecret = process.env.CRON_SECRET?.trim();
 
     if (!cronSecret) {
-      if (process.env.NODE_ENV === 'production' || process.env.PAYMENTS_MODE === 'live') {
-        console.error('CRITICAL: CRON_SECRET is not configured on the server.');
-        return NextResponse.json({ success: false, error: 'Server misconfiguration: CRON_SECRET missing' }, { status: 500 });
-      }
-    } else {
-      const expectedBearer = `Bearer ${cronSecret.trim()}`;
-      if (!authHeader || authHeader.trim() !== expectedBearer) {
-        return NextResponse.json(
-          { success: false, error: 'Unauthorized: Invalid or missing Cron Secret' },
-          { status: 401 }
-        );
-      }
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'CRON_SECRET Missing on Server (Fail Closed)',
+        details: { env: process.env.NODE_ENV || 'unknown' },
+      }).catch(() => {});
+      return NextResponse.json(
+        { success: false, error: 'Server misconfiguration: CRON_SECRET missing' },
+        { status: 500 }
+      );
+    }
+
+    const expectedBearer = `Bearer ${cronSecret}`;
+    const providedBuf = Buffer.from((authHeader || '').trim(), 'utf8');
+    const expectedBuf = Buffer.from(expectedBearer, 'utf8');
+    if (
+      providedBuf.length === 0 ||
+      providedBuf.length !== expectedBuf.length ||
+      !crypto.timingSafeEqual(providedBuf, expectedBuf)
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Invalid or missing Cron Secret' },
+        { status: 401 }
+      );
     }
 
     // 2. Run automated order lifecycle & retention jobs

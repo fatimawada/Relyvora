@@ -9,15 +9,15 @@ import { isLiveMode } from '@/lib/paymentsMode';
 import { checkSharedRateLimit, getClientIp } from '@/lib/rateLimit';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { verifyVendorOnboardingSession } from '@/lib/vendorAuth';
-import { getHotSettings } from '@/lib/safetyLimits';
+import { getVendorAllowlistModeServer } from '@/lib/safetyLimits';
 import { verifyPublicSignupCaptcha } from '@/lib/captcha';
 import {
   performAnchorNameEnquiry,
-  setVendorSafetyOverlay,
   verifySettlementNameMatchesKyc,
 } from '@/lib/payoutSafety';
 import { extractRequestDeviceFingerprints, hashPhoneSignal } from '@/lib/riskEngine';
-import { isSchemaMissingError, sendVendorPhoneVerifyWhatsapp } from '@/lib/whatsapp';
+import { sendVendorPhoneVerifyWhatsapp } from '@/lib/whatsapp';
+import { sendSystemAlert } from '@/lib/alerts';
 
 const CONSENT_TERMS_VERSION = '2026-11-tier1';
 
@@ -29,20 +29,37 @@ async function checkInviteOnlyAllowlist(
 ): Promise<{
   allowed: boolean;
   allowlistMode: boolean;
+  suspended?: boolean;
   existingVendor: Record<string, any> | null;
   error?: string;
 }> {
-  const settings = await getHotSettings();
-  const allowlistMode =
-    settings.vendor_allowlist_mode !== undefined
-      ? Boolean(settings.vendor_allowlist_mode === true || settings.vendor_allowlist_mode === 'true')
-      : false;
+  const allowlistMode = await getVendorAllowlistModeServer();
 
-  const { data: existingVendor } = await supabase
+  const { data: existingVendor, error: vendorLookupErr } = await supabase
     .from('vendors')
     .select('*')
     .eq('email', normalizedEmail)
     .maybeSingle();
+
+  if (vendorLookupErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Vendor Onboarding Lookup Failed (Fail Closed)',
+      details: { error: vendorLookupErr.message },
+    }).catch(() => {});
+    throw new Error(`Vendor lookup failed: ${vendorLookupErr.message}`);
+  }
+
+  if (existingVendor?.is_suspended === true) {
+    return {
+      allowed: false,
+      allowlistMode,
+      suspended: true,
+      existingVendor,
+      error: 'Suspended vendor accounts cannot re-onboard or reactivate.',
+    };
+  }
 
   if (existingVendor?.user_id && existingVendor.user_id !== authUserId) {
     return {
@@ -280,129 +297,85 @@ export async function POST(request: NextRequest) {
       customerId = customerResult.customerId;
 
       if (customerId) {
-        try {
-          const cleanIdNumber = String(idNumber).trim();
-          const verifyRes = await verifyAnchorCustomer({
-            customerId,
-            level: 'TIER_1',
-            bvn: idType === 'BVN' ? cleanIdNumber : undefined,
-            nin: idType === 'NIN' ? cleanIdNumber : undefined,
-            dateOfBirth: String(dateOfBirth).trim(),
-            gender: String(gender).trim(),
-          });
-          const rawVerifyStatus = String(
-            (verifyRes as any)?.data?.data?.status ||
-              (verifyRes as any)?.data?.data?.attributes?.status ||
-              (verifyRes as any)?.data?.status ||
-              'VERIFIED'
-          ).toUpperCase();
-          kycStatus =
-            rawVerifyStatus === 'PENDING'
-              ? 'PENDING'
-              : rawVerifyStatus === 'REJECTED'
-                ? 'REJECTED'
-                : 'VERIFIED';
-        } catch (kycErr: any) {
-          if (isLiveMode()) throw kycErr;
-          kycStatus = 'SANDBOX_KYC_PROVISIONED';
-        }
+        const cleanIdNumber = String(idNumber).trim();
+        const verifyRes = await verifyAnchorCustomer({
+          customerId,
+          level: 'TIER_1',
+          bvn: idType === 'BVN' ? cleanIdNumber : undefined,
+          nin: idType === 'NIN' ? cleanIdNumber : undefined,
+          dateOfBirth: String(dateOfBirth).trim(),
+          gender: String(gender).trim(),
+        });
+        const rawVerifyStatus = String(
+          (verifyRes as any)?.data?.data?.status ||
+            (verifyRes as any)?.data?.data?.attributes?.status ||
+            (verifyRes as any)?.data?.status ||
+            'PENDING'
+        ).toUpperCase();
+        kycStatus =
+          rawVerifyStatus === 'VERIFIED'
+            ? 'VERIFIED'
+            : rawVerifyStatus === 'REJECTED'
+              ? 'REJECTED'
+              : 'PENDING';
       }
 
       if (customerId) {
-        try {
-          const accountResult = await createAnchorDepositAccount({ customerId });
-          accountId = accountResult.accountId;
-        } catch (accErr: any) {
-          if (isLiveMode()) throw accErr;
-          accountId = '179319298037338-anc_acc';
-        }
+        const accountResult = await createAnchorDepositAccount({ customerId });
+        accountId = accountResult.accountId;
       }
 
-      try {
-        await createAnchorCounterParty({
-          accountName: enquiry.resolvedAccountName,
-          accountNumber: String(accountNumber).trim(),
-          bankCode: String(bankCode).trim(),
-          verifyName: true,
-        });
-      } catch (cpErr: any) {
-        if (isLiveMode()) throw cpErr;
-      }
+      await createAnchorCounterParty({
+        accountName: enquiry.resolvedAccountName,
+        accountNumber: String(accountNumber).trim(),
+        bankCode: String(bankCode).trim(),
+        verifyName: true,
+      });
     } catch (anchorErr: any) {
-      if (isLiveMode()) {
-        console.error('Anchor BaaS onboarding failed in live mode:', anchorErr?.message || anchorErr);
-        return NextResponse.json(
-          {
-            success: false,
-            error: anchorErr?.message || 'Anchor BaaS verification failed in live mode.',
-          },
-          { status: 502 }
-        );
-      }
-      console.warn('Anchor BaaS onboarding sandbox fallback:', anchorErr?.message || 'Anchor error');
-      customerId = customerId || `cst_${Date.now()}`;
-      accountId = accountId || `acc_${Date.now()}`;
-      kycStatus = 'VERIFIED';
+      console.error('Anchor BaaS onboarding failed (fail closed):', anchorErr?.message || anchorErr);
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'ANCHOR_ONBOARDING_FAILED',
+          error: anchorErr?.message || 'Anchor BaaS KYC verification failed.',
+        },
+        { status: 502 }
+      );
     }
 
-    // 6. Persist ONLY non-PII operational vendor metadata to public.vendors.
+    // 6. Persist ONLY non-PII operational vendor metadata to public.vendors atomically (no pre-migration overlay or user_id fallback).
     const dbKycStatus = kycStatus === 'VERIFIED' ? 'verified' : 'pending';
     const isExistingAllowlisted = Boolean(allowlistCheck.existingVendor?.is_allowlisted);
     const fps = await extractRequestDeviceFingerprints(request, body.deviceFingerprint);
     const phoneHash = hashPhoneSignal(cleanPhone);
+    const acceptedNowIso = new Date().toISOString();
+    const resolvedTier = allowlistCheck.existingVendor?.tier || 'NEW';
+    const resolvedSalesCount = Math.max(
+      Number(allowlistCheck.existingVendor?.successful_sales_count || 0),
+      Number(allowlistCheck.existingVendor?.completed_orders_count || 0)
+    );
 
-    const baseUpsertPayload = {
+    const vendorUpsertPayload = {
       user_id: session.user.id,
       store_name: String(storeName).trim(),
       email: normalizedEmail,
       phone_number: cleanPhone,
+      phone_hash: phoneHash,
+      phone_verified: Boolean(allowlistCheck.existingVendor?.phone_verified),
       legal_first_name: String(legalFirstName).trim(),
       legal_last_name: String(legalLastName).trim(),
       settlement_bank_code: String(bankCode).trim(),
       settlement_account_number: String(accountNumber).trim(),
       settlement_account_name: enquiry.resolvedAccountName,
+      payout_account_verified: true,
+      settlement_account_name_matched: true,
+      settlement_name_match_score: nameMatch.score,
       anchor_customer_id: customerId,
       anchor_deposit_account_id: accountId,
       kyc_status: dbKycStatus,
       is_allowlisted: allowlistCheck.allowlistMode ? true : isExistingAllowlisted,
-    };
-
-    let { data: savedVendor, error: upsertError } = await supabase
-      .from('vendors')
-      .upsert(baseUpsertPayload, { onConflict: 'email' })
-      .select('id, store_name, kyc_status, is_allowlisted')
-      .single();
-
-    if (upsertError?.code === '23503' && !isLiveMode()) {
-      const retry = await supabase
-        .from('vendors')
-        .upsert({ ...baseUpsertPayload, user_id: null }, { onConflict: 'email' })
-        .select('id, store_name, kyc_status, is_allowlisted')
-        .single();
-      savedVendor = retry.data;
-      upsertError = retry.error;
-    }
-
-    if (upsertError || !savedVendor) {
-      console.error('Failed to persist vendor onboarding record:', upsertError?.message);
-      return NextResponse.json(
-        { success: false, error: 'Failed to save vendor onboarding profile.' },
-        { status: 500 }
-      );
-    }
-
-    const acceptedNowIso = new Date().toISOString();
-    const extVendorPatch = {
-      phone_hash: phoneHash,
-      phone_verified: Boolean(allowlistCheck.existingVendor?.phone_verified),
-      payout_account_verified: true,
-      settlement_account_name_matched: true,
-      settlement_name_match_score: nameMatch.score,
-      tier: allowlistCheck.existingVendor?.tier || 'NEW',
-      successful_sales_count: Math.max(
-        Number(allowlistCheck.existingVendor?.successful_sales_count || 0),
-        Number(allowlistCheck.existingVendor?.completed_orders_count || 0)
-      ),
+      tier: resolvedTier,
+      successful_sales_count: resolvedSalesCount,
       signup_ip_hash: fps.ipHash,
       signup_ip_expires_at: fps.ipExpiresAt,
       signup_ua_hash: fps.uaHash,
@@ -415,13 +388,23 @@ export async function POST(request: NextRequest) {
       updated_at: acceptedNowIso,
     };
 
-    const { error: extErr } = await supabase
+    const { data: savedVendor, error: upsertError } = await supabase
       .from('vendors')
-      .update(extVendorPatch)
-      .eq('id', savedVendor.id);
+      .upsert(vendorUpsertPayload, { onConflict: 'email' })
+      .select('id, store_name, kyc_status, is_allowlisted, tier')
+      .single();
 
-    if (!extErr || isSchemaMissingError(extErr)) {
-      setVendorSafetyOverlay(savedVendor.id, extVendorPatch);
+    if (upsertError || !savedVendor) {
+      await sendSystemAlert({
+        type: 'SYSTEM_FAILURE',
+        severity: 'CRITICAL',
+        title: 'Vendor Onboarding Upsert Failed (Fail Closed)',
+        details: { userId: session.user.id, error: upsertError?.message || 'Empty upsert result' },
+      }).catch(() => {});
+      return NextResponse.json(
+        { success: false, error: `Failed to save vendor onboarding profile: ${upsertError?.message || 'Database error'}` },
+        { status: 500 }
+      );
     }
 
     let phoneVerificationWhatsappStatus: string = 'already_verified';
@@ -448,7 +431,7 @@ export async function POST(request: NextRequest) {
         legalName: `${String(legalFirstName).trim()} ${String(legalLastName).trim()}`.trim(),
         kycStatus,
         dbKycStatus,
-        tier: extVendorPatch.tier,
+        tier: savedVendor.tier,
         termsAcceptedAt: acceptedNowIso,
         termsVersion: CONSENT_TERMS_VERSION,
         isAllowlisted: Boolean(savedVendor.is_allowlisted),

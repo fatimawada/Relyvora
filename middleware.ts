@@ -7,11 +7,7 @@ export function middleware(request: NextRequest) {
   const pathname = url.pathname;
 
   // 1. Detect if request is targeted at the Foundation subdomain (foundation.relyvora.com)
-  // Supports: foundation.relyvora.com, foundation.localhost:3000, or local dev query param ?subdomain=foundation or ?market=foundation
-  const isFoundationDomain = 
-    host.startsWith('foundation.') || 
-    url.searchParams.get('subdomain') === 'foundation' ||
-    url.searchParams.get('market') === 'foundation';
+  const isFoundationDomain = host.startsWith('foundation.');
 
   // Handle Foundation Subdomain (foundation.relyvora.com)
   if (isFoundationDomain) {
@@ -25,10 +21,7 @@ export function middleware(request: NextRequest) {
   }
 
   // 2. Detect if request is targeted at the Nigerian market subdomain (ng.relyvora.com)
-  // Supports: ng.relyvora.com, ng.localhost:3000, or local dev query param ?market=ng
-  const isNgDomain = 
-    host.startsWith('ng.') || 
-    url.searchParams.get('market') === 'ng';
+  const isNgDomain = host.startsWith('ng.');
 
   // 3. Handle Nigerian Subdomain (ng.relyvora.com)
   if (isNgDomain) {

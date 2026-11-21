@@ -29,6 +29,7 @@ Production deploys initially in **safe launch mode** (`PAYMENTS_MODE=sandbox`, `
 | `RELEASE_CODE_PEPPER` | Server-only secret pepper for HMAC-SHA256 hashing of 6-digit release codes and dispute OTPs. | Generate unique 32+ byte hex secret locally (`openssl rand -hex 32`); store only in Vercel Production. |
 | `WHATSAPP_PHONE_PEPPER` | Server-only secret pepper for HMAC-SHA256 hashing buyer phone numbers in DNC and verification tables. | Generate unique 32+ byte hex secret locally (`openssl rand -hex 32`); distinct from Staging. |
 | `RISK_HASH_SALT` | Server-only secret salt for HMAC-SHA256 privacy-preserving hashing of IP, User-Agent, and device signals in risk evaluation. | Generate unique 32+ byte hex secret locally (`openssl rand -hex 32`); distinct from Staging. |
+| `BUYER_SESSION_SECRET` | Server-only secret key used to sign short-lived, order-bound `httpOnly` Buyer Session cookies (`__relyvora_buyer_session`) after WhatsApp verification. | Generate unique 32+ byte hex secret locally (`openssl rand -hex 32`); distinct from Staging. |
 | `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile server verification secret checked on public vendor signup (`verifyPublicSignupCaptcha`). | Cloudflare Dashboard -> Turnstile -> relyvora.com site -> Secret Key. |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Public Cloudflare Turnstile widget site key rendered on `/vendor/onboarding`. | Cloudflare Dashboard -> Turnstile -> relyvora.com site -> Site Key. |
 
@@ -39,8 +40,6 @@ Production deploys initially in **safe launch mode** (`PAYMENTS_MODE=sandbox`, `
 | Variable Name | Description | Where to Find / Set Value |
 | :--- | :--- | :--- |
 | `ADMIN_USER_IDS` | Comma-separated Supabase Auth UUIDs permitted to access `/admin/*` (with `app_metadata.role = 'admin'` and TOTP `aal2`). | Production Supabase Dashboard -> Authentication -> Users -> copy admin `User UID`. |
-| `ADMIN_SECRET_KEY` | Server-only automation key accepted via `x-admin-key` header on internal admin calls. | Generate unique 32+ byte hex secret (`openssl rand -hex 32`). |
-| `ADMIN_API_KEY` | Optional legacy Bearer secret checked by `/api/escrow/reissue-code` admin recovery path. | Generate unique 32+ byte hex secret (`openssl rand -hex 32`) or omit to use `SUPABASE_SERVICE_ROLE_KEY`. |
 | `CRON_SECRET` | Bearer secret checked by `/api/cron/reconcile` (`GET`/`POST`) on daily scheduled runs (`0 2 * * *`). | Generate high-entropy secret and configure in Vercel Production Environment Variables (Vercel sends automatically when set). |
 
 ---

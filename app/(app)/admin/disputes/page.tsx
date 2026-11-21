@@ -262,7 +262,7 @@ export default function AdminDisputesPage() {
     try {
       const headers = await getAdminHeaders();
       const res = await fetch(
-        `/api/escrow/evidence/signed-url?transactionId=${encodeURIComponent(txId)}&fileId=${encodeURIComponent(fileId)}&viewerRole=ADMIN`,
+        `/api/escrow/evidence/signed-url?transactionId=${encodeURIComponent(txId)}&fileId=${encodeURIComponent(fileId)}`,
         { credentials: 'include', headers }
       );
       const json = await res.json();

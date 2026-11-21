@@ -4,6 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { isLiveMode } from '@/lib/paymentsMode';
+import { supabase } from '@/lib/supabase';
 import { Transaction } from '@/lib/types';
 import { formatNaira } from '@/lib/pricing';
 import { DISPUTE_SCENARIOS } from '@/lib/disputeScenarios';
@@ -65,6 +66,23 @@ function EscrowTrackerContent() {
   const [transaction, setTransaction] = useState<(Transaction & Record<string, any>) | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [perspective, setPerspective] = useState<'buyer' | 'vendor'>('buyer');
+  const [authenticatedRole, setAuthenticatedRole] = useState<'BUYER' | 'VENDOR' | 'ADMIN' | null>(null);
+  const [authGate, setAuthGate] = useState<{
+    code: string;
+    error: string;
+    preview?: Record<string, any> | null;
+  } | null>(null);
+  const [authTab, setAuthTab] = useState<'buyer' | 'vendor'>('buyer');
+  const [buyerSignInCodeSent, setBuyerSignInCodeSent] = useState(false);
+  const [buyerSignInOtp, setBuyerSignInOtp] = useState('');
+  const [buyerSignInMask, setBuyerSignInMask] = useState<string | null>(null);
+  const [buyerSignInMsg, setBuyerSignInMsg] = useState<string | null>(null);
+  const [buyerSignInErr, setBuyerSignInErr] = useState<string | null>(null);
+  const [isBuyerAuthBusy, setIsBuyerAuthBusy] = useState(false);
+  const [vendorLoginEmail, setVendorLoginEmail] = useState('');
+  const [vendorLoginPassword, setVendorLoginPassword] = useState('');
+  const [vendorLoginErr, setVendorLoginErr] = useState<string | null>(null);
+  const [isVendorSigningIn, setIsVendorSigningIn] = useState(false);
 
   // Vendor code entry
   const [enteredCode, setEnteredCode] = useState('');
@@ -143,10 +161,7 @@ function EscrowTrackerContent() {
       setBuyerReleaseCode(null);
       return;
     }
-    const queryCode = searchParams?.get('code');
-    if (queryCode) {
-      setBuyerReleaseCode(queryCode);
-    } else if (typeof window !== 'undefined' && id) {
+    if (typeof window !== 'undefined' && id) {
       const cached = localStorage.getItem(`relyvora_buyer_escrow_${id}`);
       if (cached) {
         try {
@@ -159,19 +174,49 @@ function EscrowTrackerContent() {
         }
       }
     }
-  }, [id, searchParams, liveMode]);
+  }, [id, liveMode]);
 
-  const loadTransaction = async (viewer: 'buyer' | 'vendor' = perspective) => {
+  const getOrderAuthHeaders = async (): Promise<Record<string, string>> => {
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token;
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const loadTransaction = async () => {
     if (!id) return;
     setIsLoading(true);
     try {
-      const res = await fetch(
-        `/api/escrow/${encodeURIComponent(id)}?viewer=${viewer.toUpperCase()}`,
-        { cache: 'no-store' }
-      );
-      const json = await res.json();
-      if (json.success && json.transaction) {
-        setTransaction(json.transaction);
+      const authHeaders = await getOrderAuthHeaders();
+      const res = await fetch(`/api/escrow/${encodeURIComponent(id)}`, {
+        headers: authHeaders,
+        cache: 'no-store',
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.success && json.transaction) {
+        const txData = json.transaction;
+        const role = (json.authenticated_role || txData.authenticated_role || null) as
+          | 'BUYER'
+          | 'VENDOR'
+          | 'ADMIN'
+          | null;
+        setTransaction(txData);
+        setAuthGate(null);
+        setAuthenticatedRole(role);
+        const derivedPerspective: 'buyer' | 'vendor' = role === 'VENDOR' ? 'vendor' : 'buyer';
+        setPerspective(derivedPerspective);
+        setDisputeRole(role === 'VENDOR' ? 'VENDOR' : 'BUYER');
+      } else {
+        setTransaction(null);
+        setAuthenticatedRole(null);
+        setAuthGate({
+          code: json.code || (res.status === 404 ? 'NOT_FOUND' : 'AUTH_REQUIRED'),
+          error: json.error || 'Authentication required to access order tracker.',
+          preview: json.transactionPreview || null,
+        });
       }
     } catch {
       // ignore network error cleanly
@@ -181,8 +226,95 @@ function EscrowTrackerContent() {
   };
 
   useEffect(() => {
-    loadTransaction(perspective);
-  }, [id, perspective]);
+    loadTransaction();
+  }, [id]);
+
+  const handleRequestBuyerSessionOtp = async () => {
+    if (!id) return;
+    setIsBuyerAuthBusy(true);
+    setBuyerSignInErr(null);
+    setBuyerSignInMsg(null);
+    try {
+      const res = await fetch('/api/escrow/buyer-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactionId: id, action: 'request_code' }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setBuyerSignInCodeSent(true);
+        setBuyerSignInMask(json.maskedPhone || null);
+        setBuyerSignInMsg(`Enter the 6-digit WhatsApp sign-in code sent to ${json.maskedPhone || 'your WhatsApp'}.`);
+      } else {
+        setBuyerSignInErr(json.error || 'Could not send WhatsApp sign-in code.');
+      }
+    } catch (err: any) {
+      setBuyerSignInErr(err?.message || 'Network error requesting WhatsApp code.');
+    } finally {
+      setIsBuyerAuthBusy(false);
+    }
+  };
+
+  const handleVerifyBuyerSessionOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || buyerSignInOtp.trim().length !== 6) return;
+    setIsBuyerAuthBusy(true);
+    setBuyerSignInErr(null);
+    try {
+      const res = await fetch('/api/escrow/buyer-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactionId: id,
+          action: 'verify_code',
+          code: buyerSignInOtp.trim(),
+        }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setBuyerSignInCodeSent(false);
+        setBuyerSignInOtp('');
+        setBuyerSignInMsg(null);
+        await loadTransaction();
+      } else {
+        setBuyerSignInErr(json.error || 'Incorrect verification code.');
+      }
+    } catch (err: any) {
+      setBuyerSignInErr(err?.message || 'Network error verifying code.');
+    } finally {
+      setIsBuyerAuthBusy(false);
+    }
+  };
+
+  const handleVendorOrderSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setVendorLoginErr(null);
+    setIsVendorSigningIn(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: vendorLoginEmail.trim(),
+        password: vendorLoginPassword,
+      });
+      if (error) {
+        setVendorLoginErr(error.message);
+      } else {
+        setVendorLoginPassword('');
+        await loadTransaction();
+      }
+    } catch (err: any) {
+      setVendorLoginErr(err?.message || 'Vendor sign-in failed.');
+    } finally {
+      setIsVendorSigningIn(false);
+    }
+  };
+
+  const handleSwitchOrderSession = async () => {
+    await fetch('/api/escrow/buyer-session', { method: 'DELETE' }).catch(() => {});
+    await supabase.auth.signOut().catch(() => {});
+    setTransaction(null);
+    setAuthenticatedRole(null);
+    await loadTransaction();
+  };
 
   useEffect(() => {
     if (isNewPayment && transaction?.status === 'FUNDS_LOCKED') {
@@ -211,9 +343,10 @@ function EscrowTrackerContent() {
     setResendOtpInput('');
     setIsSendingResendOtp(true);
     try {
+      const authHeaders = await getOrderAuthHeaders();
       const res = await fetch('/api/escrow/reissue-code', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ transactionId: transaction.id, action: 'send_otp' }),
       });
       const json = await res.json();
@@ -244,9 +377,10 @@ function EscrowTrackerContent() {
     setIsVerifyingResendOtp(true);
     setResendError(null);
     try {
+      const authHeaders = await getOrderAuthHeaders();
       const res = await fetch('/api/escrow/reissue-code', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           transactionId: transaction.id,
           action: 'verify_and_reissue',
@@ -274,7 +408,7 @@ function EscrowTrackerContent() {
         );
         setResendOtpSent(false);
         setResendOtpInput('');
-        await loadTransaction(perspective);
+        await loadTransaction();
       } else {
         setResendError(json.error || 'Failed to verify one-time code.');
       }
@@ -297,9 +431,10 @@ function EscrowTrackerContent() {
         proofFilePayload = await fileToBase64Payload(dispatchProofFile);
       }
 
+      const authHeaders = await getOrderAuthHeaders();
       const res = await fetch('/api/escrow/dispatch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           transactionId: transaction.id,
           carrierName: carrierName.trim(),
@@ -312,7 +447,7 @@ function EscrowTrackerContent() {
       const json = await res.json();
       if (json.success && json.transaction) {
         setDispatchProofFile(null);
-        await loadTransaction('vendor');
+        await loadTransaction();
       } else {
         setDispatchError(json.error || 'Failed to mark order dispatched.');
       }
@@ -330,18 +465,22 @@ function EscrowTrackerContent() {
     setIsUploadingHandover(true);
     setHandoverNotice(null);
     try {
+      const authHeaders = await getOrderAuthHeaders();
       const fd = new FormData();
       fd.append('transactionId', transaction.id);
-      fd.append('uploadedByRole', 'VENDOR');
       fd.append('evidenceCategory', 'DELIVERY_HANDOVER_PROOF');
       fd.append('description', 'Delivery rider handover proof / signed waybill');
       fd.append('file', handoverFile);
-      const res = await fetch('/api/escrow/evidence/upload', { method: 'POST', body: fd });
+      const res = await fetch('/api/escrow/evidence/upload', {
+        method: 'POST',
+        headers: authHeaders,
+        body: fd,
+      });
       const json = await res.json();
       if (json.success) {
         setHandoverNotice('Handover proof uploaded privately.');
         setHandoverFile(null);
-        await loadTransaction(perspective);
+        await loadTransaction();
       } else {
         alert(json.error || 'Failed to upload handover proof.');
       }
@@ -376,9 +515,10 @@ function EscrowTrackerContent() {
 
     setIsVerifying(true);
     try {
+      const authHeaders = await getOrderAuthHeaders();
       const res = await fetch('/api/escrow/release', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           transactionId: transaction.id,
           releaseCode: cleanInput,
@@ -432,9 +572,10 @@ function EscrowTrackerContent() {
     setIsSendingOtp(true);
     setDisputeError(null);
     try {
+      const authHeaders = await getOrderAuthHeaders();
       const res = await fetch('/api/escrow/dispute/send-otp', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ transactionId: transaction.id }),
       });
 
@@ -460,14 +601,12 @@ function EscrowTrackerContent() {
     e.preventDefault();
     if (!transaction || !disputeReason.trim()) return;
 
-    const useVerifiedWa = Boolean(disputeRole === 'BUYER' && transaction.buyer_phone_verified && !otpSent);
-
-    if (disputeRole === 'BUYER' && !useVerifiedWa && !otpSent) {
+    if (disputeRole === 'BUYER' && !otpSent) {
       await handleSendDisputeOtp();
       return;
     }
 
-    if (disputeRole === 'BUYER' && !useVerifiedWa && disputeOtp.trim().length !== 6) {
+    if (disputeRole === 'BUYER' && disputeOtp.trim().length !== 6) {
       setDisputeError('Please enter the 6-digit verification code sent to your phone.');
       return;
     }
@@ -475,17 +614,16 @@ function EscrowTrackerContent() {
     setIsSubmittingDispute(true);
     setDisputeError(null);
     try {
+      const authHeaders = await getOrderAuthHeaders();
       const evidenceFiles = disputeFile ? [await fileToBase64Payload(disputeFile)] : [];
       const res = await fetch('/api/escrow/dispute', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           transactionId: transaction.id,
           disputeReason: disputeReason.trim(),
           scenarioId: selectedScenarioId,
-          raisedByRole: disputeRole,
-          useVerifiedWhatsapp: useVerifiedWa,
-          otp: useVerifiedWa ? undefined : disputeOtp.trim(),
+          otp: disputeRole === 'BUYER' ? disputeOtp.trim() : undefined,
           evidenceFiles,
         }),
       });
@@ -496,7 +634,7 @@ function EscrowTrackerContent() {
         setOtpSent(false);
         setDisputeOtp('');
         setDisputeFile(null);
-        await loadTransaction(perspective);
+        await loadTransaction();
       } else {
         setDisputeError(json.error || 'Dispute submission failed.');
         if (json.requiresOtpRequest) {
@@ -518,21 +656,25 @@ function EscrowTrackerContent() {
     setEvidenceError(null);
     setEvidenceNotice(null);
     try {
+      const authHeaders = await getOrderAuthHeaders();
       const fd = new FormData();
       fd.append('transactionId', transaction.id);
-      fd.append('uploadedByRole', perspective.toUpperCase());
       fd.append('evidenceCategory', 'DISPUTE_EVIDENCE');
       if (transaction.dispute_scenario) fd.append('scenarioId', String(transaction.dispute_scenario));
       if (extraEvidenceNote.trim()) fd.append('description', extraEvidenceNote.trim());
       fd.append('file', extraEvidenceFile);
 
-      const res = await fetch('/api/escrow/evidence/upload', { method: 'POST', body: fd });
+      const res = await fetch('/api/escrow/evidence/upload', {
+        method: 'POST',
+        headers: authHeaders,
+        body: fd,
+      });
       const json = await res.json();
       if (json.success) {
         setEvidenceNotice('Evidence uploaded securely to private storage.');
         setExtraEvidenceFile(null);
         setExtraEvidenceNote('');
-        await loadTransaction(perspective);
+        await loadTransaction();
       } else {
         setEvidenceError(json.error || 'Upload rejected.');
       }
@@ -546,8 +688,10 @@ function EscrowTrackerContent() {
   const handleOpenOwnEvidenceFile = async (fileId: string) => {
     if (!transaction) return;
     try {
+      const authHeaders = await getOrderAuthHeaders();
       const res = await fetch(
-        `/api/escrow/evidence/signed-url?transactionId=${encodeURIComponent(transaction.id)}&fileId=${encodeURIComponent(fileId)}&viewerRole=${perspective.toUpperCase()}`
+        `/api/escrow/evidence/signed-url?transactionId=${encodeURIComponent(transaction.id)}&fileId=${encodeURIComponent(fileId)}`,
+        { headers: authHeaders }
       );
       const json = await res.json();
       if (json.success && json.signedUrl) {
@@ -566,12 +710,12 @@ function EscrowTrackerContent() {
     setIsSendingResponse(true);
     setResponseNotice(null);
     try {
+      const authHeaders = await getOrderAuthHeaders();
       const res = await fetch('/api/escrow/dispute/respond', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           transactionId: transaction.id,
-          responderRole: perspective.toUpperCase(),
           responseText: responseText.trim(),
         }),
       });
@@ -579,7 +723,7 @@ function EscrowTrackerContent() {
       if (json.success) {
         setResponseNotice('Response submitted and logged for Trust & Safety review.');
         setResponseText('');
-        await loadTransaction(perspective);
+        await loadTransaction();
       } else {
         alert(json.error || 'Failed to record dispute response.');
       }
@@ -596,9 +740,10 @@ function EscrowTrackerContent() {
     setRefundErrorMsg(null);
     setRefundStatusMsg(null);
     try {
+      const authHeaders = await getOrderAuthHeaders();
       const res = await fetch('/api/escrow/refund-destination', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ transactionId: transaction.id, action: 'send_otp' }),
       });
       const json = await res.json();
@@ -624,9 +769,10 @@ function EscrowTrackerContent() {
     setIsSubmittingRefund(true);
     setRefundErrorMsg(null);
     try {
+      const authHeaders = await getOrderAuthHeaders();
       const res = await fetch('/api/escrow/refund-destination', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           transactionId: transaction.id,
           action: 'verify_and_save',
@@ -642,7 +788,7 @@ function EscrowTrackerContent() {
         );
         setRefundOtpSent(false);
         setRefundOtpInput('');
-        await loadTransaction('buyer');
+        await loadTransaction();
       } else {
         setRefundErrorMsg(json.error || 'Failed to verify refund bank account.');
       }
@@ -658,6 +804,160 @@ function EscrowTrackerContent() {
       <div className="min-h-[70vh] flex flex-col items-center justify-center p-4">
         <div className="w-8 h-8 border-3 border-accent border-t-transparent rounded-full animate-spin mb-3" />
         <p className="text-sm font-medium text-muted">Loading escrow tracker...</p>
+      </div>
+    );
+  }
+
+  if (authGate && !transaction && authGate.code !== 'NOT_FOUND') {
+    const preview = authGate.preview || {};
+    const buyerPhoneVerified = Boolean(preview.buyer_phone_verified);
+    return (
+      <div className="max-w-lg mx-auto my-10 px-4 w-full">
+        <div className="bg-surface rounded-3xl border border-border p-6 sm:p-8 shadow-card space-y-6">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-accent/15 text-accent border border-accent/25 mb-2">
+                <Lock className="w-3 h-3" />
+                <span>Protected Order Access</span>
+              </span>
+              <h1 className="text-xl font-heading font-semibold text-main">
+                {preview.item_name ? `Verify identity for ${preview.item_name}` : 'Verify Your Order Session'}
+              </h1>
+              <p className="text-xs text-muted mt-1">
+                {preview.vendor_handle ? `Seller: ${preview.vendor_handle} • ` : ''}
+                {authGate.error}
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-site p-1 rounded-2xl grid grid-cols-2 border border-border">
+            <button
+              type="button"
+              onClick={() => setAuthTab('buyer')}
+              className={`py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                authTab === 'buyer' ? 'bg-surface text-main shadow-xs border border-border' : 'text-muted hover:text-main'
+              }`}
+            >
+              <User className="w-3.5 h-3.5 text-accent" />
+              <span>Buyer (WhatsApp OTP)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAuthTab('vendor')}
+              className={`py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                authTab === 'vendor' ? 'bg-surface text-main shadow-xs border border-border' : 'text-muted hover:text-main'
+              }`}
+            >
+              <Store className="w-3.5 h-3.5 text-accent" />
+              <span>Vendor Account</span>
+            </button>
+          </div>
+
+          {authTab === 'buyer' ? (
+            <div className="space-y-4">
+              {!buyerPhoneVerified ? (
+                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-900 dark:text-amber-200 space-y-2">
+                  <p className="font-bold">WhatsApp confirmation required first</p>
+                  <p>
+                    Buyer sessions can only be created after you confirm your WhatsApp number on the checkout message. Check your checkout page or tap &ldquo;Confirm Order&rdquo; on Relyvora&apos;s WhatsApp message.
+                  </p>
+                  <Link
+                    href={`/pay/${encodeURIComponent(id)}`}
+                    className="inline-flex items-center gap-1 font-bold text-accent hover:underline"
+                  >
+                    Return to Checkout Page →
+                  </Link>
+                </div>
+              ) : (
+                <>
+                  {buyerSignInErr && (
+                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-semibold text-rose-700 dark:text-rose-300">
+                      {buyerSignInErr}
+                    </div>
+                  )}
+                  {buyerSignInMsg && (
+                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs font-semibold text-emerald-800 dark:text-emerald-200">
+                      {buyerSignInMsg}
+                    </div>
+                  )}
+                  <div className="p-3 rounded-2xl bg-site border border-border text-xs text-muted">
+                    Verified Buyer WhatsApp: <strong className="text-main">{buyerSignInMask || preview.buyer_phone_masked || '******'}</strong>
+                  </div>
+                  {!buyerSignInCodeSent ? (
+                    <button
+                      type="button"
+                      onClick={handleRequestBuyerSessionOtp}
+                      disabled={isBuyerAuthBusy}
+                      className="w-full py-3 rounded-xl bg-accent text-[#071229] font-bold text-xs cursor-pointer disabled:opacity-50"
+                    >
+                      {isBuyerAuthBusy ? 'Sending WhatsApp Code...' : 'Send 6-Digit WhatsApp Sign-In Code'}
+                    </button>
+                  ) : (
+                    <form onSubmit={handleVerifyBuyerSessionOtp} className="space-y-3">
+                      <input
+                        type="text"
+                        maxLength={6}
+                        required
+                        placeholder="000000"
+                        value={buyerSignInOtp}
+                        onChange={(e) => setBuyerSignInOtp(e.target.value.replace(/\D/g, ''))}
+                        className="w-full bg-site border border-border rounded-xl p-3 text-center text-xl font-heading tabular-nums font-bold tracking-widest text-main"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleRequestBuyerSessionOtp}
+                          disabled={isBuyerAuthBusy}
+                          className="px-3 py-2.5 rounded-xl border border-border text-xs font-semibold text-muted hover:text-main cursor-pointer"
+                        >
+                          Resend
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isBuyerAuthBusy || buyerSignInOtp.trim().length !== 6}
+                          className="flex-1 py-2.5 rounded-xl bg-accent text-[#071229] font-bold text-xs cursor-pointer disabled:opacity-50"
+                        >
+                          {isBuyerAuthBusy ? 'Verifying...' : 'Verify & Open Order'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </>
+              )}
+            </div>
+          ) : (
+            <form onSubmit={handleVendorOrderSignIn} className="space-y-3">
+              {vendorLoginErr && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-semibold text-rose-700 dark:text-rose-300">
+                  {vendorLoginErr}
+                </div>
+              )}
+              <input
+                type="email"
+                required
+                placeholder="Vendor account email"
+                value={vendorLoginEmail}
+                onChange={(e) => setVendorLoginEmail(e.target.value)}
+                className="w-full bg-site border border-border rounded-xl px-3 py-2.5 text-xs text-main"
+              />
+              <input
+                type="password"
+                required
+                placeholder="Password"
+                value={vendorLoginPassword}
+                onChange={(e) => setVendorLoginPassword(e.target.value)}
+                className="w-full bg-site border border-border rounded-xl px-3 py-2.5 text-xs text-main"
+              />
+              <button
+                type="submit"
+                disabled={isVendorSigningIn}
+                className="w-full py-2.5 rounded-xl bg-accent text-[#071229] font-bold text-xs cursor-pointer disabled:opacity-50"
+              >
+                {isVendorSigningIn ? 'Signing in...' : 'Sign In as Order Vendor'}
+              </button>
+            </form>
+          )}
+        </div>
       </div>
     );
   }
@@ -697,30 +997,27 @@ function EscrowTrackerContent() {
           <span>Vendor Dashboard</span>
         </Link>
 
-        <div className="bg-site p-1 rounded-2xl flex items-center self-start sm:self-auto border border-border shadow-xs">
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <div className="px-3.5 py-2 rounded-2xl text-xs font-bold flex items-center gap-1.5 bg-surface text-main border border-border shadow-xs">
+            {perspective === 'vendor' ? (
+              <Store className="w-3.5 h-3.5 text-accent" />
+            ) : (
+              <User className="w-3.5 h-3.5 text-accent" />
+            )}
+            <span>
+              {authenticatedRole === 'ADMIN'
+                ? 'Trust & Safety Admin Session'
+                : perspective === 'vendor'
+                  ? 'Authenticated Owning Vendor'
+                  : 'Verified Buyer Session'}
+            </span>
+          </div>
           <button
             type="button"
-            onClick={() => setPerspective('buyer')}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-              perspective === 'buyer'
-                ? 'bg-surface text-main shadow-xs border border-border'
-                : 'text-muted hover:text-main'
-            }`}
+            onClick={handleSwitchOrderSession}
+            className="px-3 py-2 rounded-xl text-xs font-semibold text-muted hover:text-main bg-site border border-border cursor-pointer"
           >
-            <User className="w-3.5 h-3.5 text-accent" />
-            <span>Buyer Perspective</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setPerspective('vendor')}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-              perspective === 'vendor'
-                ? 'bg-surface text-main shadow-xs border border-border'
-                : 'text-muted hover:text-main'
-            }`}
-          >
-            <Store className="w-3.5 h-3.5 text-accent" />
-            <span>Vendor Perspective</span>
+            Sign Out
           </button>
         </div>
       </div>
@@ -729,11 +1026,11 @@ function EscrowTrackerContent() {
         <div className="flex items-center gap-2">
           <Eye className="w-4 h-4 text-accent" />
           <span>
-            Viewing as: <strong>{perspective === 'buyer' ? 'Customer / Buyer' : 'Seller / Vendor'}</strong>
+            Authenticated role: <strong>{authenticatedRole || (perspective === 'vendor' ? 'VENDOR' : 'BUYER')}</strong>
           </span>
         </div>
         <button
-          onClick={() => loadTransaction(perspective)}
+          onClick={loadTransaction}
           className="p-1 hover:bg-accent/15 rounded-lg transition-colors cursor-pointer"
           title="Refresh transaction state"
         >
@@ -1657,13 +1954,13 @@ function EscrowTrackerContent() {
                   disabled={isSendingOtp || isSubmittingDispute || !disputeReason.trim()}
                   className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs cursor-pointer disabled:opacity-50"
                 >
-                  {isSendingOtp
-                    ? 'Sending Code...'
-                    : isSubmittingDispute
-                      ? 'Submitting Dispute...'
-                      : disputeRole === 'BUYER' && !transaction.buyer_phone_verified && !otpSent
-                        ? 'Send Verification Code'
-                        : 'Submit & Freeze Escrow'}
+                    {isSendingOtp
+                      ? 'Sending Code...'
+                      : isSubmittingDispute
+                        ? 'Submitting Dispute...'
+                        : disputeRole === 'BUYER' && !otpSent
+                          ? 'Send Verification Code'
+                          : 'Submit & Freeze Escrow'}
                 </button>
               </div>
             </form>

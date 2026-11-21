@@ -13,9 +13,9 @@
 
 import crypto from 'crypto';
 import { getServiceSupabase } from '@/lib/supabaseServer';
-import { isSchemaMissingError } from '@/lib/whatsapp';
-import { getHotSettings } from '@/lib/safetyLimits';
-import { logInfo, logWarn } from '@/lib/logger';
+import { getHotSettings, requireHotSetting } from '@/lib/safetyLimits';
+import { logInfo } from '@/lib/logger';
+import { sendSystemAlert } from '@/lib/alerts';
 
 export const EVIDENCE_BUCKET_NAME = 'relyvora-evidence';
 
@@ -26,6 +26,30 @@ export const ALLOWED_EVIDENCE_MIME_EXT: Record<string, string> = {
   'video/mp4': 'mp4',
   'application/pdf': 'pdf',
 };
+
+const BLOCKED_FILENAME_EXTENSIONS = [
+  '.exe',
+  '.dll',
+  '.bat',
+  '.cmd',
+  '.ps1',
+  '.sh',
+  '.js',
+  '.mjs',
+  '.cjs',
+  '.php',
+  '.py',
+  '.rb',
+  '.pl',
+  '.jar',
+  '.com',
+  '.msi',
+  '.scr',
+  '.vbs',
+  '.html',
+  '.htm',
+  '.svg',
+];
 
 export type EvidenceUploaderRole = 'BUYER' | 'VENDOR' | 'ADMIN';
 export type EvidenceCategory = 'DISPUTE_EVIDENCE' | 'DISPATCH_PROOF' | 'DELIVERY_HANDOVER_PROOF';
@@ -48,44 +72,102 @@ export interface StoredEvidenceRecord {
   created_at: string;
 }
 
-interface GlobalEvidenceFallbackStore {
-  files: Map<string, StoredEvidenceRecord[]>; // txId -> records
-  blobs: Map<string, { mimeType: string; size: number }>; // path -> metadata (never logs raw buffer)
-}
-
-const gEv = globalThis as unknown as { __relyvoraEvidenceFallback?: GlobalEvidenceFallbackStore };
-
-function getFallbackStore(): GlobalEvidenceFallbackStore {
-  if (!gEv.__relyvoraEvidenceFallback) {
-    gEv.__relyvoraEvidenceFallback = { files: new Map(), blobs: new Map() };
-  }
-  return gEv.__relyvoraEvidenceFallback;
-}
-
-export function resetEvidenceFallbackStoreForTests() {
-  const s = getFallbackStore();
-  s.files.clear();
-  s.blobs.clear();
-}
-
 export async function getRetentionAndStorageConfig(_supabaseClient?: ReturnType<typeof getServiceSupabase>) {
   const settings = await getHotSettings();
-  const raw = (settings.retention_and_storage_config || {}) as Record<string, unknown>;
+  const raw = await requireHotSetting<Record<string, unknown>>(settings, 'retention_and_storage_config');
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('Invalid system_settings.retention_and_storage_config configuration.');
+  }
   return {
-    evidenceRetentionDays: Math.max(30, Number(raw.evidence_retention_days ?? 180)),
-    ipHashRetentionDays: Math.max(7, Number(raw.ip_hash_retention_days ?? 90)),
-    whatsappLogRetentionDays: Math.max(30, Number(raw.whatsapp_message_log_retention_days ?? 180)),
-    maxImageBytes: Math.max(1024 * 1024, Number(raw.max_image_bytes ?? 10 * 1024 * 1024)),
-    maxVideoBytes: Math.max(1024 * 1024, Number(raw.max_video_bytes ?? 25 * 1024 * 1024)),
-    signedUrlTtlSeconds: Math.min(900, Math.max(60, Number(raw.signed_url_ttl_seconds ?? 300))),
+    evidenceRetentionDays: Math.max(30, Number(raw.evidence_retention_days)),
+    ipHashRetentionDays: Math.max(7, Number(raw.ip_hash_retention_days)),
+    whatsappLogRetentionDays: Math.max(30, Number(raw.whatsapp_message_log_retention_days)),
+    maxImageBytes: Math.max(1024 * 1024, Number(raw.max_image_bytes)),
+    maxVideoBytes: Math.max(1024 * 1024, Number(raw.max_video_bytes)),
+    signedUrlTtlSeconds: Math.min(900, Math.max(60, Number(raw.signed_url_ttl_seconds))),
   };
+}
+
+function hasDangerousSignature(buf: Buffer): boolean {
+  if (buf.byteLength >= 2 && buf[0] === 0x4d && buf[1] === 0x5a) return true; // PE / MZ (.exe/.dll)
+  if (buf.byteLength >= 4 && buf[0] === 0x7f && buf[1] === 0x45 && buf[2] === 0x4c && buf[3] === 0x46) return true; // ELF
+  if (
+    buf.byteLength >= 4 &&
+    ((buf[0] === 0xfe && buf[1] === 0xed && buf[2] === 0xfa && (buf[3] === 0xce || buf[3] === 0xcf)) ||
+      (buf[0] === 0xca && buf[1] === 0xfe && buf[2] === 0xba && buf[3] === 0xbe))
+  ) {
+    return true; // Mach-O / Java class
+  }
+  if (buf.byteLength >= 4 && buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03 && buf[3] === 0x04) return true; // ZIP/JAR
+  if (buf.byteLength >= 2 && buf[0] === 0x23 && buf[1] === 0x21) return true; // Shebang (#!)
+  const headText = buf.subarray(0, 64).toString('utf8').trimStart().toLowerCase();
+  if (
+    headText.startsWith('<!doctype') ||
+    headText.startsWith('<html') ||
+    headText.startsWith('<svg') ||
+    headText.startsWith('<script') ||
+    headText.startsWith('<?php')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function matchesExpectedMagicBytes(mime: string, buf: Buffer): boolean {
+  if (mime === 'image/jpeg') {
+    return buf.byteLength >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+  }
+  if (mime === 'image/png') {
+    const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    return buf.byteLength >= 8 && buf.subarray(0, 8).equals(sig);
+  }
+  if (mime === 'image/webp') {
+    return (
+      buf.byteLength >= 12 &&
+      buf.subarray(0, 4).toString('ascii') === 'RIFF' &&
+      buf.subarray(8, 12).toString('ascii') === 'WEBP'
+    );
+  }
+  if (mime === 'application/pdf') {
+    return buf.byteLength >= 5 && buf.subarray(0, 5).toString('ascii') === '%PDF-';
+  }
+  if (mime === 'video/mp4') {
+    return buf.byteLength >= 8 && buf.subarray(4, 8).toString('ascii') === 'ftyp';
+  }
+  return false;
 }
 
 export async function validateEvidenceFileInput(params: {
   mimeType: string;
   fileSizeBytes: number;
+  fileBuffer?: Buffer | Uint8Array;
+  originalFilename?: string | null;
   supabaseClient?: ReturnType<typeof getServiceSupabase>;
 }): Promise<{ valid: boolean; ext?: string; error?: string }> {
+  if (params.originalFilename !== undefined && params.originalFilename !== null) {
+    const rawName = String(params.originalFilename);
+    if (
+      rawName.includes('\0') ||
+      rawName.includes('..') ||
+      rawName.includes('/') ||
+      rawName.includes('\\')
+    ) {
+      return {
+        valid: false,
+        error: 'Invalid filename: path segments or traversal sequences are not permitted.',
+      };
+    }
+    const lowerName = rawName.trim().toLowerCase();
+    for (const blockedExt of BLOCKED_FILENAME_EXTENSIONS) {
+      if (lowerName.endsWith(blockedExt)) {
+        return {
+          valid: false,
+          error: `Unsupported or executable filename extension '${blockedExt}'.`,
+        };
+      }
+    }
+  }
+
   const mime = String(params.mimeType || '').trim().toLowerCase();
   const ext = ALLOWED_EVIDENCE_MIME_EXT[mime];
   if (!ext) {
@@ -107,6 +189,22 @@ export async function validateEvidenceFileInput(params: {
       valid: false,
       error: `File size (${(size / (1024 * 1024)).toFixed(2)} MB) exceeds maximum allowed (${(limit / (1024 * 1024)).toFixed(0)} MB) for ${mime}.`,
     };
+  }
+
+  if (params.fileBuffer) {
+    const buf = Buffer.isBuffer(params.fileBuffer) ? params.fileBuffer : Buffer.from(params.fileBuffer);
+    if (hasDangerousSignature(buf)) {
+      return {
+        valid: false,
+        error: 'Executable or script payload detected in file header. Upload rejected.',
+      };
+    }
+    if (!matchesExpectedMagicBytes(mime, buf)) {
+      return {
+        valid: false,
+        error: `File signature does not match declared MIME type '${mime}'.`,
+      };
+    }
   }
 
   return { valid: true, ext };
@@ -134,6 +232,8 @@ export async function uploadOrderEvidenceFile(params: {
   const check = await validateEvidenceFileInput({
     mimeType: params.mimeType,
     fileSizeBytes: buf.byteLength,
+    fileBuffer: buf,
+    originalFilename: params.originalFilename,
     supabaseClient: supabase,
   });
   if (!check.valid || !check.ext) {
@@ -151,50 +251,26 @@ export async function uploadOrderEvidenceFile(params: {
     ? pathSafeBasename(params.originalFilename).slice(0, 120)
     : `evidence.${check.ext}`;
 
-  let uploadedToStorage = false;
-  try {
-    const { error: upErr } = await supabase.storage
-      .from(EVIDENCE_BUCKET_NAME)
-      .upload(objectPath, buf, {
-        contentType: params.mimeType.toLowerCase(),
-        upsert: false,
-      });
-
-    if (!upErr) {
-      uploadedToStorage = true;
-    } else if (/bucket/i.test(upErr.message || '') && /not found/i.test(upErr.message || '')) {
-      await supabase.storage
-        .createBucket(EVIDENCE_BUCKET_NAME, {
-          public: false,
-          fileSizeLimit: cfg.maxVideoBytes,
-          allowedMimeTypes: Object.keys(ALLOWED_EVIDENCE_MIME_EXT),
-        })
-        .catch(() => {});
-      const retry = await supabase.storage
-        .from(EVIDENCE_BUCKET_NAME)
-        .upload(objectPath, buf, {
-          contentType: params.mimeType.toLowerCase(),
-          upsert: false,
-        });
-      uploadedToStorage = !retry.error;
-    }
-  } catch {
-    uploadedToStorage = false;
-  }
-
-  if (!uploadedToStorage) {
-    logWarn('EVIDENCE_STORAGE_BUCKET_FALLBACK', {
-      transactionId: params.transactionId,
-      objectPath,
-      mimeType: params.mimeType,
-      bytes: buf.byteLength,
+  const { error: upErr } = await supabase.storage
+    .from(EVIDENCE_BUCKET_NAME)
+    .upload(objectPath, buf, {
+      contentType: params.mimeType.toLowerCase(),
+      upsert: false,
     });
-  }
 
-  getFallbackStore().blobs.set(objectPath, {
-    mimeType: params.mimeType.toLowerCase(),
-    size: buf.byteLength,
-  });
+  if (upErr) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Private Evidence Storage Upload Failed (Fail Closed)',
+      transactionId: params.transactionId,
+      details: { bucket: EVIDENCE_BUCKET_NAME, error: upErr.message },
+    }).catch(() => {});
+    return {
+      success: false,
+      error: `Private evidence storage upload failed: ${upErr.message}`,
+    };
+  }
 
   const record: StoredEvidenceRecord = {
     id: objectId,
@@ -214,45 +290,33 @@ export async function uploadOrderEvidenceFile(params: {
     created_at: new Date().toISOString(),
   };
 
-  let persisted = false;
-  try {
-    const { data, error } = await supabase
-      .from('order_evidence_files')
-      .insert(record)
-      .select('*')
-      .single();
-    if (!error && data) {
-      persisted = true;
-      logInfo('EVIDENCE_UPLOADED', {
-        transactionId: params.transactionId,
-        fileId: data.id,
-        category: params.evidenceCategory,
-        role: params.uploadedByRole,
-        bytes: buf.byteLength,
-      });
-      return { success: true, record: data as StoredEvidenceRecord };
-    }
-    if (error && !isSchemaMissingError(error)) {
-      logWarn('EVIDENCE_METADATA_INSERT_FALLBACK', { transactionId: params.transactionId, error: error.message });
-    }
-  } catch {
-    // Fallback below
-  }
+  const { data, error: metaErr } = await supabase
+    .from('order_evidence_files')
+    .insert(record)
+    .select('*')
+    .single();
 
-  if (!persisted) {
-    const list = getFallbackStore().files.get(params.transactionId) || [];
-    list.unshift(record);
-    getFallbackStore().files.set(params.transactionId, list);
+  if (metaErr || !data) {
+    await supabase.storage.from(EVIDENCE_BUCKET_NAME).remove([objectPath]).catch(() => {});
+    const errMsg = metaErr?.message || 'Unknown error inserting order_evidence_files row';
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Evidence Metadata Insert Failed (Fail Closed)',
+      transactionId: params.transactionId,
+      details: { error: errMsg },
+    }).catch(() => {});
+    return { success: false, error: `Failed saving evidence metadata: ${errMsg}` };
   }
 
   logInfo('EVIDENCE_UPLOADED', {
     transactionId: params.transactionId,
-    fileId: record.id,
+    fileId: data.id,
     category: params.evidenceCategory,
     role: params.uploadedByRole,
     bytes: buf.byteLength,
   });
-  return { success: true, record };
+  return { success: true, record: data as StoredEvidenceRecord };
 }
 
 export async function listOrderEvidenceRecords(
@@ -260,24 +324,25 @@ export async function listOrderEvidenceRecords(
   supabaseClient?: ReturnType<typeof getServiceSupabase>
 ): Promise<StoredEvidenceRecord[]> {
   const supabase = supabaseClient || getServiceSupabase();
-  try {
-    const { data, error } = await supabase
-      .from('order_evidence_files')
-      .select('*')
-      .eq('transaction_id', transactionId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false });
+  const { data, error } = await supabase
+    .from('order_evidence_files')
+    .select('*')
+    .eq('transaction_id', transactionId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false });
 
-    if (!error && Array.isArray(data)) {
-      const fb = getFallbackStore().files.get(transactionId) || [];
-      const seen = new Set(data.map((r: any) => r.id));
-      return [...(data as StoredEvidenceRecord[]), ...fb.filter((f) => !seen.has(f.id) && !f.deleted_at)];
-    }
-  } catch {
-    // fallback
+  if (error) {
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Evidence Records Query Failed (Fail Closed)',
+      transactionId,
+      details: { error: error.message },
+    }).catch(() => {});
+    throw new Error(`Failed querying order_evidence_files: ${error.message}`);
   }
 
-  return (getFallbackStore().files.get(transactionId) || []).filter((f) => !f.deleted_at);
+  return (data || []) as StoredEvidenceRecord[];
 }
 
 export async function getAuthorizedEvidenceSummary(params: {
@@ -342,31 +407,29 @@ export async function createEvidenceSignedUrl(params: {
   }
 
   const cfg = await getRetentionAndStorageConfig(supabase);
-  try {
-    const { data, error } = await supabase.storage
-      .from(target.storage_bucket || EVIDENCE_BUCKET_NAME)
-      .createSignedUrl(target.storage_object_path, cfg.signedUrlTtlSeconds);
+  const { data, error } = await supabase.storage
+    .from(target.storage_bucket || EVIDENCE_BUCKET_NAME)
+    .createSignedUrl(target.storage_object_path, cfg.signedUrlTtlSeconds);
 
-    if (!error && data?.signedUrl) {
-      return {
-        success: true,
-        signedUrl: data.signedUrl,
-        expiresInSeconds: cfg.signedUrlTtlSeconds,
-      };
-    }
-  } catch {
-    // fallback in non-storage tests
+  if (error || !data?.signedUrl) {
+    const errMsg = error?.message || 'Storage createSignedUrl returned no URL';
+    await sendSystemAlert({
+      type: 'SYSTEM_FAILURE',
+      severity: 'CRITICAL',
+      title: 'Evidence Signed URL Generation Failed (Fail Closed)',
+      transactionId: params.transactionId,
+      details: { fileId: target.id, error: errMsg },
+    }).catch(() => {});
+    return {
+      success: false,
+      statusCode: 500,
+      error: `Failed to generate signed URL: ${errMsg}`,
+    };
   }
 
-  const exp = Math.floor(Date.now() / 1000) + cfg.signedUrlTtlSeconds;
-  const sig = crypto
-    .createHmac('sha256', process.env.RELEASE_CODE_PEPPER || 'relyvora_signed_url_fallback')
-    .update(`${target.id}:${exp}`)
-    .digest('hex')
-    .slice(0, 24);
   return {
     success: true,
-    signedUrl: `/api/escrow/evidence/signed-url?transactionId=${target.transaction_id}&fileId=${target.id}&token=${exp}.${sig}`,
+    signedUrl: data.signedUrl,
     expiresInSeconds: cfg.signedUrlTtlSeconds,
   };
 }

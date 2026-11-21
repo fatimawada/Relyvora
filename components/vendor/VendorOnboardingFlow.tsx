@@ -26,26 +26,9 @@ import {
 } from 'lucide-react';
 import { AnchorBrandText } from '@/components/common/AnchorBrandText';
 import { supabase } from '@/lib/supabase';
+import { NIGERIAN_BANKS } from '@/lib/nigerianBanks';
 
-// List of major Nigerian commercial banks & digital BaaS institutions
-export const NIGERIAN_BANKS = [
-  { code: '000014', name: 'Access Bank' },
-  { code: '000013', name: 'Guaranty Trust Bank (GTBank)' },
-  { code: '000015', name: 'Zenith Bank' },
-  { code: '000016', name: 'First Bank of Nigeria' },
-  { code: '000004', name: 'United Bank for Africa (UBA)' },
-  { code: '090405', name: 'Moniepoint Microfinance Bank' },
-  { code: '090426', name: 'OPay Digital Services' },
-  { code: '090339', name: 'PalmPay Limited' },
-  { code: '090267', name: 'Kuda Microfinance Bank' },
-  { code: '000023', name: 'Providus Bank' },
-  { code: '000012', name: 'Stanbic IBTC Bank' },
-  { code: '000003', name: 'First City Monument Bank (FCMB)' },
-  { code: '000001', name: 'Sterling Bank' },
-  { code: '000017', name: 'Wema Bank (ALAT)' },
-  { code: '000007', name: 'Fidelity Bank' },
-  { code: '000018', name: 'Union Bank of Nigeria' },
-];
+export { NIGERIAN_BANKS };
 
 // Nigerian phone validation regex: +234 followed by 10 digits, or 0 followed by 10 digits
 const nigerianPhoneRegex = /^(?:\+234|0)[789][01]\d{8}$/;
@@ -555,36 +538,31 @@ export function VendorOnboardingFlow() {
 
               {/* CAPTCHA / Human Verification Gate */}
               <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                <label className="flex items-center gap-2.5 text-xs font-semibold text-slate-800 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(captchaToken)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setCaptchaToken(`sandbox_captcha_${Date.now()}`);
-                        setServerError(null);
-                      } else {
-                        setCaptchaToken('');
-                      }
-                    }}
-                    className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <span>Verify human signup (CAPTCHA security check required)</span>
+                <label className="block text-xs font-semibold text-slate-800" htmlFor="captchaToken">
+                  Human Verification (CAPTCHA token required)
                 </label>
                 {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY ? (
                   <input
+                    id="captchaToken"
                     type="text"
                     name="captchaToken"
                     autoComplete="off"
                     autoCorrect="off"
                     autoCapitalize="none"
                     spellCheck={false}
-                    placeholder="Paste CAPTCHA challenge response token..."
+                    placeholder="Paste verified CAPTCHA challenge response token..."
                     value={captchaToken}
-                    onChange={(e) => setCaptchaToken(e.target.value)}
+                    onChange={(e) => {
+                      setCaptchaToken(e.target.value);
+                      setServerError(null);
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs text-slate-900"
                   />
-                ) : null}
+                ) : (
+                  <p className="text-xs text-rose-600">
+                    CAPTCHA site key is not configured on this deployment. Public signup is paused until Turnstile/hCaptcha is configured.
+                  </p>
+                )}
               </div>
 
               {/* Step 1 Action Button */}
