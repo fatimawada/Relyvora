@@ -218,7 +218,7 @@ export async function performAnchorNameEnquiry(params: {
         bankCode: params.bankCode,
         accountNumber: params.accountNumber,
         accountName: params.accountNameHint || 'Name Enquiry Verification',
-        verifyName: true,
+        verifyName: isLive,
       });
       const resolvedName =
         cp?.raw?.data?.attributes?.accountName || params.accountNameHint || null;

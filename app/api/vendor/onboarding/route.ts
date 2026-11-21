@@ -300,7 +300,7 @@ export async function POST(request: NextRequest) {
         const cleanIdNumber = String(idNumber).trim();
         const verifyRes = await verifyAnchorCustomer({
           customerId,
-          level: 'TIER_1',
+          level: 'TIER_2',
           bvn: idType === 'BVN' ? cleanIdNumber : undefined,
           nin: idType === 'NIN' ? cleanIdNumber : undefined,
           dateOfBirth: String(dateOfBirth).trim(),
@@ -329,7 +329,7 @@ export async function POST(request: NextRequest) {
         accountName: enquiry.resolvedAccountName,
         accountNumber: String(accountNumber).trim(),
         bankCode: String(bankCode).trim(),
-        verifyName: true,
+        verifyName: isLiveMode(),
       });
     } catch (anchorErr: any) {
       console.error('Anchor BaaS onboarding failed (fail closed):', anchorErr?.message || anchorErr);
