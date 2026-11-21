@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -128,11 +128,93 @@ export function VendorOnboardingFlow() {
   const {
     register: registerStep1,
     handleSubmit: handleSubmitStep1,
+    setValue: setValueStep1,
     formState: { errors: errorsStep1 },
   } = useForm<Step1FormData>({
     resolver: zodResolver(step1Schema),
     mode: 'onTouched',
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    async function hydrateConfirmedSession() {
+      try {
+        const searchParams =
+          typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+        const confirmedParam = searchParams?.get('confirmed') === '1';
+
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (cancelled) return;
+
+        const user = sessionData?.session?.user;
+        const confirmedEmail = user?.email?.trim().toLowerCase() || '';
+
+        let savedProfile: { storeName?: string; email?: string; phoneNumber?: string } | null = null;
+        if (typeof window !== 'undefined') {
+          try {
+            const raw = window.localStorage.getItem('relyvora_pending_onboarding_profile');
+            if (raw) {
+              savedProfile = JSON.parse(raw);
+            }
+          } catch {
+            savedProfile = null;
+          }
+        }
+
+        const metaStoreName =
+          (typeof user?.user_metadata?.store_name === 'string' && user.user_metadata.store_name.trim()) ||
+          savedProfile?.storeName?.trim() ||
+          '';
+        const metaPhone =
+          (typeof user?.user_metadata?.phone_number === 'string' && user.user_metadata.phone_number.trim()) ||
+          savedProfile?.phoneNumber?.trim() ||
+          '';
+
+        if (confirmedEmail) {
+          setValueStep1('email', confirmedEmail);
+          if (metaStoreName) setValueStep1('storeName', metaStoreName);
+          if (metaPhone) setValueStep1('phoneNumber', metaPhone);
+
+          if (metaStoreName && metaPhone) {
+            setStep1Data({
+              storeName: metaStoreName,
+              email: confirmedEmail,
+              phoneNumber: metaPhone,
+              password: '',
+              confirmPassword: '',
+            });
+            setCurrentStep(2);
+            setEmailConfirmationNotice(
+              `Email confirmed (${confirmedEmail}). Complete Step 2 below to verify your KYC and settlement bank account.`
+            );
+            return;
+          }
+
+          setStep1AuthMode('signin');
+          setEmailConfirmationNotice(
+            `Email confirmed (${confirmedEmail}). Enter your store name and WhatsApp phone number below to continue to Step 2 KYC.`
+          );
+          return;
+        }
+
+        if (confirmedParam) {
+          if (savedProfile?.email) setValueStep1('email', savedProfile.email);
+          if (savedProfile?.storeName) setValueStep1('storeName', savedProfile.storeName);
+          if (savedProfile?.phoneNumber) setValueStep1('phoneNumber', savedProfile.phoneNumber);
+          setStep1AuthMode('signin');
+          setEmailConfirmationNotice(
+            'Your email address has been confirmed. Sign in below to continue to Step 2 KYC.'
+          );
+        }
+      } catch {
+        // Ignore session hydration errors on mount
+      }
+    }
+    hydrateConfirmedSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [setValueStep1]);
 
   // Step 2 Form Hook
   const {
@@ -185,11 +267,30 @@ export function VendorOnboardingFlow() {
             return;
           }
         } else {
+          if (typeof window !== 'undefined') {
+            try {
+              window.localStorage.setItem(
+                'relyvora_pending_onboarding_profile',
+                JSON.stringify({
+                  storeName: data.storeName.trim(),
+                  email: targetEmail,
+                  phoneNumber: data.phoneNumber.trim(),
+                })
+              );
+            } catch {
+              // ignore storage quota errors
+            }
+          }
           const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
             email: targetEmail,
             password: data.password,
             options: {
               captchaToken: currentCaptchaToken,
+              emailRedirectTo: `${window.location.origin}/auth/callback`,
+              data: {
+                store_name: data.storeName.trim(),
+                phone_number: data.phoneNumber.trim(),
+              },
             },
           });
           setCaptchaToken('');
@@ -281,6 +382,13 @@ export function VendorOnboardingFlow() {
         throw new Error(result.error || 'Failed to activate vendor account.');
       }
 
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.removeItem('relyvora_pending_onboarding_profile');
+        } catch {
+          // ignore
+        }
+      }
       setIsSuccess(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {

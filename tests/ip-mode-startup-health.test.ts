@@ -16,6 +16,7 @@ import { checkSharedRateLimit, getClientIp, inspectTrustedClientIp } from '../li
 import { runServerStartupChecks } from '../lib/startupChecks';
 import { evaluateWhatsappRecipientPolicy, getWhatsappRecipientFilterStatus } from '../lib/whatsapp';
 import { GET as healthGet } from '../app/api/health/route';
+import { GET as authCallbackGet } from '../app/auth/callback/route';
 import { middleware, config as middlewareConfig } from '../middleware';
 import { getNigeriaAppHref } from '../lib/appUrls';
 
@@ -493,6 +494,29 @@ async function runSuite() {
         onboardingFlowSrc.includes('captchaToken: currentCaptchaToken') &&
         !onboardingFlowSrc.includes('Paste verified CAPTCHA challenge response token'),
       'Cloudflare Turnstile widget renders on /vendor sign-in and /vendor/onboarding and passes captchaToken into supabase.auth.signInWithPassword / signUp options'
+    );
+
+    const authCallbackSrc = fs.readFileSync('app/auth/callback/route.ts', 'utf8');
+    const rootPkceReq = new NextRequest('https://staging.relyvora.com/?code=pkce-test-code-123', {
+      method: 'GET',
+      headers: { host: 'staging.relyvora.com' },
+    });
+    const rootPkceRes = middleware(rootPkceReq);
+    const rootPkceLocation = rootPkceRes.headers.get('location') || '';
+
+    const callbackReq = new NextRequest('https://staging.relyvora.com/auth/callback?code=pkce-test-code-123', {
+      method: 'GET',
+      headers: { host: 'staging.relyvora.com' },
+    });
+    const callbackRes = await authCallbackGet(callbackReq);
+    const callbackLocation = callbackRes.headers.get('location') || '';
+
+    assert(
+      authCallbackSrc.includes('exchangeCodeForSession(code)') &&
+        onboardingFlowSrc.includes('emailRedirectTo: `${window.location.origin}/auth/callback`') &&
+        rootPkceLocation === 'https://staging.relyvora.com/auth/callback?code=pkce-test-code-123' &&
+        callbackLocation === 'https://staging.relyvora.com/vendor/onboarding?confirmed=1',
+      '/auth/callback exchanges PKCE code via supabase.auth.exchangeCodeForSession(code), middleware forwards /?code=... to /auth/callback, and signUp passes emailRedirectTo'
     );
     void inspectTrustedClientIp;
   } finally {

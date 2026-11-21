@@ -6,16 +6,28 @@ export function middleware(request: NextRequest) {
   const host = request.headers.get('host') || '';
   const pathname = url.pathname;
 
-  // 0. Never intercept webhooks, health checks, or cron routes with domain/geo/auth routing
+  // 0. Never intercept webhooks, health checks, cron routes, or auth callbacks with domain/geo/auth routing
   if (
     pathname === '/api/health' ||
     pathname.startsWith('/api/health/') ||
     pathname.startsWith('/api/webhooks/') ||
     pathname === '/api/webhooks' ||
     pathname.startsWith('/api/cron/') ||
-    pathname === '/api/cron'
+    pathname === '/api/cron' ||
+    pathname === '/auth/callback' ||
+    pathname.startsWith('/auth/callback/')
   ) {
     return NextResponse.next();
+  }
+
+  // 0b. If Supabase redirects an email confirmation link to /?code=... (or /ng?code=...),
+  //     forward it to /auth/callback so the PKCE code is exchanged for a session
+  if (
+    (pathname === '/' || pathname === '/ng') &&
+    (url.searchParams.has('code') || url.searchParams.has('token_hash'))
+  ) {
+    url.pathname = '/auth/callback';
+    return NextResponse.redirect(url);
   }
 
   // 1. Detect if request is targeted at the Foundation subdomain (foundation.relyvora.com)
