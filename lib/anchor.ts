@@ -143,8 +143,55 @@ export function normalizeAnchorNgState(rawState?: string): string {
 }
 
 /**
+ * Looks up an existing IndividualCustomer in Anchor by email (case-insensitive) or normalized phone number.
+ * Used to make customer creation idempotent when retrying onboarding after a partial attempt.
+ */
+export async function findAnchorCustomerByEmailOrPhone(
+  email: string,
+  phoneNumber?: string
+): Promise<{ customerId: string; raw: AnchorCustomerResponse } | null> {
+  const baseUrl = getAnchorBaseUrl();
+  const headers = getAnchorHeaders();
+  const targetEmail = String(email || '').trim().toLowerCase();
+  const targetPhone = phoneNumber ? normalizeNigerianPhone(phoneNumber) : '';
+
+  try {
+    const response = await fetch(`${baseUrl}/customers?page[size]=100`, {
+      method: 'GET',
+      headers,
+    });
+    if (!response.ok) return null;
+
+    const json = await response.json().catch(() => ({}));
+    const list: Array<AnchorCustomerResponse['data']> = Array.isArray(json?.data) ? json.data : [];
+
+    const match =
+      list.find(
+        (item) =>
+          targetEmail &&
+          String(item?.attributes?.email || '').trim().toLowerCase() === targetEmail
+      ) ||
+      list.find(
+        (item) =>
+          targetPhone &&
+          normalizeNigerianPhone(String(item?.attributes?.phoneNumber || '')) === targetPhone
+      );
+
+    if (match?.id) {
+      return {
+        customerId: match.id,
+        raw: { data: match },
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Endpoint 1: Create an Individual Customer in Anchor.
- * POST /customers
+ * POST /customers (idempotent: reuses existing customer if email/phone already exists in Anchor)
  */
 export async function createAnchorCustomer(
   input: CreateCustomerInput
@@ -200,6 +247,15 @@ export async function createAnchorCustomer(
       const errors: AnchorErrorDetail[] = data.errors || [
         { title: 'Customer Creation Failed', status: String(response.status), detail: JSON.stringify(data) },
       ];
+      const errSummary = errors.map((e) => e.detail || e.title || '').join(' ');
+
+      if ((response.status === 400 || response.status === 409) && /already exist|duplicate/i.test(errSummary)) {
+        const existing = await findAnchorCustomerByEmailOrPhone(input.email, formattedPhone);
+        if (existing?.customerId) {
+          return existing;
+        }
+      }
+
       throw new AnchorApiError(response.status, errors, data);
     }
 

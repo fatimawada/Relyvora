@@ -274,27 +274,65 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let customerId: string | null = null;
+    let customerId: string | null =
+      typeof allowlistCheck.existingVendor?.anchor_customer_id === 'string' &&
+      allowlistCheck.existingVendor.anchor_customer_id.trim()
+        ? allowlistCheck.existingVendor.anchor_customer_id.trim()
+        : null;
     let accountId: string | null = null;
     // Note: kycStatus is strictly computed server-side from Anchor API result; any client field is ignored.
     let kycStatus = 'PENDING';
 
     // 5. Forward KYC PII strictly to Anchor BaaS in memory (never logged, never stored in Relyvora DB)
     try {
-      const customerResult = await createAnchorCustomer({
-        firstName: String(legalFirstName).trim(),
-        lastName: String(legalLastName).trim(),
-        email: normalizedEmail,
-        phoneNumber: cleanPhone,
-        address: {
-          addressLine_1: String(address).trim(),
-          city: 'Lagos',
-          state: 'Lagos',
-          country: 'NG',
-          postalCode: '100001',
-        },
-      });
-      customerId = customerResult.customerId;
+      if (!customerId) {
+        const customerResult = await createAnchorCustomer({
+          firstName: String(legalFirstName).trim(),
+          lastName: String(legalLastName).trim(),
+          email: normalizedEmail,
+          phoneNumber: cleanPhone,
+          address: {
+            addressLine_1: String(address).trim(),
+            city: 'Lagos',
+            state: 'Lagos',
+            country: 'NG',
+            postalCode: '100001',
+          },
+        });
+        customerId = customerResult.customerId;
+      }
+
+      // Immediately checkpoint anchor_customer_id so any retry is idempotent even if a later step fails
+      if (customerId) {
+        if (allowlistCheck.existingVendor?.id) {
+          await supabase
+            .from('vendors')
+            .update({
+              user_id: session.user.id,
+              anchor_customer_id: customerId,
+            })
+            .eq('id', allowlistCheck.existingVendor.id);
+        } else {
+          await supabase.from('vendors').upsert(
+            {
+              user_id: session.user.id,
+              store_name: String(storeName).trim(),
+              email: normalizedEmail,
+              phone_number: cleanPhone,
+              phone_hash: hashPhoneSignal(cleanPhone),
+              legal_first_name: String(legalFirstName).trim(),
+              legal_last_name: String(legalLastName).trim(),
+              settlement_bank_code: String(bankCode).trim(),
+              settlement_account_number: String(accountNumber).trim(),
+              settlement_account_name: enquiry.resolvedAccountName,
+              anchor_customer_id: customerId,
+              kyc_status: 'pending',
+              is_allowlisted: Boolean(allowlistCheck.allowlistMode),
+            },
+            { onConflict: 'email' }
+          );
+        }
+      }
 
       if (customerId) {
         const cleanIdNumber = String(idNumber).trim();
