@@ -5,6 +5,7 @@ import { FlagIcon } from '@/components/flags/FlagIcon';
 import { MarketWaitlistForm } from '@/components/markets/MarketWaitlistForm';
 import { AnchorBrandText } from '@/components/common/AnchorBrandText';
 import { LAUNCH_STATUS } from '@/lib/feeConfig';
+import { getNigeriaAppHref } from '@/lib/appUrls';
 
 export const metadata: Metadata = {
   title: 'Markets | Relyvora',
@@ -21,6 +22,8 @@ const UPCOMING = [
 
 export default function MarketsPage() {
   const nigeriaBadge = LAUNCH_STATUS === 'launching' ? 'Starting here' : 'Live';
+  const nigeriaAppHref = getNigeriaAppHref();
+  const isExternalNgHref = nigeriaAppHref.startsWith('http');
 
   return (
     <div className="max-w-container mx-auto px-6 pt-16 pb-16 sm:pt-20 sm:pb-20 space-y-12 text-left">
@@ -57,14 +60,14 @@ export default function MarketsPage() {
 
           <div className="pt-2">
             <a
-              href="https://ng.relyvora.com"
-              target="_blank"
-              rel="noopener noreferrer"
+              href={nigeriaAppHref}
+              target={isExternalNgHref ? '_blank' : undefined}
+              rel={isExternalNgHref ? 'noopener noreferrer' : undefined}
               className="w-full h-12 rounded-btn font-semibold text-sm bg-main text-site dark:bg-accent dark:text-[#071229] hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
             >
               <span>Go to Relyvora NG</span>
               <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
-              <span className="sr-only">(opens in a new tab)</span>
+              {isExternalNgHref && <span className="sr-only">(opens in a new tab)</span>}
             </a>
           </div>
         </div>

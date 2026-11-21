@@ -9,6 +9,7 @@ import { LegacyHashRedirect } from '@/components/layout/LegacyHashRedirect';
 import { AnchorBrandText } from '@/components/common/AnchorBrandText';
 import { isAnchorBrandApproved } from '@/lib/anchorBrand';
 import { LAUNCH_STATUS, calculateFee } from '@/lib/feeConfig';
+import { getNigeriaAppHref } from '@/lib/appUrls';
 
 export const metadata: Metadata = {
   title: 'Relyvora | Safe payments for WhatsApp and Instagram commerce',
@@ -68,6 +69,8 @@ const MARKETS = [
 export default function HomePage() {
   const example = calculateFee(45000);
   const nigeriaStatus = LAUNCH_STATUS === 'launching' ? 'Starting here' : 'Live';
+  const nigeriaAppHref = getNigeriaAppHref();
+  const isExternalNgHref = nigeriaAppHref.startsWith('http');
 
   return (
     <div className="w-full">
@@ -104,14 +107,14 @@ export default function HomePage() {
                 <ArrowRight className="w-4 h-4" aria-hidden="true" />
               </Link>
               <a
-                href="https://ng.relyvora.com"
-                target="_blank"
-                rel="noopener noreferrer"
+                href={nigeriaAppHref}
+                target={isExternalNgHref ? '_blank' : undefined}
+                rel={isExternalNgHref ? 'noopener noreferrer' : undefined}
                 className="px-6 h-12 rounded-btn font-semibold text-sm border border-border bg-surface text-main hover:border-accent hover:text-accent transition-colors inline-flex items-center justify-center gap-2"
               >
                 <span>I&apos;m selling</span>
                 <ArrowUpRight className="w-4 h-4 opacity-70" aria-hidden="true" />
-                <span className="sr-only">(opens ng.relyvora.com in a new tab)</span>
+                {isExternalNgHref && <span className="sr-only">(opens ng.relyvora.com in a new tab)</span>}
               </a>
             </div>
 
@@ -373,14 +376,14 @@ export default function HomePage() {
           </p>
           <div className="pt-2 flex flex-wrap items-center justify-center gap-4">
             <a
-              href="https://ng.relyvora.com"
-              target="_blank"
-              rel="noopener noreferrer"
+              href={nigeriaAppHref}
+              target={isExternalNgHref ? '_blank' : undefined}
+              rel={isExternalNgHref ? 'noopener noreferrer' : undefined}
               className="px-6 h-12 rounded-btn font-semibold text-sm bg-main text-site dark:bg-accent dark:text-[#071229] hover:opacity-90 transition-opacity inline-flex items-center justify-center gap-2"
             >
               <span>Go to Relyvora NG</span>
               <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
-              <span className="sr-only">(opens in a new tab)</span>
+              {isExternalNgHref && <span className="sr-only">(opens in a new tab)</span>}
             </a>
             <Link
               href="/how-it-works"

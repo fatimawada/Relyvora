@@ -4,13 +4,15 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowUpRight, Menu, X } from 'lucide-react';
+import { getNigeriaAppHref, isStagingHostOrEnv } from '@/lib/appUrls';
 
 export function CorporateHeader() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const nigeriaAppUrl = process.env.NODE_ENV === 'production' 
-    ? 'https://ng.relyvora.com' 
-    : '/vendor';
+  const nigeriaAppUrl = getNigeriaAppHref();
+  const isExternalNg = nigeriaAppUrl.startsWith('http');
+  const foundationUrl = isStagingHostOrEnv() ? '/foundation' : 'https://foundation.relyvora.com';
+  const isExternalFoundation = foundationUrl.startsWith('http');
 
   const navLinks = [
     { label: 'The Problem', href: '#problem' },
@@ -52,9 +54,9 @@ export function CorporateHeader() {
         {/* Right Action: Country App Link & Foundation Link */}
         <div className="hidden sm:flex items-center gap-3 shrink-0">
           <a
-            href="https://foundation.relyvora.com"
-            target="_blank"
-            rel="noopener noreferrer"
+            href={foundationUrl}
+            target={isExternalFoundation ? '_blank' : undefined}
+            rel={isExternalFoundation ? 'noopener noreferrer' : undefined}
             className="inline-flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold text-[#047857] hover:bg-emerald-50 transition-colors"
           >
             <span>Foundation</span>
@@ -62,9 +64,9 @@ export function CorporateHeader() {
           </a>
 
           <a
-            href="https://ng.relyvora.com"
-            target="_blank"
-            rel="noopener noreferrer"
+            href={nigeriaAppUrl}
+            target={isExternalNg ? '_blank' : undefined}
+            rel={isExternalNg ? 'noopener noreferrer' : undefined}
             className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-xs font-bold bg-[#090E1A] text-white hover:bg-[#1E293B] transition-all shadow-xs"
           >
             <span>Go to Relyvora NG</span>
@@ -99,9 +101,9 @@ export function CorporateHeader() {
           </nav>
           <div className="pt-2 space-y-2">
             <a
-              href="https://ng.relyvora.com"
-              target="_blank"
-              rel="noopener noreferrer"
+              href={nigeriaAppUrl}
+              target={isExternalNg ? '_blank' : undefined}
+              rel={isExternalNg ? 'noopener noreferrer' : undefined}
               className="w-full py-3 rounded-lg text-xs font-bold bg-[#090E1A] text-white flex items-center justify-center gap-2 shadow-xs"
             >
               <span>Go to Relyvora NG</span>
@@ -109,9 +111,9 @@ export function CorporateHeader() {
             </a>
 
             <a
-              href="https://foundation.relyvora.com"
-              target="_blank"
-              rel="noopener noreferrer"
+              href={foundationUrl}
+              target={isExternalFoundation ? '_blank' : undefined}
+              rel={isExternalFoundation ? 'noopener noreferrer' : undefined}
               className="w-full py-2.5 rounded-lg text-xs font-semibold text-[#047857] border border-emerald-200 bg-emerald-50/50 flex items-center justify-center gap-1.5"
             >
               <span>Relyvora Foundation</span>

@@ -5,6 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Logo } from '@/components/brand/Logo';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { getNigeriaAppHref, isStagingHostOrEnv } from '@/lib/appUrls';
 import { 
   ArrowRight, 
   ArrowUpRight, 
@@ -23,6 +24,10 @@ type PartnerTab = 'funder' | 'corporate' | 'mentor';
 export default function FoundationPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [partnerTab, setPartnerTab] = useState<PartnerTab>('funder');
+  const nigeriaAppHref = getNigeriaAppHref();
+  const isExternalNgHref = nigeriaAppHref.startsWith('http');
+  const corporateSiteHref = isStagingHostOrEnv() ? '/how-it-works' : 'https://relyvora.com';
+  const isExternalCorporateHref = corporateSiteHref.startsWith('http');
 
   // Form states
   const [name, setName] = useState('');
@@ -110,9 +115,9 @@ export default function FoundationPage() {
           {/* Action CTAs & Theme Toggle */}
           <div className="hidden sm:flex items-center gap-4">
             <a
-              href="https://relyvora.com"
-              target="_blank"
-              rel="noopener noreferrer"
+              href={corporateSiteHref}
+              target={isExternalCorporateHref ? '_blank' : undefined}
+              rel={isExternalCorporateHref ? 'noopener noreferrer' : undefined}
               className="text-xs font-medium text-muted hover:text-main transition-colors flex items-center gap-1"
             >
               <span>Corporate site</span>
@@ -183,9 +188,9 @@ export default function FoundationPage() {
                 Contact
               </a>
               <a
-                href="https://relyvora.com"
-                target="_blank"
-                rel="noopener noreferrer"
+                href={corporateSiteHref}
+                target={isExternalCorporateHref ? '_blank' : undefined}
+                rel={isExternalCorporateHref ? 'noopener noreferrer' : undefined}
                 className="py-1 text-muted hover:text-main flex items-center justify-between"
               >
                 <span>Corporate site</span>
@@ -609,18 +614,18 @@ export default function FoundationPage() {
               </a>
               <span className="text-border">•</span>
               <a
-                href="https://relyvora.com"
-                target="_blank"
-                rel="noopener noreferrer"
+                href={corporateSiteHref}
+                target={isExternalCorporateHref ? '_blank' : undefined}
+                rel={isExternalCorporateHref ? 'noopener noreferrer' : undefined}
                 className="hover:text-main transition-colors"
               >
                 Corporate site
               </a>
               <span className="text-border">•</span>
               <a
-                href="https://ng.relyvora.com"
-                target="_blank"
-                rel="noopener noreferrer"
+                href={nigeriaAppHref}
+                target={isExternalNgHref ? '_blank' : undefined}
+                rel={isExternalNgHref ? 'noopener noreferrer' : undefined}
                 className="hover:text-main transition-colors"
               >
                 Nigeria app

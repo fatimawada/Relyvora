@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { ArrowUpRight } from 'lucide-react';
 import { Logo } from '@/components/brand/Logo';
 import { AnchorBrandText } from '@/components/common/AnchorBrandText';
+import { getNigeriaAppHref, isStagingHostOrEnv } from '@/lib/appUrls';
 
 const PLATFORM_LINKS = [
   { label: 'The Problem', href: '/problem' },
@@ -15,11 +16,6 @@ const PLATFORM_LINKS = [
   { label: 'FAQ', href: '/faq' },
   { label: 'Trust & Safety', href: '/trust-and-safety' },
   { label: 'About', href: '/about' },
-];
-
-const PRODUCT_LINKS = [
-  { label: 'Relyvora Nigeria', sub: 'ng.relyvora.com', href: 'https://ng.relyvora.com' },
-  { label: 'Relyvora Foundation', sub: 'foundation.relyvora.com', href: 'https://foundation.relyvora.com' },
 ];
 
 const LEGAL_LINKS = [
@@ -33,6 +29,20 @@ export function Footer() {
   const currentYear = new Date().getFullYear();
   const pathname = usePathname();
   const isTrustPage = pathname === '/trust-and-safety';
+  const nigeriaAppHref = getNigeriaAppHref();
+  const isStaging = isStagingHostOrEnv();
+  const productLinks = [
+    {
+      label: 'Relyvora Nigeria',
+      sub: isStaging ? 'staging.relyvora.com' : 'ng.relyvora.com',
+      href: nigeriaAppHref,
+    },
+    {
+      label: 'Relyvora Foundation',
+      sub: isStaging ? '/foundation' : 'foundation.relyvora.com',
+      href: isStaging ? '/foundation' : 'https://foundation.relyvora.com',
+    },
+  ];
 
   return (
     <footer className="w-full bg-surface border-t border-border mt-auto">
@@ -68,25 +78,28 @@ export function Footer() {
           <div className="md:col-span-2 space-y-3">
             <h2 className="section-label !text-muted">Products</h2>
             <ul className="space-y-3">
-              {PRODUCT_LINKS.map((link) => (
-                <li key={link.href}>
-                  <a
-                    href={link.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-3 rounded-card border border-border bg-site hover:border-accent transition-colors flex items-center justify-between group"
-                  >
-                    <span>
-                      <span className="block text-xs font-semibold text-main group-hover:text-accent transition-colors">
-                        {link.label}
+              {productLinks.map((link) => {
+                const isExternal = link.href.startsWith('http');
+                return (
+                  <li key={link.label}>
+                    <a
+                      href={link.href}
+                      target={isExternal ? '_blank' : undefined}
+                      rel={isExternal ? 'noopener noreferrer' : undefined}
+                      className="p-3 rounded-card border border-border bg-site hover:border-accent transition-colors flex items-center justify-between group"
+                    >
+                      <span>
+                        <span className="block text-xs font-semibold text-main group-hover:text-accent transition-colors">
+                          {link.label}
+                        </span>
+                        <span className="block text-[11px] text-muted">{link.sub}</span>
                       </span>
-                      <span className="block text-[11px] text-muted">{link.sub}</span>
-                    </span>
-                    <ArrowUpRight className="w-3.5 h-3.5 text-muted group-hover:text-accent transition-colors shrink-0 ml-1" aria-hidden="true" />
-                    <span className="sr-only">(opens in a new tab)</span>
-                  </a>
-                </li>
-              ))}
+                      <ArrowUpRight className="w-3.5 h-3.5 text-muted group-hover:text-accent transition-colors shrink-0 ml-1" aria-hidden="true" />
+                      {isExternal && <span className="sr-only">(opens in a new tab)</span>}
+                    </a>
+                  </li>
+                );
+              })}
             </ul>
           </div>
 

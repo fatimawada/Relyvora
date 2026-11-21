@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { ArrowUpRight, Menu, X } from 'lucide-react';
 import { Logo } from '@/components/brand/Logo';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { getNigeriaAppHref } from '@/lib/appUrls';
 
 const NAV_LINKS = [
   { label: 'The Problem', href: '/problem' },
@@ -27,6 +28,8 @@ export function Header() {
   const closeRef = useRef<HTMLButtonElement>(null);
 
   const close = useCallback(() => setOpen(false), []);
+  const nigeriaAppHref = getNigeriaAppHref();
+  const isExternalNgHref = nigeriaAppHref.startsWith('http');
 
   // Close drawer on route change
   useEffect(() => {
@@ -118,14 +121,14 @@ export function Header() {
           <div className="col-start-3 flex items-center justify-end gap-2 sm:gap-2.5">
             <ThemeToggle />
             <a
-              href="https://ng.relyvora.com"
-              target="_blank"
-              rel="noopener noreferrer"
+              href={nigeriaAppHref}
+              target={isExternalNgHref ? '_blank' : undefined}
+              rel={isExternalNgHref ? 'noopener noreferrer' : undefined}
               className="hidden sm:inline-flex items-center gap-1.5 px-4 h-11 nav:h-10 rounded-btn text-sm font-semibold whitespace-nowrap bg-main text-site hover:opacity-90 dark:bg-accent dark:text-[#071229] transition-opacity"
             >
               <span>Go to Relyvora NG</span>
               <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />
-              <span className="sr-only">(opens in a new tab)</span>
+              {isExternalNgHref && <span className="sr-only">(opens in a new tab)</span>}
             </a>
             <button
               ref={triggerRef}
@@ -198,14 +201,14 @@ export function Header() {
           <div className="shrink-0 border-t border-border p-4 flex items-center gap-3">
             <ThemeToggle />
             <a
-              href="https://ng.relyvora.com"
-              target="_blank"
-              rel="noopener noreferrer"
+              href={nigeriaAppHref}
+              target={isExternalNgHref ? '_blank' : undefined}
+              rel={isExternalNgHref ? 'noopener noreferrer' : undefined}
               className="flex-1 inline-flex items-center justify-center gap-1.5 h-11 rounded-btn text-sm font-semibold whitespace-nowrap bg-main text-site hover:opacity-90 dark:bg-accent dark:text-[#071229] transition-opacity"
             >
               <span>Go to Relyvora NG</span>
               <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />
-              <span className="sr-only">(opens in a new tab)</span>
+              {isExternalNgHref && <span className="sr-only">(opens in a new tab)</span>}
             </a>
           </div>
         </div>

@@ -17,6 +17,7 @@ import { runServerStartupChecks } from '../lib/startupChecks';
 import { evaluateWhatsappRecipientPolicy, getWhatsappRecipientFilterStatus } from '../lib/whatsapp';
 import { GET as healthGet } from '../app/api/health/route';
 import { middleware, config as middlewareConfig } from '../middleware';
+import { getNigeriaAppHref } from '../lib/appUrls';
 
 function loadEnvLocal() {
   const envPath = path.resolve(process.cwd(), '.env.local');
@@ -417,6 +418,66 @@ async function runSuite() {
         matcherSrc.includes('api/health') &&
         matcherSrc.includes('api/cron'),
       '/api/webhooks/*, /api/health, and /api/cron/* completely bypass middleware matcher and geo/domain redirects across all hosts for US / facebookplatform/1.0'
+    );
+
+    const stagingRootReq = new NextRequest('https://staging.relyvora.com/', {
+      method: 'GET',
+      headers: { host: 'staging.relyvora.com' },
+    });
+    const stagingRootRes = middleware(stagingRootReq);
+    const stagingRootRewrite = stagingRootRes.headers.get('x-middleware-rewrite') || '';
+
+    const stagingInternalPaths = [
+      '/vendor',
+      '/vendor/onboarding',
+      '/pay/test-order-123',
+      '/order/test-order-123',
+      '/ng',
+      '/terms',
+      '/privacy',
+      '/disputes',
+      '/prohibited-items',
+      '/foundation',
+      '/how-it-works',
+    ];
+    let allStagingPathsStayOnStaging = true;
+    for (const internalPath of stagingInternalPaths) {
+      const req = new NextRequest(`https://staging.relyvora.com${internalPath}`, {
+        method: 'GET',
+        headers: { host: 'staging.relyvora.com' },
+      });
+      const res = middleware(req);
+      if (res.headers.get('location') !== null || res.status !== 200) {
+        allStagingPathsStayOnStaging = false;
+      }
+    }
+
+    const corpVendorReq = new NextRequest('https://relyvora.com/vendor', {
+      method: 'GET',
+      headers: { host: 'relyvora.com' },
+    });
+    const corpVendorRes = middleware(corpVendorReq);
+    const corpVendorLocation = corpVendorRes.headers.get('location') || '';
+
+    const origAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+    process.env.NEXT_PUBLIC_APP_URL = 'https://staging.relyvora.com';
+    const stagingHrefFromEnv = getNigeriaAppHref();
+    process.env.NEXT_PUBLIC_APP_URL = 'https://ng.relyvora.com';
+    const stagingHrefFromHost = getNigeriaAppHref('staging.relyvora.com');
+    const corpHrefInProd = getNigeriaAppHref('relyvora.com');
+    if (origAppUrl === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+    else process.env.NEXT_PUBLIC_APP_URL = origAppUrl;
+
+    assert(
+      stagingRootRes.status === 200 &&
+        stagingRootRes.headers.get('location') === null &&
+        stagingRootRewrite.endsWith('/ng') &&
+        allStagingPathsStayOnStaging &&
+        corpVendorLocation === 'https://ng.relyvora.com/vendor' &&
+        stagingHrefFromEnv === '/' &&
+        stagingHrefFromHost === '/' &&
+        corpHrefInProd === 'https://ng.relyvora.com',
+      'staging.relyvora.com rewrites / directly to /ng (Nigeria product app) and keeps all internal routes and links on staging.relyvora.com without redirecting or linking out to ng.relyvora.com'
     );
     void inspectTrustedClientIp;
   } finally {

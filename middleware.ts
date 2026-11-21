@@ -32,17 +32,17 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. Detect if request is targeted at the Nigerian market subdomain (ng.relyvora.com)
-  const isNgDomain = host.startsWith('ng.');
+  // 2. Detect if request is targeted at the Nigerian market app subdomain (ng.relyvora.com or staging.relyvora.com)
+  const isNgDomain = host.startsWith('ng.') || host.startsWith('staging.');
 
-  // 3. Handle Nigerian Subdomain (ng.relyvora.com)
+  // 3. Handle Nigerian / Staging Subdomain (ng.relyvora.com & staging.relyvora.com)
   if (isNgDomain) {
-    // If accessing root of ng.relyvora.com, rewrite to the dedicated Nigerian portal (/ng)
+    // If accessing root of ng.relyvora.com or staging.relyvora.com, rewrite to the dedicated Nigerian portal (/ng)
     if (pathname === '/') {
       url.pathname = '/ng';
       return NextResponse.rewrite(url);
     }
-    // Allow /vendor, /pay/[id], /order/[id] to pass through directly
+    // Allow /vendor, /pay/[id], /order/[id], and all internal routes to pass through directly on the same host
     return NextResponse.next();
   }
 
@@ -60,7 +60,13 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/pay') || 
     pathname.startsWith('/order');
 
-  if (isAppRoute && process.env.NODE_ENV === 'production' && !host.includes('localhost')) {
+  const isCorporateRootDomain =
+    host === 'relyvora.com' ||
+    host === 'www.relyvora.com' ||
+    host.startsWith('relyvora.com:') ||
+    host.startsWith('www.relyvora.com:');
+
+  if (isAppRoute && process.env.NODE_ENV === 'production' && isCorporateRootDomain) {
     const ngRedirectUrl = new URL(request.url);
     ngRedirectUrl.host = 'ng.relyvora.com';
     if (pathname === '/ng') {
