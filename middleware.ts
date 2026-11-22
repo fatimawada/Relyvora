@@ -6,14 +6,11 @@ export function middleware(request: NextRequest) {
   const host = request.headers.get('host') || '';
   const pathname = url.pathname;
 
-  // 0. Never intercept webhooks, health checks, cron routes, or auth callbacks with domain/geo/auth routing
+  // 0. Never intercept any /api/* routes (webhooks, health checks, cron, escrow, vendor)
+  //    or /auth/callback with domain/geo/auth rewrites or redirects
   if (
-    pathname === '/api/health' ||
-    pathname.startsWith('/api/health/') ||
-    pathname.startsWith('/api/webhooks/') ||
-    pathname === '/api/webhooks' ||
-    pathname.startsWith('/api/cron/') ||
-    pathname === '/api/cron' ||
+    pathname === '/api' ||
+    pathname.startsWith('/api/') ||
     pathname === '/auth/callback' ||
     pathname.startsWith('/auth/callback/')
   ) {
@@ -98,8 +95,9 @@ export const config = {
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - robots.txt
-     * - api/webhooks/*, api/health*, api/cron/* (must bypass all domain/geo/auth routing)
+     * - api/* (all API routes including webhooks, health, cron must bypass all domain/geo/auth routing)
+     * - auth/callback* (Supabase PKCE callback must never be rewritten/redirected)
      */
-    '/((?!_next/static|_next/image|favicon.ico|robots.txt|api/webhooks|api/health|api/cron).*)',
+    '/((?!_next/static|_next/image|favicon.ico|robots.txt|api/|api$|auth/callback).*)',
   ],
 };

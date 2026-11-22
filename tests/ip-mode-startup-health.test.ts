@@ -17,6 +17,10 @@ import { runServerStartupChecks } from '../lib/startupChecks';
 import { evaluateWhatsappRecipientPolicy, getWhatsappRecipientFilterStatus } from '../lib/whatsapp';
 import { GET as healthGet } from '../app/api/health/route';
 import { GET as authCallbackGet } from '../app/auth/callback/route';
+import {
+  GET as whatsappWebhookGet,
+  POST as whatsappWebhookPost,
+} from '../app/api/webhooks/whatsapp/route';
 import { middleware, config as middlewareConfig } from '../middleware';
 import { getNigeriaAppHref } from '../lib/appUrls';
 
@@ -373,21 +377,26 @@ async function runSuite() {
     );
 
     // -------------------------------------------------------------------------
-    // 5. MIDDLEWARE BYPASS FOR /api/webhooks/*, /api/health, /api/cron/*
+    // 5. MIDDLEWARE BYPASS FOR ALL /api/* ROUTES, /auth/callback & HOST ROUTING
     // -------------------------------------------------------------------------
-    console.log('\n--- 5. MIDDLEWARE BYPASS FOR WEBHOOKS, HEALTH & CRON ---');
+    console.log('\n--- 5. MIDDLEWARE BYPASS FOR /api/*, /auth/callback & HOST ROUTING ---');
     (process.env as any).NODE_ENV = 'production';
     const matcherSrc = String(middlewareConfig.matcher[0] || '');
     const matcherRegex = new RegExp(`^${matcherSrc}$`);
     const bypassPaths = [
+      '/api',
       '/api/webhooks/whatsapp',
       '/api/webhooks/anchor',
       '/api/health',
       '/api/cron/reconcile',
+      '/api/escrow/create-link',
+      '/api/vendor/onboarding',
+      '/auth/callback',
     ];
     const hostsToCheck = [
       'staging.relyvora.com',
       'relyvora.com',
+      'www.relyvora.com',
       'ng.relyvora.com',
       'foundation.relyvora.com',
     ];
@@ -407,7 +416,11 @@ async function runSuite() {
           },
         });
         const mwRes = middleware(mwReq);
-        if (mwRes.headers.get('location') !== null || mwRes.status !== 200) {
+        if (
+          mwRes.headers.get('location') !== null ||
+          mwRes.headers.get('x-middleware-rewrite') !== null ||
+          mwRes.status !== 200
+        ) {
           allBypassClean = false;
         }
       }
@@ -415,10 +428,9 @@ async function runSuite() {
 
     assert(
       allBypassClean &&
-        matcherSrc.includes('api/webhooks') &&
-        matcherSrc.includes('api/health') &&
-        matcherSrc.includes('api/cron'),
-      '/api/webhooks/*, /api/health, and /api/cron/* completely bypass middleware matcher and geo/domain redirects across all hosts for US / facebookplatform/1.0'
+        matcherSrc.includes('api/') &&
+        matcherSrc.includes('auth/callback'),
+      'All /api/* routes (webhooks, health, cron, escrow, vendor) and /auth/callback completely bypass middleware matcher and geo/domain rewrites/redirects across all hosts for US / facebookplatform/1.0'
     );
 
     const stagingRootReq = new NextRequest('https://staging.relyvora.com/', {
@@ -532,6 +544,42 @@ async function runSuite() {
         !prohibitedItemsSrc.includes('Draft Policy'),
       'Demo/testing UI (DEMO MODE banner, Simulated Escrow pill, @LagosHairPlug / Simulated Verified Vendor fallback, Sandbox Testing Tip) is hidden in live/production and Draft Policy banner is removed from /prohibited-items'
     );
+
+    const origWaVerifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
+    process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN = 'test_wa_verify_token_1234';
+    try {
+      const waVerifyOk = await whatsappWebhookGet(
+        new NextRequest(
+          'https://ng.relyvora.com/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=test_wa_verify_token_1234&hub.challenge=challenge_ok_987',
+          { method: 'GET', headers: { host: 'ng.relyvora.com' } }
+        )
+      );
+      const waVerifyOkText = await waVerifyOk.text();
+      const waVerifyBad = await whatsappWebhookGet(
+        new NextRequest(
+          'https://ng.relyvora.com/api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=wrong_token&hub.challenge=challenge_ok_987',
+          { method: 'GET', headers: { host: 'ng.relyvora.com' } }
+        )
+      );
+      const waPostUnsigned = await whatsappWebhookPost(
+        new NextRequest('https://ng.relyvora.com/api/webhooks/whatsapp', {
+          method: 'POST',
+          headers: { host: 'ng.relyvora.com', 'content-type': 'application/json' },
+          body: JSON.stringify({ object: 'whatsapp_business_account', entry: [] }),
+        })
+      );
+      assert(
+        waVerifyOk.status === 200 &&
+          waVerifyOk.headers.get('content-type')?.includes('text/plain') &&
+          waVerifyOkText === 'challenge_ok_987' &&
+          waVerifyBad.status === 403 &&
+          waPostUnsigned.status === 401,
+        'app/api/webhooks/whatsapp/route.ts handles GET (hub.challenge 200 / invalid 403) and POST (unsigned 401)'
+      );
+    } finally {
+      if (origWaVerifyToken === undefined) delete process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
+      else process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN = origWaVerifyToken;
+    }
     void inspectTrustedClientIp;
   } finally {
     globalThis.fetch = origFetch;
