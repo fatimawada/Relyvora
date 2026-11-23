@@ -3,6 +3,7 @@ import { getServiceSupabase } from '@/lib/supabaseServer';
 import { closeAnchorVirtualNuban } from '@/lib/anchor';
 import { sendSystemAlert } from '@/lib/alerts';
 import { resolveOrderActor } from '@/lib/orderAuth';
+import { evaluateLivePaymentGateServer } from '@/lib/launchGates';
 import {
   executeBuyerOrderRefund,
   getDeliveryAndLifecycleConfig,
@@ -52,6 +53,21 @@ export async function POST(request: NextRequest) {
     if (actor.role !== 'VENDOR' && actor.role !== 'ADMIN') {
       return NextResponse.json(
         { success: false, code: 'FORBIDDEN', error: 'Only the owning vendor or admin may cancel this order.' },
+        { status: 403 }
+      );
+    }
+
+    const liveGate = await evaluateLivePaymentGateServer({
+      vendorId: tx.vendor_id,
+      supabaseClient: supabase,
+    });
+    if (!liveGate.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: liveGate.code || 'PAYMENTS_NOT_LIVE',
+          error: liveGate.error || 'Payments open soon.',
+        },
         { status: 403 }
       );
     }

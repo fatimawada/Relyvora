@@ -6,6 +6,7 @@ import { sendBuyerOtpSms, maskPhoneNumber } from '@/lib/smsDelivery';
 import { isLiveMode } from '@/lib/paymentsMode';
 import { computeReleaseCodeHmac } from '@/lib/releaseCode';
 import { resolveOrderActor } from '@/lib/orderAuth';
+import { evaluateLivePaymentGateServer } from '@/lib/launchGates';
 import { computeBuyerPhoneBindingHash } from '@/lib/buyerSession';
 import { sendSystemAlert } from '@/lib/alerts';
 
@@ -53,6 +54,21 @@ export async function POST(request: NextRequest) {
     if (actor.role !== 'BUYER') {
       return NextResponse.json(
         { success: false, code: 'FORBIDDEN', error: 'Only the verified buyer can request a dispute OTP.' },
+        { status: 403 }
+      );
+    }
+
+    const liveGate = await evaluateLivePaymentGateServer({
+      vendorId: tx.vendor_id,
+      supabaseClient: supabase,
+    });
+    if (!liveGate.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: liveGate.code || 'PAYMENTS_NOT_LIVE',
+          error: liveGate.error || 'Payments open soon.',
+        },
         { status: 403 }
       );
     }

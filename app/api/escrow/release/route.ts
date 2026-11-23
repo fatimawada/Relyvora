@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { getServerPaymentsMode } from '@/lib/paymentsMode';
+import { evaluateLivePaymentGateServer } from '@/lib/launchGates';
 import { computeReleaseCodeHmac, MAX_CODE_ATTEMPTS } from '@/lib/releaseCode';
 import { getClientIp, checkSharedRateLimit } from '@/lib/rateLimit';
 import { sendSystemAlert } from '@/lib/alerts';
@@ -90,6 +91,21 @@ export async function POST(request: NextRequest) {
           error: actor.error || 'Authentication required to release escrow funds.',
         },
         { status: actor.statusCode || 401 }
+      );
+    }
+
+    const liveGate = await evaluateLivePaymentGateServer({
+      vendorId: txMeta.vendor_id,
+      supabaseClient: supabase,
+    });
+    if (!liveGate.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: liveGate.code || 'PAYMENTS_NOT_LIVE',
+          error: liveGate.error || 'Payments open soon.',
+        },
+        { status: 403 }
       );
     }
 

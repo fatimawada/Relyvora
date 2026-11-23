@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import type { EmailOtpType } from '@supabase/supabase-js';
 import { getServiceSupabase } from '@/lib/supabaseServer';
+import { saveVendorStep1AndWaitlistServer } from '@/lib/vendorWaitlist';
 
 const DEFAULT_SUPABASE_URL = 'https://bepvqjqjybhhpsfbblqk.supabase.co';
 const DEFAULT_SUPABASE_ANON_KEY =
@@ -41,12 +42,20 @@ export async function GET(request: NextRequest) {
     },
   });
 
-  let authenticatedEmail: string | null = null;
+  let authenticatedUser: {
+    id: string;
+    email: string;
+    user_metadata?: Record<string, any>;
+  } | null = null;
 
   if (code) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error && data?.session?.user?.email) {
-      authenticatedEmail = data.session.user.email.trim().toLowerCase();
+      authenticatedUser = {
+        id: String(data.session.user.id),
+        email: data.session.user.email.trim().toLowerCase(),
+        user_metadata: (data.session.user.user_metadata || {}) as Record<string, any>,
+      };
     }
   } else if (tokenHash && otpType) {
     const { data, error } = await supabase.auth.verifyOtp({
@@ -54,26 +63,61 @@ export async function GET(request: NextRequest) {
       type: otpType,
     });
     if (!error && data?.session?.user?.email) {
-      authenticatedEmail = data.session.user.email.trim().toLowerCase();
+      authenticatedUser = {
+        id: String(data.session.user.id),
+        email: data.session.user.email.trim().toLowerCase(),
+        user_metadata: (data.session.user.user_metadata || {}) as Record<string, any>,
+      };
     }
   }
 
   let targetPath = explicitNext || '/vendor/onboarding';
 
-  if (!explicitNext && authenticatedEmail) {
+  if (authenticatedUser) {
     try {
       const adminDb = getServiceSupabase();
       const { data: existingVendor } = await adminDb
         .from('vendors')
-        .select('id, kyc_status')
-        .eq('email', authenticatedEmail)
+        .select('id, store_name, phone_number, kyc_status')
+        .or(`user_id.eq.${authenticatedUser.id},email.eq.${authenticatedUser.email}`)
+        .limit(1)
         .maybeSingle();
 
-      if (existingVendor?.kyc_status === 'VERIFIED') {
-        targetPath = '/vendor';
+      const metaStore =
+        typeof authenticatedUser.user_metadata?.store_name === 'string'
+          ? authenticatedUser.user_metadata.store_name.trim()
+          : '';
+      const metaPhone =
+        typeof authenticatedUser.user_metadata?.phone_number === 'string'
+          ? authenticatedUser.user_metadata.phone_number.trim()
+          : '';
+
+      const resolvedStoreName = String(existingVendor?.store_name || metaStore || '').trim();
+      const resolvedPhone = String(existingVendor?.phone_number || metaPhone || '').trim();
+      const step1Complete = Boolean(resolvedStoreName && resolvedPhone);
+
+      if (step1Complete) {
+        await saveVendorStep1AndWaitlistServer({
+          userId: authenticatedUser.id,
+          email: authenticatedUser.email,
+          storeName: resolvedStoreName,
+          phoneNumber: resolvedPhone,
+          source: 'email_confirmation_callback',
+          supabaseClient: adminDb,
+        }).catch(() => {});
+      }
+
+      if (!explicitNext) {
+        if (String(existingVendor?.kyc_status || '').toLowerCase() === 'verified') {
+          targetPath = '/vendor';
+        } else if (step1Complete) {
+          targetPath = '/vendor/onboarding?confirmed=1&step=2';
+        } else {
+          targetPath = '/vendor/onboarding?confirmed=1&step=1';
+        }
       }
     } catch {
-      // Default to /vendor/onboarding if lookup fails
+      // Fall back to default targetPath cleanly
     }
   }
 

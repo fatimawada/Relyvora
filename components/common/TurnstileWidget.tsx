@@ -10,7 +10,8 @@ declare global {
         options: {
           sitekey: string;
           theme?: 'light' | 'dark' | 'auto';
-          size?: 'normal' | 'compact' | 'flexible';
+          size?: 'normal' | 'compact' | 'flexible' | 'invisible';
+          appearance?: 'always' | 'execute' | 'interaction-only';
           callback?: (token: string) => void;
           'expired-callback'?: () => void;
           'error-callback'?: (errorCode?: string) => void;
@@ -28,6 +29,9 @@ const TURNSTILE_SCRIPT_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api
 export interface TurnstileWidgetProps {
   siteKey?: string;
   resetKey?: number;
+  theme?: 'light' | 'dark' | 'auto';
+  size?: 'normal' | 'compact' | 'flexible' | 'invisible';
+  appearance?: 'always' | 'execute' | 'interaction-only';
   onVerify: (token: string) => void;
   onExpire?: () => void;
   onError?: (errorCode?: string) => void;
@@ -37,6 +41,9 @@ export interface TurnstileWidgetProps {
 export function TurnstileWidget({
   siteKey,
   resetKey = 0,
+  theme = 'light',
+  size,
+  appearance = 'interaction-only',
   onVerify,
   onExpire,
   onError,
@@ -70,7 +77,9 @@ export function TurnstileWidget({
       containerRef.current.innerHTML = '';
       widgetIdRef.current = window.turnstile.render(containerRef.current, {
         sitekey: activeSiteKey,
-        theme: 'auto',
+        theme,
+        ...(size ? { size } : {}),
+        ...(appearance ? { appearance } : {}),
         callback: (token: string) => {
           if (!cancelled) {
             onVerifyRef.current(token);
@@ -143,7 +152,7 @@ export function TurnstileWidget({
         widgetIdRef.current = null;
       }
     };
-  }, [activeSiteKey]);
+  }, [activeSiteKey, theme, size, appearance]);
 
   useEffect(() => {
     if (prevResetKeyRef.current !== resetKey) {
@@ -162,11 +171,13 @@ export function TurnstileWidget({
     return null;
   }
 
+  const isCompactInvisible = appearance === 'interaction-only' || size === 'invisible';
+
   return (
     <div
       ref={containerRef}
       data-sitekey={activeSiteKey}
-      className={`cf-turnstile min-h-[65px] ${className}`.trim()}
+      className={`cf-turnstile ${isCompactInvisible ? '' : 'min-h-[65px]'} ${className}`.trim()}
     />
   );
 }

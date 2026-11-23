@@ -21,6 +21,7 @@ import {
 } from '@/lib/smsDelivery';
 import { recordLedgerEntry } from '@/lib/ledger';
 import { resolveOrderActor } from '@/lib/orderAuth';
+import { evaluateLivePaymentGateServer } from '@/lib/launchGates';
 import { computeBuyerPhoneBindingHash } from '@/lib/buyerSession';
 
 /**
@@ -90,6 +91,21 @@ export async function POST(request: NextRequest) {
     } else {
       return NextResponse.json(
         { success: false, code: 'FORBIDDEN', error: 'Forbidden: Vendors cannot reissue or view buyer release codes.' },
+        { status: 403 }
+      );
+    }
+
+    const liveGate = await evaluateLivePaymentGateServer({
+      vendorId: tx.vendor_id,
+      supabaseClient: supabase,
+    });
+    if (!liveGate.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: liveGate.code || 'PAYMENTS_NOT_LIVE',
+          error: liveGate.error || 'Payments open soon.',
+        },
         { status: 403 }
       );
     }

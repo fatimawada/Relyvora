@@ -4,6 +4,7 @@ import { sendSystemAlert } from '@/lib/alerts';
 import { checkSharedRateLimit, getClientIp } from '@/lib/rateLimit';
 import { updateTransactionStrict } from '@/lib/orderLifecycle';
 import { resolveOrderActor } from '@/lib/orderAuth';
+import { evaluateLivePaymentGateServer } from '@/lib/launchGates';
 import { sendDisputeOpenedOrUpdatedWhatsapp } from '@/lib/whatsapp';
 
 export async function POST(request: NextRequest) {
@@ -57,6 +58,21 @@ export async function POST(request: NextRequest) {
     }
 
     const cleanRole: 'BUYER' | 'VENDOR' = actor.role;
+
+    const liveGate = await evaluateLivePaymentGateServer({
+      vendorId: tx.vendor_id,
+      supabaseClient: supabase,
+    });
+    if (!liveGate.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: liveGate.code || 'PAYMENTS_NOT_LIVE',
+          error: liveGate.error || 'Payments open soon.',
+        },
+        { status: 403 }
+      );
+    }
 
     const clientIp = getClientIp(request);
     const [ipRl, txRl] = await Promise.all([

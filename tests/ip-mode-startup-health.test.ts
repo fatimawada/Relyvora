@@ -482,18 +482,18 @@ async function runSuite() {
     );
 
     const turnstileWidgetSrc = fs.readFileSync('components/common/TurnstileWidget.tsx', 'utf8');
-    const vendorPageSrc = fs.readFileSync('app/(app)/vendor/page.tsx', 'utf8');
+    const vendorPortalSrc = fs.readFileSync('components/vendor/VendorPortalClient.tsx', 'utf8');
     const onboardingFlowSrc = fs.readFileSync('components/vendor/VendorOnboardingFlow.tsx', 'utf8');
 
     assert(
       turnstileWidgetSrc.includes('https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit') &&
         turnstileWidgetSrc.includes('NEXT_PUBLIC_TURNSTILE_SITE_KEY') &&
-        vendorPageSrc.includes('<TurnstileWidget') &&
-        vendorPageSrc.includes('captchaToken: loginCaptchaToken.trim()') &&
+        vendorPortalSrc.includes('<TurnstileWidget') &&
+        vendorPortalSrc.includes('captchaToken: loginCaptchaToken.trim()') &&
         onboardingFlowSrc.includes('<TurnstileWidget') &&
         onboardingFlowSrc.includes('captchaToken: currentCaptchaToken') &&
         !onboardingFlowSrc.includes('Paste verified CAPTCHA challenge response token'),
-      'Cloudflare Turnstile widget renders on /vendor sign-in and /vendor/onboarding and passes captchaToken into supabase.auth.signInWithPassword / signUp options'
+      'Cloudflare Turnstile widget renders on /vendor sign-in and /vendor/onboarding and passes captchaToken into supabase.auth.signInWithOtp options'
     );
 
     const authCallbackSrc = fs.readFileSync('app/auth/callback/route.ts', 'utf8');
@@ -516,7 +516,7 @@ async function runSuite() {
         onboardingFlowSrc.includes('emailRedirectTo: `${window.location.origin}/auth/callback`') &&
         rootPkceLocation === 'https://staging.relyvora.com/auth/callback?code=pkce-test-code-123' &&
         callbackLocation === 'https://staging.relyvora.com/vendor/onboarding?confirmed=1',
-      '/auth/callback exchanges PKCE code via supabase.auth.exchangeCodeForSession(code), middleware forwards /?code=... to /auth/callback, and signUp passes emailRedirectTo'
+      '/auth/callback exchanges PKCE code via supabase.auth.exchangeCodeForSession(code), middleware forwards /?code=... to /auth/callback, and signInWithOtp passes emailRedirectTo'
     );
 
     const demoBannerSrc = fs.readFileSync('components/DemoBanner.tsx', 'utf8');
@@ -526,9 +526,9 @@ async function runSuite() {
     assert(
       demoBannerSrc.includes('!isExplicitSandboxUiMode()') &&
         navbarSrc.includes('!isExplicitSandboxUiMode()') &&
-        !vendorPageSrc.includes('@LagosHairPlug') &&
-        !vendorPageSrc.includes('Simulated Verified Vendor') &&
-        vendorPageSrc.includes('{!isProductionOrLive && (') &&
+        !vendorPortalSrc.includes('@LagosHairPlug') &&
+        !vendorPortalSrc.includes('Simulated Verified Vendor') &&
+        !vendorPortalSrc.includes('Sandbox Testing Tip') &&
         !prohibitedItemsSrc.includes('Draft Policy'),
       'Demo/testing UI (DEMO MODE banner, Simulated Escrow pill, @LagosHairPlug / Simulated Verified Vendor fallback, Sandbox Testing Tip) is hidden in live/production and Draft Policy banner is removed from /prohibited-items'
     );

@@ -39,15 +39,61 @@ export class AnchorApiError extends Error {
   }
 }
 
+export function isAnchorLiveCredentialsConfigured(): {
+  ok: boolean;
+  error?: string;
+} {
+  const key = (process.env.ANCHOR_SECRET_KEY || '').trim();
+  const baseUrl = (process.env.ANCHOR_BASE_URL || '').trim();
+  const webhookSecret = (process.env.ANCHOR_WEBHOOK_SECRET || '').trim();
+
+  if (!key) {
+    return {
+      ok: false,
+      error: 'Anchor production credentials are missing: ANCHOR_SECRET_KEY is not configured.',
+    };
+  }
+  if (!baseUrl) {
+    return {
+      ok: false,
+      error: 'Anchor production credentials are missing: ANCHOR_BASE_URL is not configured.',
+    };
+  }
+  if (baseUrl.toLowerCase().includes('sandbox')) {
+    return {
+      ok: false,
+      error: 'Anchor production credentials mismatch: ANCHOR_BASE_URL points to sandbox while PAYMENTS_MODE=live.',
+    };
+  }
+  if (!webhookSecret) {
+    return {
+      ok: false,
+      error: 'Anchor production credentials are missing: ANCHOR_WEBHOOK_SECRET is not configured.',
+    };
+  }
+  return { ok: true };
+}
+
+export function assertAnchorLiveCredentials(): void {
+  const mode = (process.env.PAYMENTS_MODE || 'sandbox').toLowerCase().trim();
+  if (mode !== 'live') {
+    return;
+  }
+  const check = isAnchorLiveCredentialsConfigured();
+  if (!check.ok) {
+    throw new Error(check.error || 'Anchor production credentials are missing.');
+  }
+}
+
 /**
  * Validates and retrieves the Anchor Secret Key from the environment.
  */
 export function getAnchorSecretKey(): string {
   const key = process.env.ANCHOR_SECRET_KEY;
-  if (!key) {
+  if (!key || !key.trim()) {
     throw new Error(
       'ANCHOR_SECRET_KEY is not defined in environment variables. ' +
-      'Please ensure it is set in your .env.local file on the server.'
+      'Please ensure it is set on the server.'
     );
   }
   return key.trim();
@@ -57,6 +103,7 @@ export function getAnchorSecretKey(): string {
  * Constructs standard headers required for all Anchor API requests.
  */
 export function getAnchorHeaders(): HeadersInit {
+  assertAnchorLiveCredentials();
   return {
     'accept': 'application/json',
     'content-type': 'application/json',
@@ -65,10 +112,15 @@ export function getAnchorHeaders(): HeadersInit {
 }
 
 /**
- * Retrieves the configured Anchor API Base URL (defaults to Sandbox).
+ * Retrieves the configured Anchor API Base URL (defaults to Sandbox ONLY in sandbox mode; fails closed in live mode).
  */
 export function getAnchorBaseUrl(): string {
-  return process.env.ANCHOR_BASE_URL || ANCHOR_SANDBOX_BASE_URL;
+  const mode = (process.env.PAYMENTS_MODE || 'sandbox').toLowerCase().trim();
+  if (mode === 'live') {
+    assertAnchorLiveCredentials();
+    return (process.env.ANCHOR_BASE_URL || '').trim().replace(/\/+$/, '');
+  }
+  return (process.env.ANCHOR_BASE_URL || ANCHOR_SANDBOX_BASE_URL).trim().replace(/\/+$/, '');
 }
 
 /**

@@ -449,6 +449,22 @@ CREATE TABLE IF NOT EXISTS public.market_waitlist (
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 
+-- 3.13B Vendor Early-Access / Pre-KYC Waitlist (Option B Open Sign-Up)
+CREATE TABLE IF NOT EXISTS public.vendor_waitlist (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID UNIQUE,
+    vendor_id UUID REFERENCES public.vendors(id) ON DELETE SET NULL,
+    store_name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    whatsapp_number TEXT NOT NULL,
+    whatsapp_phone_hash TEXT,
+    status TEXT NOT NULL DEFAULT 'waitlisted'
+        CONSTRAINT vendor_waitlist_status_check CHECK (status IN ('waitlisted', 'invited', 'kyc_opened', 'active')),
+    source TEXT NOT NULL DEFAULT 'open_signup',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
 -- 3.14 Risk Scoring Flags & Review Holds
 CREATE TABLE IF NOT EXISTS public.risk_flags (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -541,6 +557,12 @@ CREATE TRIGGER update_rate_limit_buckets_modtime
     FOR EACH ROW
     EXECUTE FUNCTION public.update_modified_column();
 
+DROP TRIGGER IF EXISTS update_vendor_waitlist_modtime ON public.vendor_waitlist;
+CREATE TRIGGER update_vendor_waitlist_modtime
+    BEFORE UPDATE ON public.vendor_waitlist
+    FOR EACH ROW
+    EXECUTE FUNCTION public.update_modified_column();
+
 DROP TRIGGER IF EXISTS trg_prevent_ledger_mutation ON public.transaction_ledger;
 CREATE TRIGGER trg_prevent_ledger_mutation
     BEFORE UPDATE OR DELETE ON public.transaction_ledger
@@ -599,6 +621,9 @@ CREATE INDEX IF NOT EXISTS idx_risk_flags_vendor ON public.risk_flags(vendor_id)
 CREATE INDEX IF NOT EXISTS idx_order_evidence_files_tx_cat ON public.order_evidence_files(transaction_id, evidence_category);
 CREATE INDEX IF NOT EXISTS idx_order_evidence_files_retention ON public.order_evidence_files(retention_delete_after);
 CREATE INDEX IF NOT EXISTS idx_rate_limit_buckets_reset ON public.rate_limit_buckets(reset_at);
+CREATE INDEX IF NOT EXISTS idx_vendor_waitlist_email ON public.vendor_waitlist(email);
+CREATE INDEX IF NOT EXISTS idx_vendor_waitlist_user_id ON public.vendor_waitlist(user_id);
+CREATE INDEX IF NOT EXISTS idx_vendor_waitlist_status_created ON public.vendor_waitlist(status, created_at DESC);
 
 -- -------------------------------------------------------------------------
 -- SECTION 6: INITIAL SYSTEM SETTINGS SEEDS (OPEN SIGNUP + TIERS + RISK CONFIG)
@@ -624,7 +649,10 @@ VALUES
     ('dispute_policy_config', '{"timezone":"Africa/Lagos","start_hour":8,"end_hour":20,"work_days":[1,2,3,4,5,6]}'::jsonb, 'Business-hour dispute SLA clock configuration', 'system'),
     ('dispatch_proof_config', '{"require_upload":true,"require_courier_name":true,"require_courier_phone":true,"require_tracking_for_interstate":true}'::jsonb, 'Configurable mandatory proof-of-delivery requirements at dispatch', 'system'),
     ('order_lifecycle_config', '{"payment_expiry_hours":24,"stuck_settlement_minutes":15,"refund_fee_on_vendor_cancel":true}'::jsonb, 'Unpaid order expiry window, stuck transfer recovery cadence, and cancellation fee rule', 'system'),
-    ('retention_and_storage_config', '{"evidence_retention_days":180,"ip_hash_retention_days":90,"whatsapp_message_log_retention_days":180,"max_image_bytes":10485760,"max_video_bytes":26214400,"signed_url_ttl_seconds":300}'::jsonb, 'NDPA data retention windows and private evidence storage limits', 'system')
+    ('retention_and_storage_config', '{"evidence_retention_days":180,"ip_hash_retention_days":90,"whatsapp_message_log_retention_days":180,"max_image_bytes":10485760,"max_video_bytes":26214400,"signed_url_ttl_seconds":300}'::jsonb, 'NDPA data retention windows and private evidence storage limits', 'system'),
+    ('kyc_enabled', 'false'::jsonb, 'Option B gate: when false, Step 2 KYC renders a locked state with no identity fields and zero Anchor calls.', 'system'),
+    ('release_code_template_approved', 'false'::jsonb, 'Option B gate: must be true after Meta release_code_v1 template approval before payment links open.', 'system'),
+    ('launch_status', '"launching"'::jsonb, 'Public launch status (launching | live) synced with LAUNCH_STATUS runtime check.', 'system')
 ON CONFLICT (key) DO NOTHING;
 
 -- -------------------------------------------------------------------------
@@ -1912,6 +1940,7 @@ DECLARE
         'whatsapp_message_log',
         'whatsapp_webhook_events',
         'market_waitlist',
+        'vendor_waitlist',
         'risk_flags',
         'order_evidence_files',
         'rate_limit_buckets'

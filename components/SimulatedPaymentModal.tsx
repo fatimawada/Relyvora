@@ -34,14 +34,14 @@ export function SimulatedPaymentModal({
   const [copied, setCopied] = useState(false);
 
   // Card form mock state
-  const [cardNumber, setCardNumber] = useState('5399 4100 1234 5678');
-  const [expiry, setExpiry] = useState('12/28');
-  const [cvv, setCvv] = useState('888');
+  const [cardNumber, setCardNumber] = useState('4000 0000 0000 0000');
+  const [expiry, setExpiry] = useState('MM/YY');
+  const [cvv, setCvv] = useState('000');
 
   if (!isOpen) return null;
 
   const handleCopyAccount = () => {
-    navigator.clipboard.writeText('0248819203');
+    navigator.clipboard.writeText('Sandbox account');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -187,7 +187,7 @@ export function SimulatedPaymentModal({
               <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
                 <div>
                   <span className="text-[11px] font-semibold text-slate-400 block uppercase">Dedicated Virtual Account</span>
-                  <span className="text-lg font-heading tabular-nums font-bold text-slate-900">0248819203</span>
+                  <span className="text-lg font-heading tabular-nums font-bold text-slate-900">Sandbox Test Account</span>
                 </div>
                 <button
                   type="button"
@@ -220,7 +220,7 @@ export function SimulatedPaymentModal({
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2.5 text-left">
             <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
             <p className="text-[11px] text-amber-900 leading-tight">
-              <strong>Demo Environment:</strong> Clicking the button below simulates instant payment settlement. Your funds will be marked as safely locked in escrow without real money movement.
+              <strong>Demo Environment:</strong> Clicking the button below runs a test payment settlement. Your order will be marked as held in escrow without real money movement.
             </p>
           </div>
 

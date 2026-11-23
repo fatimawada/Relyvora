@@ -4,8 +4,10 @@ import {
   verifyAnchorCustomer,
   createAnchorDepositAccount,
   createAnchorCounterParty,
+  isAnchorLiveCredentialsConfigured,
 } from '@/lib/anchor';
 import { isLiveMode } from '@/lib/paymentsMode';
+import { isKycEnabledServer, isReleaseCodeTemplateApprovedServer } from '@/lib/launchGates';
 import { checkSharedRateLimit, getClientIp } from '@/lib/rateLimit';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { verifyVendorOnboardingSession } from '@/lib/vendorAuth';
@@ -118,6 +120,34 @@ export async function POST(request: NextRequest) {
         { success: false, code: session.code || 'UNAUTHORIZED', error: session.error },
         { status: session.statusCode }
       );
+    }
+
+    // 2b. Option B gate: KYC & Anchor verification stays locked until KYC_ENABLED is true
+    const kycEnabled = await isKycEnabledServer();
+    if (!kycEnabled) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'KYC_DISABLED',
+          error: 'Verification opens when payments go live.',
+        },
+        { status: 403 }
+      );
+    }
+
+    // Fail closed if KYC is enabled in live mode without live Anchor credentials
+    if (isLiveMode()) {
+      const liveAnchorCheck = isAnchorLiveCredentialsConfigured();
+      if (!liveAnchorCheck.ok) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: 'ANCHOR_CREDENTIALS_MISSING',
+            error: liveAnchorCheck.error || 'Anchor production credentials are not configured.',
+          },
+          { status: 503 }
+        );
+      }
     }
 
     // 3. Validate input payload cleanly
@@ -447,16 +477,21 @@ export async function POST(request: NextRequest) {
 
     let phoneVerificationWhatsappStatus: string = 'already_verified';
     if (!allowlistCheck.existingVendor?.phone_verified) {
-      const waPhoneRes = await sendVendorPhoneVerifyWhatsapp(
-        {
-          vendorId: savedVendor.id,
-          vendorDisplayName: String(storeName).trim(),
-          vendorPhone: cleanPhone,
-          maskedAccountHint: `******${String(accountNumber).trim().slice(-4)}`,
-        },
-        supabase
-      );
-      phoneVerificationWhatsappStatus = waPhoneRes.status;
+      const templateApproved = await isReleaseCodeTemplateApprovedServer();
+      if (!templateApproved) {
+        phoneVerificationWhatsappStatus = 'pending_template_approval';
+      } else {
+        const waPhoneRes = await sendVendorPhoneVerifyWhatsapp(
+          {
+            vendorId: savedVendor.id,
+            vendorDisplayName: String(storeName).trim(),
+            vendorPhone: cleanPhone,
+            maskedAccountHint: `******${String(accountNumber).trim().slice(-4)}`,
+          },
+          supabase
+        );
+        phoneVerificationWhatsappStatus = waPhoneRes.status;
+      }
     }
 
     const maskedAccountNumber = `******${String(accountNumber).trim().slice(-4)}`;

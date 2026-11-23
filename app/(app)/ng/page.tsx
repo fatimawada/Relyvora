@@ -6,14 +6,23 @@ import {
   ShieldCheck,
   ArrowRight,
   Lock,
-  Store,
+  UserPlus,
   MessageCircle,
   KeyRound,
 } from 'lucide-react';
 import { isExplicitSandboxUiMode } from '@/lib/appUrls';
+import { LAUNCH_STATUS, isPreLaunchFlag } from '@/lib/feeConfig';
 
 export default function NigerianMarketPage() {
   const sandbox = isExplicitSandboxUiMode();
+  const preLaunch = isPreLaunchFlag();
+
+  const badgeLabel =
+    preLaunch || LAUNCH_STATUS !== 'live'
+      ? 'Early access'
+      : sandbox
+        ? 'Nigeria • Sandbox Mode'
+        : 'Nigeria • Live';
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 sm:py-16 space-y-16 sm:space-y-24">
@@ -21,7 +30,7 @@ export default function NigerianMarketPage() {
       <section className="text-center space-y-6 max-w-3xl mx-auto">
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-accent/10 text-accent border border-accent/20 shadow-xs">
           <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-          <span>{sandbox ? 'Nigeria • Sandbox Mode' : 'Nigeria • Invite-Only Launch'}</span>
+          <span>{badgeLabel}</span>
         </div>
 
         <h1 className="text-3xl sm:text-5xl lg:text-6xl font-heading font-bold text-main tracking-tight leading-[1.15]">
@@ -35,19 +44,19 @@ export default function NigerianMarketPage() {
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-2">
           <Link
-            href="/vendor"
-            className="w-full sm:w-auto px-6 py-4 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-base flex items-center justify-center gap-2 shadow-card transition-all transform active:scale-[0.99]"
+            href="/vendor/onboarding"
+            className="w-full sm:w-auto px-6 py-4 rounded-xl bg-accent hover:opacity-90 text-white font-bold text-base flex items-center justify-center gap-2 shadow-card transition-all transform active:scale-[0.99]"
           >
-            <Store className="w-5 h-5 text-[#071229]" />
-            <span>Open Vendor Portal</span>
+            <UserPlus className="w-5 h-5 text-white" />
+            <span>Create vendor account</span>
             <ArrowRight className="w-4 h-4 ml-1" />
           </Link>
 
           <Link
-            href="#how-it-works"
+            href="/vendor"
             className="w-full sm:w-auto px-6 py-4 rounded-xl bg-surface hover:bg-site border border-border text-main font-bold text-base flex items-center justify-center gap-2 transition-colors shadow-xs"
           >
-            <span>See How It Works</span>
+            <span>Vendor sign in</span>
           </Link>
         </div>
 
@@ -63,10 +72,14 @@ export default function NigerianMarketPage() {
           </div>
           <div>
             <div className="text-xl sm:text-2xl font-bold text-accent font-heading tabular-nums">
-              {sandbox ? 'Sandbox Mode' : 'Bank Transfer'}
+              {sandbox ? 'Sandbox' : preLaunch ? 'Early access' : 'Bank Transfer'}
             </div>
             <div className="text-[11px] sm:text-xs text-muted">
-              {sandbox ? 'Test environment active' : 'Virtual account per order'}
+              {sandbox
+                ? 'Test mode active'
+                : preLaunch
+                  ? 'Open vendor sign-up'
+                  : 'Virtual account per order'}
             </div>
           </div>
         </div>
@@ -85,73 +98,85 @@ export default function NigerianMarketPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Card 1 */}
-          <div className="bg-surface p-6 sm:p-7 rounded-card border border-border shadow-xs space-y-4 relative overflow-hidden transition-colors">
+          <div className="bg-surface p-6 sm:p-7 rounded-card border border-border shadow-xs space-y-4 relative overflow-hidden">
             <div className="w-12 h-12 rounded-xl bg-accent/10 text-accent flex items-center justify-center font-heading tabular-nums font-bold text-xl border border-accent/20">
               1
             </div>
             <h3 className="text-lg font-heading font-semibold text-main">Seller creates a link</h3>
             <p className="text-xs sm:text-sm text-muted leading-relaxed">
-              The seller enters the item name, price, and delivery fee in the vendor portal, then shares the checkout link in chat.
+              The seller enters the item name, agreed price, and delivery option in their dashboard, then sends the checkout link in chat.
             </p>
             <div className="pt-2 text-xs font-semibold text-accent flex items-center gap-1">
               <MessageCircle className="w-4 h-4" />
-              <span>Shareable on WhatsApp &amp; Instagram</span>
+              <span>Shareable on WhatsApp and Instagram</span>
             </div>
           </div>
 
           {/* Card 2 */}
-          <div className="bg-surface p-6 sm:p-7 rounded-card border border-border shadow-xs space-y-4 relative overflow-hidden transition-colors">
-            <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-heading tabular-nums font-bold text-xl border border-blue-500/20">
+          <div className="bg-surface p-6 sm:p-7 rounded-card border border-border shadow-xs space-y-4 relative overflow-hidden">
+            <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-700 flex items-center justify-center font-heading tabular-nums font-bold text-xl border border-blue-500/20">
               2
             </div>
             <h3 className="text-lg font-heading font-semibold text-main">Buyer pays into escrow</h3>
             <p className="text-xs sm:text-sm text-muted leading-relaxed">
-              The buyer reviews the order total and transfers the exact amount to the dedicated virtual bank account. Funds stay held while the seller ships.
+              The buyer checks the order total and transfers the exact amount to a dedicated bank account. Funds stay held while the seller dispatches.
             </p>
-            <div className="pt-2 text-xs font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+            <div className="pt-2 text-xs font-semibold text-blue-700 flex items-center gap-1">
               <Lock className="w-4 h-4" />
-              <span>Funds held until delivery</span>
+              <span>Money held until delivery</span>
             </div>
           </div>
 
           {/* Card 3 */}
-          <div className="bg-surface p-6 sm:p-7 rounded-card border border-border shadow-xs space-y-4 relative overflow-hidden transition-colors">
-            <div className="w-12 h-12 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center font-heading tabular-nums font-bold text-xl border border-teal-500/20">
+          <div className="bg-surface p-6 sm:p-7 rounded-card border border-border shadow-xs space-y-4 relative overflow-hidden">
+            <div className="w-12 h-12 rounded-xl bg-teal-500/10 text-teal-700 flex items-center justify-center font-heading tabular-nums font-bold text-xl border border-teal-500/20">
               3
             </div>
             <h3 className="text-lg font-heading font-semibold text-main">Inspect and share code</h3>
             <p className="text-xs sm:text-sm text-muted leading-relaxed">
-              Once paid, the buyer receives a six-digit release code. At delivery, the buyer opens the package, checks the items, and gives the code to the rider to release payment.
+              Once paid, the buyer receives a six-digit release code. At delivery, the buyer opens the package, checks the items, and gives the code to pay the seller.
             </p>
-            <div className="pt-2 text-xs font-semibold text-teal-600 dark:text-teal-400 flex items-center gap-1">
+            <div className="pt-2 text-xs font-semibold text-teal-700 flex items-center gap-1">
               <KeyRound className="w-4 h-4" />
-              <span>Doorstep verification</span>
+              <span>Doorstep confirmation</span>
             </div>
           </div>
         </div>
       </section>
 
       {/* CTA Box */}
-      <section className="bg-surface border border-border rounded-card p-8 sm:p-12 text-center space-y-6 relative overflow-hidden shadow-card transition-colors">
+      <section className="bg-surface border border-border rounded-card p-8 sm:p-12 text-center space-y-6 relative overflow-hidden shadow-card">
         <div className="relative z-10 max-w-xl mx-auto space-y-4">
           <div className="w-12 h-12 rounded-xl bg-accent/10 text-accent flex items-center justify-center mx-auto border border-accent/20">
             <ShieldCheck className="w-6 h-6" />
           </div>
           <h2 className="text-2xl sm:text-3xl font-heading font-bold text-main tracking-tight">
-            {sandbox ? 'Explore the Relyvora Sandbox' : 'Create or track an escrow order'}
+            {sandbox
+              ? 'Explore the Relyvora Sandbox'
+              : preLaunch
+                ? 'Open your seller account ahead of launch'
+                : 'Start accepting protected order payments'}
           </h2>
           <p className="text-xs sm:text-sm text-muted">
             {sandbox
-              ? 'Walk through the seller link generator, simulated payment flow, and six-digit code release in sandbox mode.'
-              : 'Open the vendor portal to create an escrow payment link or check an active order status.'}
+              ? 'Try the vendor link flow, test payment confirmation, and six-digit release verification in sandbox mode.'
+              : preLaunch
+                ? 'Sign up with your store name, email, and WhatsApp number. Verification and payment links open as soon as we go live.'
+                : 'Sign in to create an escrow payment link or check an active order status.'}
           </p>
-          <div className="pt-2">
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link
+              href="/vendor/onboarding"
+              className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-accent hover:opacity-90 text-white font-bold text-sm shadow-card transition-all"
+            >
+              <span>Create vendor account</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
             <Link
               href="/vendor"
-              className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-sm shadow-card transition-all"
+              className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-site hover:bg-border/40 border border-border text-main font-semibold text-sm transition-colors"
             >
-              <span>Go to Vendor Portal</span>
-              <ArrowRight className="w-4 h-4" />
+              <span>Sign in</span>
             </Link>
           </div>
         </div>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { isLiveMode } from '@/lib/paymentsMode';
+import { evaluateLivePaymentGateServer } from '@/lib/launchGates';
 import { isCheckoutEnabledServer } from '@/lib/safetyLimits';
 import { recordLedgerEntry } from '@/lib/ledger';
 import { getClientIp, checkSharedRateLimit } from '@/lib/rateLimit';
@@ -19,6 +20,18 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error: 'Simulated payment confirmation is disabled in live/production mode. Payments must be deposited via Providus Virtual NUBAN.',
+        },
+        { status: 403 }
+      );
+    }
+
+    const liveGate = await evaluateLivePaymentGateServer({ requireVendorKyc: false });
+    if (!liveGate.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: liveGate.code || 'PAYMENTS_NOT_LIVE',
+          error: liveGate.error || 'Payments open soon.',
         },
         { status: 403 }
       );

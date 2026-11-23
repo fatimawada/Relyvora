@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { checkSharedRateLimit, getClientIp } from '@/lib/rateLimit';
+import { evaluateLivePaymentGateServer } from '@/lib/launchGates';
 import {
   applyWhatsappVerificationRedaction,
   maskWhatsappNumber,
@@ -55,6 +56,21 @@ export async function POST(
 
     if (!tx) {
       return NextResponse.json({ success: false, error: 'Transaction not found.' }, { status: 404 });
+    }
+
+    const liveGate = await evaluateLivePaymentGateServer({
+      vendorId: tx.vendor_id,
+      supabaseClient: supabase,
+    });
+    if (!liveGate.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: liveGate.code || 'PAYMENTS_NOT_LIVE',
+          error: liveGate.error || 'Payments open soon.',
+        },
+        { status: 403 }
+      );
     }
 
     if (tx.status !== 'AWAITING_PAYMENT') {
