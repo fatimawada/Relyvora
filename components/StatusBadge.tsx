@@ -24,38 +24,38 @@ export function StatusBadge({ status, size = 'md' }: StatusBadgeProps) {
   }> = {
     AWAITING_PAYMENT: {
       label: 'Awaiting Payment',
-      bg: 'bg-amber-500/10',
-      text: 'text-amber-700 dark:text-amber-300',
-      border: 'border-amber-500/20',
-      icon: <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />,
+      bg: 'bg-amber-50',
+      text: 'text-amber-800',
+      border: 'border-amber-200',
+      icon: <Clock className="w-3.5 h-3.5 text-amber-700" />,
     },
     PARTIALLY_FUNDED: {
-      label: 'Partially Funded',
-      bg: 'bg-amber-500/10',
-      text: 'text-amber-700 dark:text-amber-300',
-      border: 'border-amber-500/20',
-      icon: <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />,
+      label: 'Part Payment Received',
+      bg: 'bg-amber-50',
+      text: 'text-amber-800',
+      border: 'border-amber-200',
+      icon: <Clock className="w-3.5 h-3.5 text-amber-700" />,
     },
     FUNDS_LOCKED: {
-      label: 'Funds Locked in Escrow',
+      label: 'Paid into Escrow',
       bg: 'bg-accent/10',
       text: 'text-accent',
       border: 'border-accent/20',
       icon: <Lock className="w-3.5 h-3.5 text-accent" />,
     },
     DISPATCHED: {
-      label: 'Dispatched / Rider En Route',
-      bg: 'bg-blue-500/10',
-      text: 'text-blue-700 dark:text-blue-300',
-      border: 'border-blue-500/20',
-      icon: <Truck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />,
+      label: 'Dispatched',
+      bg: 'bg-blue-50',
+      text: 'text-blue-800',
+      border: 'border-blue-200',
+      icon: <Truck className="w-3.5 h-3.5 text-blue-700" />,
     },
     RELEASING: {
-      label: 'Settlement in Progress',
-      bg: 'bg-indigo-500/10',
-      text: 'text-indigo-700 dark:text-indigo-300',
-      border: 'border-indigo-500/20',
-      icon: <Clock className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />,
+      label: 'Payout in Progress',
+      bg: 'bg-indigo-50',
+      text: 'text-indigo-800',
+      border: 'border-indigo-200',
+      icon: <Clock className="w-3.5 h-3.5 text-indigo-700" />,
     },
     VENDOR_PAID: {
       label: 'Vendor Paid',
@@ -65,25 +65,25 @@ export function StatusBadge({ status, size = 'md' }: StatusBadgeProps) {
       icon: <CheckCircle2 className="w-3.5 h-3.5 text-accent" />,
     },
     RELEASED: {
-      label: 'Funds Released to Vendor',
+      label: 'Completed & Released',
       bg: 'bg-accent/10',
       text: 'text-accent',
       border: 'border-accent/20',
       icon: <CheckCircle2 className="w-3.5 h-3.5 text-accent" />,
     },
     DISPUTED: {
-      label: 'Disputed: Escrow Frozen',
-      bg: 'bg-rose-500/10',
-      text: 'text-rose-700 dark:text-rose-300',
-      border: 'border-rose-500/20',
-      icon: <AlertTriangle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />,
+      label: 'Disputed: Held',
+      bg: 'bg-rose-50',
+      text: 'text-rose-800',
+      border: 'border-rose-200',
+      icon: <AlertTriangle className="w-3.5 h-3.5 text-rose-700" />,
     },
     RESOLVING: {
       label: 'Dispute Settlement Running',
-      bg: 'bg-rose-500/10',
-      text: 'text-rose-700 dark:text-rose-300',
-      border: 'border-rose-500/20',
-      icon: <Clock className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />,
+      bg: 'bg-rose-50',
+      text: 'text-rose-800',
+      border: 'border-rose-200',
+      icon: <Clock className="w-3.5 h-3.5 text-rose-700" />,
     },
     REFUNDED: {
       label: 'Refunded to Buyer',
@@ -101,10 +101,10 @@ export function StatusBadge({ status, size = 'md' }: StatusBadgeProps) {
     },
     CANCELLED: {
       label: 'Order Cancelled',
-      bg: 'bg-rose-500/10',
-      text: 'text-rose-700 dark:text-rose-300',
-      border: 'border-rose-500/20',
-      icon: <XCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />,
+      bg: 'bg-rose-50',
+      text: 'text-rose-800',
+      border: 'border-rose-200',
+      icon: <XCircle className="w-3.5 h-3.5 text-rose-700" />,
     },
   };
 
@@ -117,7 +117,7 @@ export function StatusBadge({ status, size = 'md' }: StatusBadgeProps) {
 
   return (
     <span
-      className={`inline-flex items-center font-medium rounded-full border shadow-xs transition-colors ${config.bg} ${config.text} ${config.border} ${sizeClasses[size]}`}
+      className={`inline-flex items-center font-medium rounded-full border shadow-xs ${config.bg} ${config.text} ${config.border} ${sizeClasses[size]}`}
     >
       {config.icon}
       <span>{config.label}</span>

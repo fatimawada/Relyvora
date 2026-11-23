@@ -11,6 +11,7 @@ import { sendOtpWhatsappTemplate } from '@/lib/whatsapp';
 import { maskPhoneNumber } from '@/lib/smsDelivery';
 import { verifyAndSaveBuyerRefundAccount } from '@/lib/refundDestination';
 import { resolveOrderActor } from '@/lib/orderAuth';
+import { evaluateLivePaymentGateServer } from '@/lib/launchGates';
 import { computeBuyerPhoneBindingHash } from '@/lib/buyerSession';
 import { sendSystemAlert } from '@/lib/alerts';
 
@@ -65,6 +66,21 @@ export async function POST(request: NextRequest) {
     if (actor.role !== 'BUYER') {
       return NextResponse.json(
         { success: false, code: 'FORBIDDEN', error: 'Forbidden: Only the verified buyer may manage the refund bank account.' },
+        { status: 403 }
+      );
+    }
+
+    const liveGate = await evaluateLivePaymentGateServer({
+      vendorId: tx.vendor_id,
+      supabaseClient: supabase,
+    });
+    if (!liveGate.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: liveGate.code || 'PAYMENTS_NOT_LIVE',
+          error: liveGate.error || 'Payments open soon.',
+        },
         { status: 403 }
       );
     }

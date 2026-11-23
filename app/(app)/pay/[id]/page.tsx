@@ -12,7 +12,6 @@ import { Logo } from '@/components/brand/Logo';
 import { StatusBadge } from '@/components/StatusBadge';
 import { SimulatedPaymentModal } from '@/components/SimulatedPaymentModal';
 import { AnchorBrandText } from '@/components/common/AnchorBrandText';
-import { ProductFooter } from '@/components/ProductFooter';
 import {
   ShieldCheck,
   Lock,
@@ -406,7 +405,7 @@ export default function BuyerCheckoutPage() {
                   <p className="text-[11px] text-muted leading-snug">
                     You receive a six-digit release code. Give the code to the dispatch rider only after you have opened the package and checked the items.
                   </p>
-                  <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 mt-1">
+                  <p className="text-[11px] font-semibold text-amber-800 mt-1">
                     Giving the code releases the money. The release code is sent only to the buyer.
                   </p>
                 </div>
@@ -416,16 +415,16 @@ export default function BuyerCheckoutPage() {
 
           {/* Terminal Unpaid States (EXPIRED / CANCELLED) */}
           {isExpired ? (
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 text-center space-y-2.5">
-              <Clock className="w-8 h-8 text-amber-600 dark:text-amber-400 mx-auto" />
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-center space-y-2.5">
+              <Clock className="w-8 h-8 text-amber-700 mx-auto" />
               <h3 className="text-sm font-heading font-semibold text-main">Payment Link Expired</h3>
               <p className="text-xs text-muted leading-relaxed">
                 This unpaid escrow link expired and its temporary virtual bank account has been closed. Ask {transaction.vendor_handle} for a fresh checkout link before transferring any funds.
               </p>
             </div>
           ) : isCancelled ? (
-            <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-5 text-center space-y-2.5">
-              <XCircle className="w-8 h-8 text-rose-600 dark:text-rose-400 mx-auto" />
+            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 text-center space-y-2.5">
+              <XCircle className="w-8 h-8 text-rose-700 mx-auto" />
               <h3 className="text-sm font-heading font-semibold text-main">Order Cancelled</h3>
               <p className="text-xs text-muted leading-relaxed">
                 This order was cancelled ({transaction.cancellation_reason || 'pre-dispatch vendor cancellation'}). Do not transfer funds to any closed account.
@@ -433,7 +432,7 @@ export default function BuyerCheckoutPage() {
             </div>
           ) : isAlreadyPaid ? (
             !liveMode && storedReleaseCode ? (
-              <div className="bg-surface border-2 border-accent/40 rounded-2xl p-6 sm:p-7 text-center space-y-4 shadow-card transition-colors">
+              <div className="bg-surface border-2 border-accent/40 rounded-2xl p-6 sm:p-7 text-center space-y-4 shadow-card">
                 <div className="w-12 h-12 rounded-full bg-accent/15 text-accent flex items-center justify-center mx-auto border border-accent/30">
                   <CheckCircle2 className="w-6 h-6" />
                 </div>
@@ -453,8 +452,8 @@ export default function BuyerCheckoutPage() {
                     {storedReleaseCode}
                   </div>
                 </div>
-                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-left flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300 max-w-md mx-auto">
-                  <Lock className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-left flex items-start gap-2 text-xs text-amber-900 max-w-md mx-auto">
+                  <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
                   <span>
                     <strong>Giving the code releases the money.</strong> Keep this code confidential — the release code is sent only to the buyer. Give the code to the dispatch rider only after you have opened the package and checked the items.
                   </span>
@@ -462,7 +461,7 @@ export default function BuyerCheckoutPage() {
                 <div className="pt-1">
                   <Link
                     href={`/order/${transaction.id}?code=${storedReleaseCode}`}
-                    className="inline-flex items-center gap-1.5 px-6 py-3 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-xs sm:text-sm transition-colors shadow-card"
+                    className="inline-flex items-center gap-1.5 px-6 py-3 rounded-xl bg-accent hover:opacity-90 text-white font-bold text-xs sm:text-sm transition-colors shadow-card"
                   >
                     <span>Open Live Escrow Tracker</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -470,7 +469,7 @@ export default function BuyerCheckoutPage() {
                 </div>
               </div>
             ) : (
-              <div className="bg-surface border-2 border-accent/40 rounded-2xl p-6 sm:p-7 text-center space-y-4 shadow-card transition-colors">
+              <div className="bg-surface border-2 border-accent/40 rounded-2xl p-6 sm:p-7 text-center space-y-4 shadow-card">
                 <div className="w-12 h-12 rounded-full bg-accent/15 text-accent flex items-center justify-center mx-auto border border-accent/30">
                   <CheckCircle2 className="w-6 h-6" />
                 </div>
@@ -479,13 +478,13 @@ export default function BuyerCheckoutPage() {
                     Payment Protected in Escrow
                   </span>
                   <h3 className="text-lg sm:text-xl font-heading font-bold text-main mt-2">
-                    Your release code was sent to {transaction.buyer_phone_masked || '******1234'}
+                    Your release code was sent to {transaction.buyer_phone_masked || 'your WhatsApp number'}
                   </h3>
                   <p className="text-xs sm:text-sm text-muted max-w-md mx-auto leading-relaxed">
                     Give the code to the dispatch rider only after you have opened the package and checked the items.
                   </p>
-                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-left flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300 max-w-md mx-auto">
-                    <Lock className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-left flex items-start gap-2 text-xs text-amber-900 max-w-md mx-auto">
+                    <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
                     <span>
                       <strong>Giving the code releases the money.</strong> The release code is sent only to the buyer — never share it before inspecting your package.
                     </span>
@@ -493,7 +492,7 @@ export default function BuyerCheckoutPage() {
                 </div>
                 <Link
                   href={`/order/${transaction.id}`}
-                  className="w-full py-3.5 px-4 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-card"
+                  className="w-full py-3.5 px-4 rounded-xl bg-accent hover:opacity-90 text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-card"
                 >
                   <span>Go to Escrow Tracker</span>
                   <ArrowRight className="w-4 h-4" />
@@ -501,16 +500,16 @@ export default function BuyerCheckoutPage() {
               </div>
             )
           ) : !isCheckoutEnabled() ? (
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 text-center space-y-2">
-              <AlertCircle className="w-8 h-8 text-amber-600 dark:text-amber-400 mx-auto" />
-              <h3 className="text-sm font-heading font-semibold text-main">Checkout Temporarily Suspended</h3>
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-center space-y-2">
+              <AlertCircle className="w-8 h-8 text-amber-700 mx-auto" />
+              <h3 className="text-sm font-heading font-semibold text-main">Checkout Temporarily Paused</h3>
               <p className="text-xs text-muted">
-                Payment collection is temporarily paused for scheduled maintenance. Please try again shortly or contact your vendor.
+                Payment collection is temporarily paused for maintenance. Please try again shortly or contact your seller.
               </p>
             </div>
           ) : transaction.whatsapp_blocked ? (
-            <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-5 text-center space-y-2.5">
-              <ShieldAlert className="w-8 h-8 text-rose-600 dark:text-rose-400 mx-auto" />
+            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 text-center space-y-2.5">
+              <ShieldAlert className="w-8 h-8 text-rose-700 mx-auto" />
               <h3 className="text-sm font-heading font-semibold text-main">Order Blocked</h3>
               <p className="text-xs text-muted leading-relaxed">
                 This payment link has been blocked because the recipient reported &quot;Not me&quot; or opted out on WhatsApp. Virtual account details are unavailable.
@@ -535,13 +534,13 @@ export default function BuyerCheckoutPage() {
               </div>
 
               {resendWhatsappNotice && (
-                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 text-xs text-emerald-700 dark:text-emerald-300">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800">
                   {resendWhatsappNotice}
                 </div>
               )}
 
               {resendWhatsappError && (
-                <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 text-xs text-rose-700 dark:text-rose-300">
+                <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-rose-800">
                   {resendWhatsappError}
                 </div>
               )}
@@ -552,7 +551,7 @@ export default function BuyerCheckoutPage() {
                     type="button"
                     onClick={handleResendWhatsapp}
                     disabled={isResendingWhatsapp}
-                    className="flex-1 py-3 px-4 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-xs flex items-center justify-center gap-2 transition-opacity cursor-pointer disabled:opacity-50"
+                    className="flex-1 py-3 px-4 rounded-xl bg-accent hover:opacity-90 text-white font-bold text-xs flex items-center justify-center gap-2 transition-opacity cursor-pointer disabled:opacity-50"
                   >
                     <MessageCircle className="w-4 h-4" />
                     <span>{isResendingWhatsapp ? 'Sending on WhatsApp...' : 'Re-send confirmation message'}</span>
@@ -565,7 +564,7 @@ export default function BuyerCheckoutPage() {
                   className="flex-1 py-3 px-4 rounded-xl bg-surface hover:bg-site border border-border text-main font-semibold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 text-accent ${isCheckingStatus ? 'animate-spin' : ''}`} />
-                  <span>{isCheckingStatus ? 'Checking Verification...' : "I've confirmed • Refresh"}</span>
+                  <span>{isCheckingStatus ? 'Checking verification...' : "I've confirmed • Refresh"}</span>
                 </button>
               </div>
             </div>
@@ -599,7 +598,7 @@ export default function BuyerCheckoutPage() {
                   </span>
                 </label>
                 {consentError && (
-                  <p className="text-[11px] text-rose-600 dark:text-rose-400">{consentError}</p>
+                  <p className="text-[11px] text-rose-700">{consentError}</p>
                 )}
               </div>
 
@@ -647,7 +646,7 @@ export default function BuyerCheckoutPage() {
                           type="button"
                           onClick={handleCopyAccount}
                           disabled={!transaction.virtual_account_number}
-                          className="px-3.5 py-2 bg-accent hover:opacity-90 text-[#071229] text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                          className="px-3.5 py-2 bg-accent hover:opacity-90 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
                         >
                           {copiedAccount ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                           <span>{copiedAccount ? 'Copied' : 'Copy'}</span>
@@ -710,18 +709,13 @@ export default function BuyerCheckoutPage() {
                   <button
                     type="button"
                     onClick={() => setIsPaymentModalOpen(true)}
-                    className="w-full py-4 px-5 rounded-2xl bg-accent hover:opacity-90 text-[#071229] font-bold text-base sm:text-lg flex items-center justify-center gap-2 shadow-card transition-all transform active:scale-[0.99] cursor-pointer"
+                    className="w-full py-4 px-5 rounded-2xl bg-accent hover:opacity-90 text-white font-bold text-base sm:text-lg flex items-center justify-center gap-2 shadow-card transition-all transform active:scale-[0.99] cursor-pointer"
                   >
-                    <Lock className="w-5 h-5 text-[#071229]" />
+                    <Lock className="w-5 h-5 text-white" />
                     <span>Lock {formatNaira(Number(transaction.total_amount))} in Safe Escrow</span>
                   </button>
 
                   <div className="flex items-center justify-center gap-4 text-[11px] text-muted text-center">
-                    <span className="flex items-center gap-1">
-                      <ShieldCheck className="w-3.5 h-3.5 text-accent" />
-                      Simulated Gateway
-                    </span>
-                    <span>•</span>
                     <span>Sandbox Mode</span>
                     <span>•</span>
                     <span>Code Issued on Payment</span>
@@ -742,8 +736,6 @@ export default function BuyerCheckoutPage() {
           itemName={transaction.item_name}
         />
       )}
-
-      <ProductFooter />
     </div>
   );
 }

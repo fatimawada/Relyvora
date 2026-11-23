@@ -11,7 +11,6 @@ import { DISPUTE_SCENARIOS } from '@/lib/disputeScenarios';
 import { StatusBadge } from '@/components/StatusBadge';
 import { EscrowStepper } from '@/components/EscrowStepper';
 import { TurnstileWidget } from '@/components/common/TurnstileWidget';
-import { ProductFooter } from '@/components/ProductFooter';
 import { NIGERIAN_BANKS } from '@/components/vendor/VendorOnboardingFlow';
 import confetti from 'canvas-confetti';
 import {
@@ -81,9 +80,11 @@ function EscrowTrackerContent() {
   const [buyerSignInErr, setBuyerSignInErr] = useState<string | null>(null);
   const [isBuyerAuthBusy, setIsBuyerAuthBusy] = useState(false);
   const [vendorLoginEmail, setVendorLoginEmail] = useState('');
-  const [vendorLoginPassword, setVendorLoginPassword] = useState('');
+  const [vendorLoginPhase, setVendorLoginPhase] = useState<'email' | 'otp'>('email');
+  const [vendorLoginOtp, setVendorLoginOtp] = useState('');
   const [vendorLoginCaptchaToken, setVendorLoginCaptchaToken] = useState('');
   const [vendorLoginCaptchaResetKey, setVendorLoginCaptchaResetKey] = useState(0);
+  const [vendorLoginMsg, setVendorLoginMsg] = useState<string | null>(null);
   const [vendorLoginErr, setVendorLoginErr] = useState<string | null>(null);
   const [isVendorSigningIn, setIsVendorSigningIn] = useState(false);
   const turnstileSiteKey = (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '').trim();
@@ -290,35 +291,88 @@ function EscrowTrackerContent() {
     }
   };
 
-  const handleVendorOrderSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSendVendorOrderOtp = async (e?: React.FormEvent, asFallbackLink = false) => {
+    if (e) e.preventDefault();
     setVendorLoginErr(null);
+    setVendorLoginMsg(null);
+    const targetEmail = vendorLoginEmail.trim().toLowerCase();
+    if (!targetEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)) {
+      setVendorLoginErr('Enter a valid vendor email address.');
+      return;
+    }
     if (turnstileSiteKey && !vendorLoginCaptchaToken.trim()) {
-      setVendorLoginErr('Please complete the Cloudflare Turnstile verification check before signing in.');
+      setVendorLoginErr('Security check is still loading. Please try again in a moment.');
       return;
     }
     setIsVendorSigningIn(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: vendorLoginEmail.trim(),
-        password: vendorLoginPassword,
-        options: vendorLoginCaptchaToken.trim()
-          ? { captchaToken: vendorLoginCaptchaToken.trim() }
-          : undefined,
+      const { error } = await supabase.auth.signInWithOtp({
+        email: targetEmail,
+        options: {
+          shouldCreateUser: false,
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(`/order/${id}`)}`,
+          ...(vendorLoginCaptchaToken.trim() ? { captchaToken: vendorLoginCaptchaToken.trim() } : {}),
+        },
       });
-      if (error) {
-        setVendorLoginErr(error.message);
-        setVendorLoginCaptchaToken('');
-        setVendorLoginCaptchaResetKey((k) => k + 1);
-      } else {
-        setVendorLoginPassword('');
-        setVendorLoginCaptchaToken('');
-        await loadTransaction();
-      }
-    } catch (err: any) {
-      setVendorLoginErr(err?.message || 'Vendor sign-in failed.');
       setVendorLoginCaptchaToken('');
       setVendorLoginCaptchaResetKey((k) => k + 1);
+      if (error) {
+        setVendorLoginErr(error.message || 'Could not send sign-in code.');
+      } else {
+        setVendorLoginEmail(targetEmail);
+        setVendorLoginOtp('');
+        setVendorLoginPhase('otp');
+        setVendorLoginMsg(
+          asFallbackLink
+            ? `Sign-in link and code sent to ${targetEmail}.`
+            : `Enter the 6-digit code sent to ${targetEmail}.`
+        );
+      }
+    } catch (err: any) {
+      setVendorLoginErr(err?.message || 'Unable to send code.');
+      setVendorLoginCaptchaToken('');
+      setVendorLoginCaptchaResetKey((k) => k + 1);
+    } finally {
+      setIsVendorSigningIn(false);
+    }
+  };
+
+  const handleVendorOrderSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setVendorLoginErr(null);
+    setVendorLoginMsg(null);
+    const cleanOtp = vendorLoginOtp.replace(/\D/g, '').trim();
+    if (cleanOtp.length !== 6) {
+      setVendorLoginErr('Enter the 6-digit code sent to your email.');
+      return;
+    }
+    setIsVendorSigningIn(true);
+    try {
+      const targetEmail = vendorLoginEmail.trim().toLowerCase();
+      let res = await supabase.auth.verifyOtp({
+        email: targetEmail,
+        token: cleanOtp,
+        type: 'email',
+      });
+      if (res.error) {
+        const signupFallback = await supabase.auth.verifyOtp({
+          email: targetEmail,
+          token: cleanOtp,
+          type: 'signup',
+        });
+        if (!signupFallback.error && signupFallback.data?.session) {
+          res = signupFallback;
+        }
+      }
+      if (res.error || !res.data?.session) {
+        setVendorLoginErr('That code is invalid or expired. Tap "Send a new code" to try again.');
+      } else {
+        setVendorLoginOtp('');
+        setVendorLoginPhase('email');
+        await loadTransaction();
+      }
+    } catch {
+      setVendorLoginErr('Unable to verify that code. Send a new code and try again.');
     } finally {
       setIsVendorSigningIn(false);
     }
@@ -368,7 +422,7 @@ function EscrowTrackerContent() {
       const json = await res.json();
       if (json.success) {
         setResendOtpSent(true);
-        setResendMaskedPhone(json.buyer_phone_masked || transaction.buyer_phone_masked || '******1234');
+        setResendMaskedPhone(json.buyer_phone_masked || transaction.buyer_phone_masked || '******');
         if (!liveMode && json.sandbox_otp) {
           setResendOtpInput(json.sandbox_otp);
         }
@@ -420,7 +474,7 @@ function EscrowTrackerContent() {
         }
         setResendSuccess(
           json.message ||
-            `A new release code was sent to ${json.buyer_phone_masked || transaction.buyer_phone_masked || '******1234'}.`
+            `A new release code was sent to ${json.buyer_phone_masked || transaction.buyer_phone_masked || 'your WhatsApp number'}.`
         );
         setResendOtpSent(false);
         setResendOtpInput('');
@@ -872,7 +926,7 @@ function EscrowTrackerContent() {
           {authTab === 'buyer' ? (
             <div className="space-y-4">
               {!buyerPhoneVerified ? (
-                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-900 dark:text-amber-200 space-y-2">
+                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-2">
                   <p className="font-bold">WhatsApp confirmation required first</p>
                   <p>
                     Buyer sessions can only be created after you confirm your WhatsApp number on the checkout message. Check your checkout page or tap &ldquo;Confirm Order&rdquo; on Relyvora&apos;s WhatsApp message.
@@ -887,12 +941,12 @@ function EscrowTrackerContent() {
               ) : (
                 <>
                   {buyerSignInErr && (
-                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-semibold text-rose-700 dark:text-rose-300">
+                    <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800">
                       {buyerSignInErr}
                     </div>
                   )}
                   {buyerSignInMsg && (
-                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs font-semibold text-emerald-800 dark:text-emerald-200">
+                    <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-800">
                       {buyerSignInMsg}
                     </div>
                   )}
@@ -904,7 +958,7 @@ function EscrowTrackerContent() {
                       type="button"
                       onClick={handleRequestBuyerSessionOtp}
                       disabled={isBuyerAuthBusy}
-                      className="w-full py-3 rounded-xl bg-accent text-[#071229] font-bold text-xs cursor-pointer disabled:opacity-50"
+                      className="w-full py-3 rounded-xl bg-accent text-white font-bold text-xs cursor-pointer disabled:opacity-50"
                     >
                       {isBuyerAuthBusy ? 'Sending WhatsApp Code...' : 'Send 6-Digit WhatsApp Sign-In Code'}
                     </button>
@@ -914,7 +968,7 @@ function EscrowTrackerContent() {
                         type="text"
                         maxLength={6}
                         required
-                        placeholder="000000"
+                        placeholder="6-digit code"
                         value={buyerSignInOtp}
                         onChange={(e) => setBuyerSignInOtp(e.target.value.replace(/\D/g, ''))}
                         className="w-full bg-site border border-border rounded-xl p-3 text-center text-xl font-heading tabular-nums font-bold tracking-widest text-main"
@@ -926,12 +980,12 @@ function EscrowTrackerContent() {
                           disabled={isBuyerAuthBusy}
                           className="px-3 py-2.5 rounded-xl border border-border text-xs font-semibold text-muted hover:text-main cursor-pointer"
                         >
-                          Resend
+                          Send a new code
                         </button>
                         <button
                           type="submit"
                           disabled={isBuyerAuthBusy || buyerSignInOtp.trim().length !== 6}
-                          className="flex-1 py-2.5 rounded-xl bg-accent text-[#071229] font-bold text-xs cursor-pointer disabled:opacity-50"
+                          className="flex-1 py-2.5 rounded-xl bg-accent text-white font-bold text-xs cursor-pointer disabled:opacity-50"
                         >
                           {isBuyerAuthBusy ? 'Verifying...' : 'Verify & Open Order'}
                         </button>
@@ -941,11 +995,16 @@ function EscrowTrackerContent() {
                 </>
               )}
             </div>
-          ) : (
-            <form onSubmit={handleVendorOrderSignIn} className="space-y-3">
+          ) : vendorLoginPhase === 'email' ? (
+            <form onSubmit={(e) => handleSendVendorOrderOtp(e, false)} className="space-y-3">
               {vendorLoginErr && (
-                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-semibold text-rose-700 dark:text-rose-300">
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800">
                   {vendorLoginErr}
+                </div>
+              )}
+              {vendorLoginMsg && (
+                <div className="p-3 rounded-xl bg-accent/10 border border-accent/25 text-xs text-main">
+                  {vendorLoginMsg}
                 </div>
               )}
               <input
@@ -956,17 +1015,11 @@ function EscrowTrackerContent() {
                 onChange={(e) => setVendorLoginEmail(e.target.value)}
                 className="w-full bg-site border border-border rounded-xl px-3 py-2.5 text-xs text-main"
               />
-              <input
-                type="password"
-                required
-                placeholder="Password"
-                value={vendorLoginPassword}
-                onChange={(e) => setVendorLoginPassword(e.target.value)}
-                className="w-full bg-site border border-border rounded-xl px-3 py-2.5 text-xs text-main"
-              />
               <TurnstileWidget
                 siteKey={turnstileSiteKey}
                 resetKey={vendorLoginCaptchaResetKey}
+                theme="light"
+                appearance="interaction-only"
                 onVerify={(token) => {
                   setVendorLoginCaptchaToken(token);
                   setVendorLoginErr(null);
@@ -976,10 +1029,66 @@ function EscrowTrackerContent() {
               <button
                 type="submit"
                 disabled={isVendorSigningIn}
-                className="w-full py-2.5 rounded-xl bg-accent text-[#071229] font-bold text-xs cursor-pointer disabled:opacity-50"
+                className="w-full py-2.5 rounded-xl bg-accent text-white font-bold text-xs cursor-pointer disabled:opacity-50"
               >
-                {isVendorSigningIn ? 'Signing in...' : 'Sign In as Order Vendor'}
+                {isVendorSigningIn ? 'Sending code...' : 'Send me a code'}
               </button>
+            </form>
+          ) : (
+            <form onSubmit={handleVendorOrderSignIn} className="space-y-3">
+              {vendorLoginErr && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800">
+                  {vendorLoginErr}
+                </div>
+              )}
+              {vendorLoginMsg && (
+                <div className="p-3 rounded-xl bg-accent/10 border border-accent/25 text-xs text-main">
+                  {vendorLoginMsg}
+                </div>
+              )}
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                required
+                placeholder="Enter 6-digit code"
+                value={vendorLoginOtp}
+                onChange={(e) => setVendorLoginOtp(e.target.value.replace(/\D/g, ''))}
+                className="w-full bg-site border border-border rounded-xl p-3 text-center text-lg font-heading tabular-nums font-bold tracking-widest text-main"
+              />
+              <TurnstileWidget
+                siteKey={turnstileSiteKey}
+                resetKey={vendorLoginCaptchaResetKey}
+                theme="light"
+                appearance="interaction-only"
+                onVerify={(token) => setVendorLoginCaptchaToken(token)}
+                onExpire={() => setVendorLoginCaptchaToken('')}
+              />
+              <button
+                type="submit"
+                disabled={isVendorSigningIn || vendorLoginOtp.trim().length !== 6}
+                className="w-full py-2.5 rounded-xl bg-accent text-white font-bold text-xs cursor-pointer disabled:opacity-50"
+              >
+                {isVendorSigningIn ? 'Verifying...' : 'Verify code & sign in'}
+              </button>
+              <div className="flex items-center justify-between text-xs pt-1">
+                <button
+                  type="button"
+                  disabled={isVendorSigningIn}
+                  onClick={() => handleSendVendorOrderOtp(undefined, false)}
+                  className="font-semibold text-accent hover:underline cursor-pointer"
+                >
+                  Send a new code
+                </button>
+                <button
+                  type="button"
+                  disabled={isVendorSigningIn}
+                  onClick={() => handleSendVendorOrderOtp(undefined, true)}
+                  className="text-muted hover:text-main hover:underline cursor-pointer"
+                >
+                  Send a sign-in link instead
+                </button>
+              </div>
             </form>
           )}
         </div>
@@ -1069,10 +1178,10 @@ function EscrowTrackerContent() {
       {showResendPromptBanner && (
         <div
           role="status"
-          className="bg-amber-500/15 border border-amber-500/40 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 dark:text-amber-100"
+          className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900"
         >
           <div className="flex items-start gap-2.5">
-            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
             <div className="space-y-0.5">
               <p className="font-bold">
                 {transaction.code_expired
@@ -1098,9 +1207,9 @@ function EscrowTrackerContent() {
       {(transaction.order_blocked || transaction.review_hold) && (
         <div
           role="status"
-          className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 flex items-start gap-3 text-xs text-rose-800 dark:text-rose-200"
+          className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex items-start gap-3 text-xs text-rose-900"
         >
-          <AlertOctagon className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+          <AlertOctagon className="w-5 h-5 text-rose-700 shrink-0 mt-0.5" />
           <div className="space-y-1">
             <p className="font-bold">
               {transaction.order_blocked
@@ -1122,9 +1231,9 @@ function EscrowTrackerContent() {
           new Date(transaction.payout_available_at).getTime() > Date.now())) && (
         <div
           role="status"
-          className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-start gap-3 text-xs text-amber-900 dark:text-amber-200"
+          className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 text-xs text-amber-900"
         >
-          <Lock className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <Lock className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
           <div className="space-y-1">
             <p className="font-bold">Payout Cooling Window Active (2-Hour Safety Hold)</p>
             <p>
@@ -1170,7 +1279,7 @@ function EscrowTrackerContent() {
         {/* Delivery & Dispatch Deadlines Row */}
         {!isAwaitingPayment && !isTerminated && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-[11px]">
-            <div className={`p-2.5 rounded-xl border ${transaction.is_dispatch_overdue ? 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-300' : 'bg-site border-border text-muted'}`}>
+            <div className={`p-2.5 rounded-xl border ${transaction.is_dispatch_overdue ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-site border-border text-muted'}`}>
               <span className="font-bold block text-main">Dispatch Deadline</span>
               <span>
                 {transaction.dispatched_at
@@ -1200,9 +1309,9 @@ function EscrowTrackerContent() {
         )}
 
         {isAwaitingPayment && (
-          <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 text-center space-y-2">
-            <p className="text-xs text-amber-800 dark:text-amber-300 font-medium">
-              This order has not been paid yet. The buyer must first lock the funds in escrow.
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center space-y-2">
+            <p className="text-xs text-amber-900 font-medium">
+              This order has not been paid yet. The buyer must first pay into escrow.
             </p>
             <Link
               href={`/pay/${transaction.id}`}
@@ -1220,16 +1329,16 @@ function EscrowTrackerContent() {
               Order Status: {transaction.status}
             </h3>
             <p className="text-xs text-muted">
-              {transaction.cancellation_reason || 'This escrow order has reached a terminal state.'}
+              {transaction.cancellation_reason || 'This escrow order has closed.'}
             </p>
           </div>
         )}
 
         {/* Shared Dispute Arbitration, Evidence & Response Section */}
         {isDisputed && (
-          <div className="bg-rose-500/5 border border-rose-500/30 rounded-2xl p-5 space-y-4">
+          <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-rose-700 dark:text-rose-400 font-bold text-sm">
+              <div className="flex items-center gap-2 text-rose-800 font-bold text-sm">
                 <AlertOctagon className="w-5 h-5 shrink-0" />
                 <span>
                   Dispute Open
@@ -1237,7 +1346,7 @@ function EscrowTrackerContent() {
                 </span>
               </div>
               {transaction.dispute_sla && (
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/15 border border-rose-500/30 text-[11px] font-heading tabular-nums font-bold text-rose-700 dark:text-rose-300">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-100 border border-rose-200 text-[11px] font-heading tabular-nums font-bold text-rose-800">
                   <Clock className="w-3.5 h-3.5" />
                   <span>SLA Remaining (08:00–20:00 WAT, Mon–Sat): {transaction.dispute_sla.formattedRemaining}</span>
                 </div>
@@ -1318,7 +1427,7 @@ function EscrowTrackerContent() {
                   <button
                     type="submit"
                     disabled={isUploadingEvidence || !extraEvidenceFile}
-                    className="px-3.5 py-1.5 rounded-lg bg-accent text-[#071229] font-bold text-xs cursor-pointer disabled:opacity-50"
+                    className="px-3.5 py-1.5 rounded-lg bg-accent text-white font-bold text-xs cursor-pointer disabled:opacity-50"
                   >
                     {isUploadingEvidence ? 'Uploading...' : 'Upload'}
                   </button>
@@ -1371,7 +1480,7 @@ function EscrowTrackerContent() {
                     <div className="space-y-4 pt-2">
                       <div className="space-y-2">
                         <h3 className="text-lg sm:text-xl font-heading font-bold text-white">
-                          Your release code was sent to {transaction.buyer_phone_masked || '******1234'}
+                          Your release code was sent to {transaction.buyer_phone_masked || 'your WhatsApp number'}
                         </h3>
                         <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-xl">
                           Give the code to the dispatch rider only after you have opened the package and checked the items.
@@ -1471,8 +1580,8 @@ function EscrowTrackerContent() {
                   <span
                     className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
                       transaction.refund_destination_verified
-                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
-                        : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30'
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : 'bg-amber-50 text-amber-800 border-amber-200'
                     }`}
                   >
                     {transaction.refund_destination_verified
@@ -1485,10 +1594,10 @@ function EscrowTrackerContent() {
                 </p>
 
                 {refundStatusMsg && (
-                  <p className="text-xs text-emerald-700 dark:text-emerald-300 font-semibold">{refundStatusMsg}</p>
+                  <p className="text-xs text-emerald-800 font-semibold">{refundStatusMsg}</p>
                 )}
                 {refundErrorMsg && (
-                  <p className="text-xs text-rose-600 dark:text-rose-400 font-semibold">{refundErrorMsg}</p>
+                  <p className="text-xs text-rose-700 font-semibold">{refundErrorMsg}</p>
                 )}
 
                 <form onSubmit={handleSaveRefundDestination} className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-end">
@@ -1512,7 +1621,7 @@ function EscrowTrackerContent() {
                     <input
                       type="text"
                       maxLength={10}
-                      placeholder="0123456789"
+                      placeholder="10-digit account number"
                       value={refundAccNum}
                       onChange={(e) => setRefundAccNum(e.target.value.replace(/\D/g, ''))}
                       className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs font-heading tabular-nums text-main"
@@ -1523,7 +1632,7 @@ function EscrowTrackerContent() {
                       type="button"
                       onClick={handleSendRefundDestOtp}
                       disabled={isSubmittingRefund || !refundBankCode || refundAccNum.length !== 10}
-                      className="py-2 px-3 rounded-xl bg-accent text-[#071229] font-bold text-xs cursor-pointer disabled:opacity-50"
+                      className="py-2 px-3 rounded-xl bg-accent text-white font-bold text-xs cursor-pointer disabled:opacity-50"
                     >
                       {isSubmittingRefund ? 'Sending OTP...' : 'Confirm via WhatsApp OTP'}
                     </button>
@@ -1565,9 +1674,9 @@ function EscrowTrackerContent() {
                     setDisputeError(null);
                     setIsDisputeModalOpen(true);
                   }}
-                  className="w-full sm:w-auto px-5 py-3 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-700 dark:text-rose-300 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  className="w-full sm:w-auto px-5 py-3 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
                 >
-                  <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                  <AlertTriangle className="w-4 h-4 text-rose-700" />
                   <span>Wrong / Undelivered — Raise Dispute</span>
                 </button>
               </div>
@@ -1600,7 +1709,7 @@ function EscrowTrackerContent() {
               {transaction.status === 'FUNDS_LOCKED' && (
                 <form onSubmit={handleMarkDispatched} className="space-y-3">
                   {dispatchError && (
-                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-semibold text-rose-700 dark:text-rose-300">
+                    <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800">
                       {dispatchError}
                     </div>
                   )}
@@ -1616,7 +1725,7 @@ function EscrowTrackerContent() {
                     <input
                       type="tel"
                       required
-                      placeholder="Rider / Courier Phone (e.g. 080...) *"
+                      placeholder="Rider or courier phone *"
                       value={carrierPhone}
                       onChange={(e) => setCarrierPhone(e.target.value)}
                       className="bg-surface border border-border rounded-xl px-3 py-2 text-xs text-main"
@@ -1659,9 +1768,9 @@ function EscrowTrackerContent() {
                   <button
                     type="submit"
                     disabled={isDispatching}
-                    className="w-full py-3 px-4 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-card disabled:opacity-60 cursor-pointer"
+                    className="w-full py-3 px-4 rounded-xl bg-accent hover:opacity-90 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-card disabled:opacity-60 cursor-pointer"
                   >
-                    <Truck className="w-4 h-4 text-[#071229]" />
+                    <Truck className="w-4 h-4 text-white" />
                     <span>{isDispatching ? 'Uploading & Updating Dispatch...' : 'Submit Proof & Mark Dispatched'}</span>
                   </button>
                 </form>
@@ -1716,19 +1825,19 @@ function EscrowTrackerContent() {
               </div>
 
               {isDisputed ? (
-                <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-3.5 flex items-start gap-2.5 text-xs text-rose-700 dark:text-rose-300">
-                  <AlertOctagon className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                <div className="bg-rose-50 border border-rose-200 rounded-xl p-3.5 flex items-start gap-2.5 text-xs text-rose-800">
+                  <AlertOctagon className="w-4 h-4 text-rose-700 shrink-0 mt-0.5" />
                   <div>
                     <strong>Code Entry Disabled:</strong> This transaction is in dispute. Escrow funds cannot be released until resolved.
                   </div>
                 </div>
               ) : isCodeLocked ? (
-                <div className="bg-rose-500/10 border-2 border-rose-500/30 rounded-2xl p-5 space-y-2">
-                  <div className="flex items-center gap-2 text-rose-700 dark:text-rose-300 font-bold text-sm">
-                    <AlertOctagon className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+                <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-5 space-y-2">
+                  <div className="flex items-center gap-2 text-rose-800 font-bold text-sm">
+                    <AlertOctagon className="w-5 h-5 text-rose-700" />
                     <span>SECURITY LOCKOUT ACTIVATED</span>
                   </div>
-                  <p className="text-xs text-rose-700 dark:text-rose-300 leading-relaxed">
+                  <p className="text-xs text-rose-800 leading-relaxed">
                     Locked after 5 incorrect attempts. Please contact Relyvora Support.
                   </p>
                 </div>
@@ -1748,7 +1857,7 @@ function EscrowTrackerContent() {
                       type="text"
                       inputMode="numeric"
                       maxLength={6}
-                      placeholder="e.g. 849201"
+                      placeholder="6-digit code"
                       value={enteredCode}
                       onChange={(e) => {
                         setEnteredCode(e.target.value.replace(/\D/g, ''));
@@ -1759,7 +1868,7 @@ function EscrowTrackerContent() {
                     <button
                       type="submit"
                       disabled={isVerifying || enteredCode.trim().length !== 6}
-                      className="px-5 py-3 rounded-xl bg-accent hover:opacity-90 text-[#071229] font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-card disabled:opacity-50 cursor-pointer"
+                      className="px-5 py-3 rounded-xl bg-accent hover:opacity-90 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-card disabled:opacity-50 cursor-pointer"
                     >
                       <CheckCircle2 className="w-4 h-4" />
                       <span>Verify &amp; Release</span>
@@ -1767,8 +1876,8 @@ function EscrowTrackerContent() {
                   </div>
 
                   {verificationError && (
-                    <div role="status" className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-semibold text-rose-700 dark:text-rose-300 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+                    <div role="status" className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
                       <span>{verificationError}</span>
                     </div>
                   )}
@@ -1791,7 +1900,7 @@ function EscrowTrackerContent() {
                     setDisputeError(null);
                     setIsDisputeModalOpen(true);
                   }}
-                  className="px-4 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-800 dark:text-amber-300 font-bold text-xs flex items-center gap-2 cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 font-bold text-xs flex items-center gap-2 cursor-pointer"
                 >
                   <AlertTriangle className="w-4 h-4" />
                   <span>Open Vendor Dispute</span>
@@ -1831,7 +1940,7 @@ function EscrowTrackerContent() {
                   <button
                     type="button"
                     onClick={() => setIsResendModalOpen(false)}
-                    className="w-full py-2.5 rounded-xl bg-accent text-[#071229] font-bold text-xs sm:text-sm cursor-pointer"
+                    className="w-full py-2.5 rounded-xl bg-accent text-white font-bold text-xs sm:text-sm cursor-pointer"
                   >
                     Done
                   </button>
@@ -1840,10 +1949,10 @@ function EscrowTrackerContent() {
                 <>
                   <p className="text-xs text-muted leading-relaxed">
                     Requesting a new release code sends a 6-digit verification code to{' '}
-                    <strong>{resendMaskedPhone || transaction.buyer_phone_masked || '******1234'}</strong>. Any previous code stops working immediately.
+                    <strong>{resendMaskedPhone || transaction.buyer_phone_masked || 'your WhatsApp number'}</strong>. Any previous code stops working immediately.
                   </p>
                   {resendError && (
-                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-semibold text-rose-700 dark:text-rose-300">
+                    <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800">
                       {resendError}
                     </div>
                   )}
@@ -1857,7 +1966,7 @@ function EscrowTrackerContent() {
                       <input
                         type="text"
                         maxLength={6}
-                        placeholder="000000"
+                        placeholder="6-digit code"
                         value={resendOtpInput}
                         onChange={(e) => setResendOtpInput(e.target.value.replace(/\D/g, ''))}
                         className="w-full bg-site border border-border rounded-xl p-3 text-center text-xl font-heading tabular-nums font-bold tracking-widest text-main"
@@ -1875,7 +1984,7 @@ function EscrowTrackerContent() {
                     <button
                       type="submit"
                       disabled={isVerifyingResendOtp || !resendOtpSent || resendOtpInput.trim().length !== 6}
-                      className="px-4 py-2.5 rounded-xl bg-accent text-[#071229] font-bold text-xs disabled:opacity-50 cursor-pointer"
+                      className="px-4 py-2.5 rounded-xl bg-accent text-white font-bold text-xs disabled:opacity-50 cursor-pointer"
                     >
                       {isVerifyingResendOtp ? 'Generating New Code...' : 'Verify & Issue New Code'}
                     </button>
@@ -1905,7 +2014,7 @@ function EscrowTrackerContent() {
 
             <form onSubmit={handleOpenDispute} className="p-5 sm:p-6 space-y-4">
               {disputeError && (
-                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-semibold text-rose-700 dark:text-rose-300">
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800">
                   {disputeError}
                 </div>
               )}
@@ -1951,17 +2060,17 @@ function EscrowTrackerContent() {
               </div>
 
               {disputeRole === 'BUYER' && otpSent && (
-                <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 space-y-2">
-                  <label className="block text-xs font-bold text-rose-700 dark:text-rose-300 uppercase">
+                <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 space-y-2">
+                  <label className="block text-xs font-bold text-rose-800 uppercase">
                     Enter 6-Digit Verification Code sent to {maskedPhone}:
                   </label>
                   <input
                     type="text"
                     maxLength={6}
-                    placeholder="000000"
+                    placeholder="6-digit code"
                     value={disputeOtp}
                     onChange={(e) => setDisputeOtp(e.target.value.replace(/\D/g, ''))}
-                    className="w-full bg-surface border border-rose-500/40 rounded-xl p-3 text-center text-xl font-heading tabular-nums font-bold tracking-widest text-main"
+                    className="w-full bg-surface border border-rose-200 rounded-xl p-3 text-center text-xl font-heading tabular-nums font-bold tracking-widest text-main"
                   />
                 </div>
               )}
@@ -1992,8 +2101,6 @@ function EscrowTrackerContent() {
           </div>
         </div>
       )}
-
-      <ProductFooter />
     </div>
   );
 }

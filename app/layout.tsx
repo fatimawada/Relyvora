@@ -48,6 +48,22 @@ export default function RootLayout({
             __html: `
               (function() {
                 try {
+                  var h = (window.location.hostname || '').toLowerCase();
+                  var p = window.location.pathname || '';
+                  var isNgApp =
+                    h.indexOf('ng.') === 0 ||
+                    h.indexOf('staging.') === 0 ||
+                    p === '/ng' ||
+                    p.indexOf('/ng/') === 0 ||
+                    p === '/vendor' ||
+                    p.indexOf('/vendor/') === 0 ||
+                    p.indexOf('/pay/') === 0 ||
+                    p.indexOf('/order/') === 0;
+                  if (isNgApp) {
+                    document.documentElement.classList.remove('dark');
+                    document.documentElement.style.colorScheme = 'light';
+                    return;
+                  }
                   var stored = localStorage.getItem('relyvora-theme');
                   if (stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
                     document.documentElement.classList.add('dark');

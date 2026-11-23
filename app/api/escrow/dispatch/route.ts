@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { resolveOrderActor } from '@/lib/orderAuth';
+import { evaluateLivePaymentGateServer } from '@/lib/launchGates';
 import { sendSystemAlert } from '@/lib/alerts';
 import {
   getDeliveryAndLifecycleConfig,
@@ -67,6 +68,21 @@ export async function POST(request: NextRequest) {
     if (actor.role !== 'VENDOR' && actor.role !== 'ADMIN') {
       return NextResponse.json(
         { success: false, code: 'FORBIDDEN', error: 'Only the owning vendor may mark an order dispatched.' },
+        { status: 403 }
+      );
+    }
+
+    const liveGate = await evaluateLivePaymentGateServer({
+      vendorId: existing.vendor_id,
+      supabaseClient: supabase,
+    });
+    if (!liveGate.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: liveGate.code || 'PAYMENTS_NOT_LIVE',
+          error: liveGate.error || 'Payments open soon.',
+        },
         { status: 403 }
       );
     }

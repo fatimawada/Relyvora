@@ -3,6 +3,7 @@ import { getServiceSupabase } from '@/lib/supabaseServer';
 import { checkSharedRateLimit, getClientIp } from '@/lib/rateLimit';
 import { hashSignalWithSalt } from '@/lib/riskEngine';
 import { updateTransactionStrict } from '@/lib/orderLifecycle';
+import { evaluateLivePaymentGateServer } from '@/lib/launchGates';
 
 const CURRENT_TERMS_VERSION = '2026-11-v1';
 
@@ -36,7 +37,7 @@ export async function POST(
 
     const { data: tx, error: txErr } = await supabase
       .from('transactions')
-      .select('id')
+      .select('id, vendor_id')
       .eq('id', id)
       .maybeSingle();
 
@@ -46,6 +47,21 @@ export async function POST(
 
     if (!tx) {
       return NextResponse.json({ success: false, error: 'Transaction not found.' }, { status: 404 });
+    }
+
+    const liveGate = await evaluateLivePaymentGateServer({
+      vendorId: tx.vendor_id,
+      supabaseClient: supabase,
+    });
+    if (!liveGate.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: liveGate.code || 'PAYMENTS_NOT_LIVE',
+          error: liveGate.error || 'Payments open soon.',
+        },
+        { status: 403 }
+      );
     }
 
     const upd = await updateTransactionStrict(

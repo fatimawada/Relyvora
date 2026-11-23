@@ -8,6 +8,25 @@ export const LAUNCH_STATUS: 'launching' | 'live' =
     ? 'live'
     : 'launching';
 
+export function getLaunchStatus(): 'launching' | 'live' {
+  return (process.env.LAUNCH_STATUS ?? process.env.NEXT_PUBLIC_LAUNCH_STATUS)?.toLowerCase().trim() === 'live'
+    ? 'live'
+    : 'launching';
+}
+
+export function isPreLaunchFlag(): boolean {
+  const preLaunchEnv = (process.env.PRE_LAUNCH ?? process.env.NEXT_PUBLIC_PRE_LAUNCH ?? '')
+    .toLowerCase()
+    .trim();
+  if (preLaunchEnv === 'true' || preLaunchEnv === '1') {
+    return true;
+  }
+  if (preLaunchEnv === 'false' || preLaunchEnv === '0') {
+    return getLaunchStatus() !== 'live';
+  }
+  return getLaunchStatus() !== 'live';
+}
+
 export const FEE_CONFIG = {
   RATE: 0.03, // 3%
   MIN: 500, // Minimum fee: ₦500 (the fee is never below ₦500)

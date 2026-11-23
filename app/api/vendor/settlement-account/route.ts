@@ -3,6 +3,9 @@ import { verifyVendorOnboardingSession } from '@/lib/vendorAuth';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { getClientIp, checkSharedRateLimit } from '@/lib/rateLimit';
 import { sendSystemAlert } from '@/lib/alerts';
+import { isAnchorLiveCredentialsConfigured } from '@/lib/anchor';
+import { isKycEnabledServer } from '@/lib/launchGates';
+import { isLiveMode } from '@/lib/paymentsMode';
 import {
   confirmSettlementAccountChange,
   requestSettlementAccountChange,
@@ -19,6 +22,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, code: session.code || 'UNAUTHORIZED', error: session.error },
         { status: session.statusCode }
+      );
+    }
+
+    if (!(await isKycEnabledServer())) {
+      return NextResponse.json(
+        { success: false, code: 'KYC_DISABLED', error: 'Verification opens when payments go live.' },
+        { status: 403 }
+      );
+    }
+    if (isLiveMode() && !isAnchorLiveCredentialsConfigured().ok) {
+      return NextResponse.json(
+        { success: false, code: 'ANCHOR_CREDENTIALS_MISSING', error: 'Anchor production credentials are missing.' },
+        { status: 503 }
       );
     }
 
@@ -118,6 +134,19 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json(
         { success: false, code: session.code || 'UNAUTHORIZED', error: session.error },
         { status: session.statusCode }
+      );
+    }
+
+    if (!(await isKycEnabledServer())) {
+      return NextResponse.json(
+        { success: false, code: 'KYC_DISABLED', error: 'Verification opens when payments go live.' },
+        { status: 403 }
+      );
+    }
+    if (isLiveMode() && !isAnchorLiveCredentialsConfigured().ok) {
+      return NextResponse.json(
+        { success: false, code: 'ANCHOR_CREDENTIALS_MISSING', error: 'Anchor production credentials are missing.' },
+        { status: 503 }
       );
     }
 

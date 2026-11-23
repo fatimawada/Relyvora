@@ -5,6 +5,7 @@ import { sendSystemAlert } from '@/lib/alerts';
 import { getClientIp, checkSharedRateLimit } from '@/lib/rateLimit';
 import { verifyReleaseCodeHmac } from '@/lib/releaseCode';
 import { resolveOrderActor } from '@/lib/orderAuth';
+import { evaluateLivePaymentGateServer } from '@/lib/launchGates';
 import { SAFE_TRANSACTION_PUBLIC_COLUMNS } from '@/lib/transactionSelect';
 import {
   DISPUTE_SCENARIOS,
@@ -107,6 +108,21 @@ export async function POST(request: NextRequest) {
       );
     }
     const role: 'BUYER' | 'VENDOR' = actor.role;
+
+    const liveGate = await evaluateLivePaymentGateServer({
+      vendorId: existing.vendor_id,
+      supabaseClient: supabase,
+    });
+    if (!liveGate.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: liveGate.code || 'PAYMENTS_NOT_LIVE',
+          error: liveGate.error || 'Payments open soon.',
+        },
+        { status: 403 }
+      );
+    }
 
     // 4. Dual Rate Limiting (IP + Transaction ID)
     const clientIp = getClientIp(request);

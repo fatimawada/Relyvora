@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { calculatePricing } from '@/lib/pricing';
 import { isLiveMode, getServerPaymentsMode } from '@/lib/paymentsMode';
+import { evaluateLivePaymentGateServer } from '@/lib/launchGates';
 import { createAnchorCollectionAccount, RELYVORA_FBO_ACCOUNT_ID } from '@/lib/anchor';
 import {
   getVendorAllowlistModeServer,
@@ -57,6 +58,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: 'Too many order link creation attempts. Try again shortly.' },
         { status: 429 }
+      );
+    }
+
+    // 1b. Option B Live Gate: requires PAYMENTS_MODE=live, LAUNCH_STATUS=live, verified KYC & approved release template
+    const liveGate = await evaluateLivePaymentGateServer({
+      vendor: vendorSession.vendor,
+      supabaseClient: supabase,
+    });
+    if (!liveGate.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: liveGate.code || 'PAYMENTS_NOT_LIVE',
+          error: liveGate.error || 'Payments open soon.',
+        },
+        { status: 403 }
       );
     }
 
