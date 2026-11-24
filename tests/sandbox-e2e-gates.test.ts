@@ -679,6 +679,7 @@ async function main() {
       if (urlStr.includes('/rest/v1/transactions')) {
         const hdrs = new Headers(init?.headers);
         const single = (hdrs.get('accept') || '').includes('vnd.pgrst.object+json');
+        const decodedUrl = decodeURIComponent(urlStr);
         if (method === 'POST') {
           const rec = {
             id: crypto.randomUUID(),
@@ -693,26 +694,40 @@ async function main() {
           });
         }
         if (method === 'PATCH') {
-          const match = urlStr.match(/id=eq\.([0-9a-f-]+)/i);
-          if (match && txRows[match[1]]) {
-            txRows[match[1]] = { ...txRows[match[1]], ...parsedBody, updated_at: new Date().toISOString() };
-            return new Response(JSON.stringify(single ? txRows[match[1]] : [txRows[match[1]]]), {
+          const eqMatch = decodedUrl.match(/id=eq\.([0-9a-f-]+)/i);
+          if (eqMatch && txRows[eqMatch[1]]) {
+            txRows[eqMatch[1]] = { ...txRows[eqMatch[1]], ...parsedBody, updated_at: new Date().toISOString() };
+            return new Response(JSON.stringify(single ? txRows[eqMatch[1]] : [txRows[eqMatch[1]]]), {
               status: 200,
               headers: { 'content-type': 'application/json' },
             });
+          }
+          const inMatch = decodedUrl.match(/id=in\.\(([^)]+)\)/i);
+          if (inMatch) {
+            const ids = inMatch[1]
+              .split(',')
+              .map((s) => s.trim().replace(/^"|"$/g, ''));
+            const updated: any[] = [];
+            for (const tid of ids) {
+              if (txRows[tid]) {
+                txRows[tid] = { ...txRows[tid], ...parsedBody, updated_at: new Date().toISOString() };
+                updated.push(txRows[tid]);
+              }
+            }
+            return new Response(JSON.stringify(updated), { status: 200, headers: { 'content-type': 'application/json' } });
           }
           // Bulk status update e.g. Cron reconcile expiry
           const nowIso = new Date().toISOString();
           const updated: any[] = [];
           for (const tx of Object.values(txRows)) {
-            if (urlStr.includes('AWAITING_PAYMENT') && tx.status === 'AWAITING_PAYMENT' && tx.expires_at && tx.expires_at < nowIso) {
+            if (decodedUrl.includes('AWAITING_PAYMENT') && tx.status === 'AWAITING_PAYMENT' && tx.expires_at && tx.expires_at < nowIso) {
               Object.assign(tx, parsedBody);
               updated.push(tx);
             }
           }
           return new Response(JSON.stringify(updated), { status: 200, headers: { 'content-type': 'application/json' } });
         }
-        const match = urlStr.match(/id=eq\.([0-9a-f-]+)/i);
+        const match = decodedUrl.match(/id=eq\.([0-9a-f-]+)/i);
         if (match) {
           const found = txRows[match[1]] ? { ...txRows[match[1]], vendors: vendorRow } : null;
           if (single) {
@@ -720,7 +735,19 @@ async function main() {
           }
           return new Response(JSON.stringify(found ? [found] : []), { status: 200, headers: { 'content-type': 'application/json' } });
         }
-        return new Response(JSON.stringify(Object.values(txRows)), { status: 200, headers: { 'content-type': 'application/json' } });
+        const allTx = Object.values(txRows).filter((tx) => {
+          const statusMatch = decodedUrl.match(/status=eq\.([A-Z_]+)/);
+          if (statusMatch && tx.status !== statusMatch[1]) return false;
+          const statusInMatch = decodedUrl.match(/status=in\.\(([^)]+)\)/i);
+          if (statusInMatch) {
+            const allowed = statusInMatch[1]
+              .split(',')
+              .map((s) => s.trim().replace(/^"|"$/g, ''));
+            if (!allowed.includes(tx.status)) return false;
+          }
+          return true;
+        });
+        return new Response(JSON.stringify(allTx), { status: 200, headers: { 'content-type': 'application/json' } });
       }
 
       if (urlStr.includes('/rest/v1/whatsapp_message_log')) {
@@ -1173,6 +1200,9 @@ async function main() {
       })
     );
     const cronJson = await cronRes.json();
+    if (cronRes.status !== 200 || cronJson.success !== true || txRows[orderCId]?.status !== 'EXPIRED') {
+      console.error('DEBUG OrderC:', { status: cronRes.status, cronJson, tx: txRows[orderCId] });
+    }
 
     assert(
       cronRes.status === 200 && cronJson.success === true && txRows[orderCId]?.status === 'EXPIRED',
