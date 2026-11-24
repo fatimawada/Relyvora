@@ -64,29 +64,26 @@ export function SimulatedPaymentModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-slate-900 text-white p-5 flex items-center justify-between relative overflow-hidden">
+        <div className="bg-surface text-main border-b border-border p-5 flex items-center justify-between relative overflow-hidden">
           <div className="relative z-10">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-400 mb-1">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>Simulated Escrow Gateway</span>
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-accent mb-1">
+              <ShieldCheck className="w-4 h-4 text-accent" />
+              <span>Test Payment Confirmation (Sandbox)</span>
             </div>
-            <h3 className="text-xl font-bold text-white tracking-tight">
+            <h3 className="text-xl font-bold text-main tracking-tight">
               Pay {formatNaira(totalAmount)}
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5 truncate max-w-[280px]">
+            <p className="text-xs text-muted mt-0.5 truncate max-w-[280px]">
               Item: {itemName}
             </p>
           </div>
-          <button 
+          <button
             onClick={onClose}
             disabled={isProcessing}
-            className="text-slate-400 hover:text-white p-1 rounded-full transition-colors relative z-10"
+            className="text-muted hover:text-main p-1 rounded-full transition-colors relative z-10"
           >
             <X className="w-5 h-5" />
           </button>
-
-          {/* Background subtle decoration */}
-          <div className="absolute -right-6 -bottom-6 w-28 h-28 bg-emerald-500/10 rounded-full blur-2xl" />
         </div>
 
         {/* Tab selection */}
@@ -220,7 +217,7 @@ export function SimulatedPaymentModal({
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2.5 text-left">
             <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
             <p className="text-[11px] text-amber-900 leading-tight">
-              <strong>Demo Environment:</strong> Clicking the button below runs a test payment settlement. Your order will be marked as held in escrow without real money movement.
+              <strong>Test Mode:</strong> Clicking below records a sandbox deposit for this virtual account without moving real money.
             </p>
           </div>
 
@@ -234,12 +231,12 @@ export function SimulatedPaymentModal({
             {isProcessing ? (
               <>
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>Simulating Payment Settlement...</span>
+                <span>Confirming Sandbox Payment...</span>
               </>
             ) : (
               <>
                 <CheckCircle className="w-5 h-5 text-emerald-200" />
-                <span>Confirm Simulated Payment ({formatNaira(totalAmount)})</span>
+                <span>Confirm Test Payment ({formatNaira(totalAmount)})</span>
               </>
             )}
           </button>

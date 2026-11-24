@@ -4,6 +4,7 @@ import {
   sendOtpWhatsappTemplate,
   sendReleaseCodeWhatsappTemplate,
 } from '@/lib/whatsapp';
+import { evaluateReleaseCodeWhatsappGateServer } from '@/lib/launchGates';
 
 /**
  * Out-of-Band Release Code & OTP Delivery via Meta WhatsApp Cloud API.
@@ -11,6 +12,9 @@ import {
  * Security rule: Plaintext release codes and OTPs are NEVER logged to stdout/stderr
  * and NEVER persisted in database logs or whatsapp_message_log. Only the masked
  * destination number (e.g. ******1234) and [REDACTED] markers may appear in logs.
+ *
+ * Gate 4: Sending the release code by WhatsApp is gated on PAYMENTS_MODE=live AND LAUNCH_STATUS=live.
+ * In sandbox mode, the code displays on screen labelled "Test code: in live mode this is sent by WhatsApp."
  */
 
 export function maskPhoneNumber(phone?: string | null): string {
@@ -44,9 +48,19 @@ export interface SendBuyerOtpSmsOptions {
 
 export async function sendReleaseCodeSmsOrWhatsapp(
   options: SendReleaseCodeSmsOptions
-): Promise<{ success: boolean; channel: 'whatsapp' | 'sms' | 'simulated'; maskedPhone: string; error?: string }> {
+): Promise<{ success: boolean; channel: 'whatsapp' | 'sms' | 'simulated' | 'on_screen_test'; maskedPhone: string; error?: string }> {
   const { transactionId, vendorId, buyerPhone, releaseCode, itemName, vendorHandle } = options;
   const maskedPhone = maskPhoneNumber(buyerPhone);
+
+  const releaseGate = await evaluateReleaseCodeWhatsappGateServer();
+  if (!releaseGate.allowed) {
+    return {
+      success: false,
+      channel: 'on_screen_test',
+      maskedPhone,
+      error: releaseGate.error || 'Test code: in live mode this is sent by WhatsApp.',
+    };
+  }
 
   if (!buyerPhone || !buyerPhone.trim()) {
     console.warn(`[RELEASE CODE DELIVERY] No buyer WhatsApp number on file for transaction ${transactionId}; skipped.`);

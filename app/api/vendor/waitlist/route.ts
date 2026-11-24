@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
       email: result.email,
       phoneNumber: result.phoneNumber,
       kycStatus: result.kycStatus,
-      message: 'Your store account has been saved on the waitlist.',
+      message: 'Your store details have been saved.',
     });
   } catch (err: any) {
     return NextResponse.json(

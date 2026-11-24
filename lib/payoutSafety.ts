@@ -409,9 +409,10 @@ export async function requestSettlementAccountChange(params: {
     ).toISOString();
 
     const patch = {
-      settlement_bank_code: params.newBankCode,
-      settlement_account_number: params.newAccountNumber,
-      settlement_account_name: enquiry.resolvedAccountName,
+      // Privacy rule: bank details stay strictly in Anchor CounterParty; never written to Supabase DB.
+      settlement_bank_code: null,
+      settlement_account_number: null,
+      settlement_account_name: null,
       payout_account_verified: true,
       settlement_account_name_matched: true,
       settlement_name_match_score: nameMatch.score,
@@ -441,11 +442,10 @@ export async function requestSettlementAccountChange(params: {
       target_id: vendor.id,
       ip_address: params.ipAddress || null,
       metadata: {
-        account_last4: params.newAccountNumber.slice(-4),
-        bank_code: params.newBankCode,
         name_match_score: nameMatch.score,
         payout_hold_until: holdUntilIso,
         wait_hours: safetyCfg.settlement_change_wait_hours,
+        counterparty_id: enquiry.counterPartyId || null,
       },
       created_at: nowIso,
     });
@@ -460,8 +460,7 @@ export async function requestSettlementAccountChange(params: {
       vendorHandle: vendor.store_name,
       details: {
         vendorId: vendor.id,
-        accountLast4: params.newAccountNumber.slice(-4),
-        bankCode: params.newBankCode,
+        counterpartyId: enquiry.counterPartyId || null,
         payoutHoldUntil: holdUntilIso,
       },
     }).catch(() => {});
@@ -477,12 +476,13 @@ export async function requestSettlementAccountChange(params: {
     };
   }
 
-  // Require WhatsApp confirmation to vendor's registered/verified phone
+  // Require WhatsApp confirmation to vendor's registered/verified phone (never store raw NUBAN/bank code in DB)
   const pendingPatch = {
-    pending_settlement_bank_code: params.newBankCode,
-    pending_settlement_account_number: params.newAccountNumber,
-    pending_settlement_account_name: enquiry.resolvedAccountName,
+    pending_settlement_bank_code: null,
+    pending_settlement_account_number: null,
+    pending_settlement_account_name: null,
     pending_settlement_requested_at: nowIso,
+    settlement_name_match_score: nameMatch.score,
     updated_at: nowIso,
   };
 
@@ -524,8 +524,7 @@ export async function requestSettlementAccountChange(params: {
     target_id: vendor.id,
     ip_address: params.ipAddress || null,
     metadata: {
-      account_last4: params.newAccountNumber.slice(-4),
-      bank_code: params.newBankCode,
+      counterparty_id: enquiry.counterPartyId || null,
       name_match_score: nameMatch.score,
       whatsapp_status: waRes.status,
       wait_hours: safetyCfg.settlement_change_wait_hours,
@@ -583,11 +582,9 @@ export async function confirmSettlementAccountChange(params: {
     return { success: false, statusCode: 404, error: 'Vendor account not found.' };
   }
 
-  const pendingBank = vendor.pending_settlement_bank_code;
-  const pendingAcct = vendor.pending_settlement_account_number;
-  const pendingName = vendor.pending_settlement_account_name;
+  const pendingRequestedAt = vendor.pending_settlement_requested_at;
 
-  if (!pendingBank || !pendingAcct || !pendingName) {
+  if (!pendingRequestedAt) {
     return {
       success: false,
       statusCode: 400,
@@ -602,19 +599,12 @@ export async function confirmSettlementAccountChange(params: {
     now.getTime() + safetyCfg.settlement_change_wait_hours * 3600_000
   ).toISOString();
 
-  const nameMatch = await verifySettlementNameMatchesKyc({
-    legalFirstName: vendor.legal_first_name,
-    legalLastName: vendor.legal_last_name,
-    accountName: pendingName,
-  });
-
   const confirmPatch = {
-    settlement_bank_code: pendingBank,
-    settlement_account_number: pendingAcct,
-    settlement_account_name: pendingName,
+    settlement_bank_code: null,
+    settlement_account_number: null,
+    settlement_account_name: null,
     payout_account_verified: true,
-    settlement_account_name_matched: nameMatch.matched,
-    settlement_name_match_score: nameMatch.score,
+    settlement_account_name_matched: true,
     pending_settlement_bank_code: null,
     pending_settlement_account_number: null,
     pending_settlement_account_name: null,
@@ -645,11 +635,9 @@ export async function confirmSettlementAccountChange(params: {
     target_id: vendor.id,
     ip_address: params.ipAddress || null,
     metadata: {
-      account_last4: String(pendingAcct).slice(-4),
-      bank_code: pendingBank,
       payout_hold_until: holdUntilIso,
       wait_hours: safetyCfg.settlement_change_wait_hours,
-      name_match_score: nameMatch.score,
+      name_match_score: vendor.settlement_name_match_score ?? null,
     },
     created_at: nowIso,
   });
@@ -664,8 +652,6 @@ export async function confirmSettlementAccountChange(params: {
     vendorHandle: vendor.store_name,
     details: {
       vendorId: vendor.id,
-      accountLast4: String(pendingAcct).slice(-4),
-      bankCode: pendingBank,
       payoutHoldUntil: holdUntilIso,
     },
   }).catch(() => {});

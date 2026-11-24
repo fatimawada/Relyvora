@@ -539,10 +539,10 @@ export default function AdminDisputesPage() {
           </button>
           <Link
             href="/vendor"
-            className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 transition-colors"
+            className="px-4 py-2 rounded-xl bg-surface hover:bg-site border border-border text-main text-xs font-bold flex items-center gap-1.5 transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Vendor Portal</span>
+            <span>Seller Dashboard</span>
           </Link>
         </div>
       </div>
@@ -647,7 +647,7 @@ export default function AdminDisputesPage() {
                 />
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-accent hover:opacity-90 text-white text-xs font-bold cursor-pointer"
                 >
                   Search DB
                 </button>
@@ -719,7 +719,7 @@ export default function AdminDisputesPage() {
                       await loadData();
                     }
                   }}
-                  className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[11px] font-bold cursor-pointer disabled:opacity-50"
+                  className="px-3 py-1.5 rounded-lg bg-accent hover:opacity-90 text-white text-[11px] font-bold cursor-pointer disabled:opacity-50"
                 >
                   Reissue Release Code
                 </button>
@@ -861,7 +861,7 @@ export default function AdminDisputesPage() {
                           setClearHoldReason('');
                           setClearHoldError(null);
                         }}
-                        className="shrink-0 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold cursor-pointer"
+                        className="shrink-0 px-2.5 py-1.5 rounded-lg bg-accent hover:opacity-90 text-white text-[11px] font-bold cursor-pointer"
                       >
                         Clear Hold
                       </button>
@@ -1033,7 +1033,7 @@ export default function AdminDisputesPage() {
                                 <button
                                   type="button"
                                   onClick={() => handleViewEvidenceSignedUrl(tx.id, ef.id)}
-                                  className="px-2.5 py-1.5 rounded-lg bg-slate-900 text-white text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer shrink-0"
+                                  className="px-2.5 py-1.5 rounded-lg bg-accent hover:opacity-90 text-white text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer shrink-0"
                                 >
                                   <span>Signed URL</span>
                                   <ExternalLink className="w-3 h-3" />
@@ -1129,7 +1129,7 @@ export default function AdminDisputesPage() {
                         setClearHoldTxId(tx.id);
                         setClearHoldBlocked(Boolean(tx.order_blocked));
                       }}
-                      className="px-3 py-1.5 rounded-lg bg-slate-900 text-white font-bold cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg bg-accent hover:opacity-90 text-white font-bold cursor-pointer"
                     >
                       Clear Hold
                     </button>
@@ -1222,7 +1222,7 @@ export default function AdminDisputesPage() {
                             await loadData();
                           }
                         }}
-                        className="px-3 py-1.5 rounded-lg bg-slate-900 text-white font-bold cursor-pointer"
+                        className="px-3 py-1.5 rounded-lg bg-accent hover:opacity-90 text-white font-bold cursor-pointer"
                       >
                         Execute Verified Refund
                       </button>
@@ -1371,7 +1371,7 @@ export default function AdminDisputesPage() {
                     className="bg-white border border-slate-300 rounded-lg px-2.5 py-2"
                   />
                 </div>
-                <button type="submit" disabled={actionBusy} className="px-4 py-2 rounded-lg bg-slate-900 text-white font-bold cursor-pointer">
+                <button type="submit" disabled={actionBusy} className="px-4 py-2 rounded-lg bg-accent hover:opacity-90 text-white font-bold cursor-pointer">
                   Save Setting Update
                 </button>
               </form>
@@ -1424,14 +1424,14 @@ export default function AdminDisputesPage() {
                 className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 my-8"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="bg-slate-900 text-white p-6 sticky top-0 z-10 flex items-center justify-between">
+                <div className="bg-surface text-main border-b border-border p-6 sticky top-0 z-10 flex items-center justify-between">
                   <div>
-                    <span className="text-[11px] font-sans font-bold text-rose-400 uppercase tracking-wider block">
+                    <span className="text-[11px] font-sans font-bold text-rose-600 uppercase tracking-wider block">
                       Binding Arbitration Desk
                     </span>
-                    <h3 className="text-lg font-black text-white">Resolve Dispute: {selectedTx.item_name}</h3>
+                    <h3 className="text-lg font-black text-main">Resolve Dispute: {selectedTx.item_name}</h3>
                   </div>
-                  <button onClick={() => setSelectedTx(null)} className="text-slate-400 hover:text-white p-1 rounded-lg">
+                  <button onClick={() => setSelectedTx(null)} className="text-muted hover:text-main p-1 rounded-lg">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -1632,9 +1632,9 @@ export default function AdminDisputesPage() {
             }}
             className="m-auto rounded-3xl border border-slate-200 bg-white p-0 shadow-2xl max-w-md w-full"
           >
-            <div className="bg-slate-900 text-white p-5 flex items-center justify-between rounded-t-3xl">
-              <h3 id="clear-hold-dialog-title" className="text-base font-black">Clear Security Risk Hold</h3>
-              <button type="button" onClick={() => setClearHoldTxId(null)} className="text-slate-400 hover:text-white p-1">
+            <div className="bg-surface text-main border-b border-border p-5 flex items-center justify-between rounded-t-3xl">
+              <h3 id="clear-hold-dialog-title" className="text-base font-black text-main">Clear Security Risk Hold</h3>
+              <button type="button" onClick={() => setClearHoldTxId(null)} className="text-muted hover:text-main p-1">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -1661,7 +1661,7 @@ export default function AdminDisputesPage() {
                 <button type="button" onClick={() => setClearHoldTxId(null)} className="px-4 py-2 rounded-xl border text-xs font-bold">
                   Cancel
                 </button>
-                <button type="submit" disabled={isClearingHold} className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold">
+                <button type="submit" disabled={isClearingHold} className="px-4 py-2 rounded-xl bg-accent hover:opacity-90 text-white text-xs font-bold">
                   {isClearingHold ? 'Clearing...' : 'Confirm & Clear Hold'}
                 </button>
               </div>

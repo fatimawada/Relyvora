@@ -171,8 +171,9 @@ async function main() {
         footerSrc.includes('/privacy') &&
         footerSrc.includes('/prohibited-items') &&
         footerSrc.includes('/disputes') &&
-        ngPageSrc.includes('Early access'),
-      'Header has logo linking to / with no Corporate Site, Vendor Portal, or ThemeToggle; Footer has About Relyvora + legal links; /ng badge uses Early access'
+        footerSrc.includes('Create your seller account') &&
+        ngPageSrc.includes('Create your seller account'),
+      'Header has logo linking to / with no Corporate Site, Vendor Portal, or ThemeToggle; Footer has About Relyvora + legal links; sign-up CTA reads Create your seller account'
     );
 
     const step1ShapeKeys = Object.keys(step1Schema.shape);
@@ -191,32 +192,41 @@ async function main() {
       React.createElement(VendorOnboardingFlow, {
         initialKycEnabled: false,
         initialLaunchStatus: 'launching',
-        initialPaymentsMode: 'sandbox',
+        initialPaymentsMode: 'live',
         initialReleaseTemplateApproved: false,
       })
     );
     const loggedOutVendorHtml = renderToStaticMarkup(
       React.createElement(VendorPortalClient, {
         initialGates: {
-          kycEnabled: false,
+          kycEnabled: true,
           paymentsMode: 'sandbox',
           launchStatus: 'launching',
-          preLaunch: true,
+          preLaunch: false,
           releaseCodeTemplateApproved: false,
           canCreateLinks: false,
-          paymentsOpenStatus: 'Payments open soon',
+          paymentsOpenStatus: 'Complete Step 2 verification',
+          liveGates: {
+            realMoneyMovement: false,
+            liveAnchorKyc: false,
+            liveWhatsappBuyers: false,
+            releaseCodeWhatsapp: false,
+          },
         },
       })
     );
     const onboardingFlowSrc = fs.readFileSync('components/vendor/VendorOnboardingFlow.tsx', 'utf8');
+    const vendorPortalSrc = fs.readFileSync('components/vendor/VendorPortalClient.tsx', 'utf8');
     assert(
-      onboardingFlowSrc.includes('Verification opens when payments go live.') &&
+      !onboardingFlowSrc.includes('Use a confirmation link instead') &&
+        !vendorPortalSrc.includes('Send a sign-in link instead') &&
+        !onboardingFlowSrc.includes('Verification opens when payments go live.') &&
         onboardingFlowSrc.includes('{currentStep === 2 && !kycEnabled && (') &&
         onboardingFlowSrc.includes('{currentStep === 2 && kycEnabled && (') &&
         !onboardingStep1Html.includes('text-rose-700') &&
         !loggedOutVendorHtml.includes('Create payment link') &&
         !loggedOutVendorHtml.includes('Orders ('),
-      'Initial renders show zero red validation errors before touch, logged-out /vendor renders no order form or orders list, and Step 2 renders no identity/bank fields when KYC_ENABLED=false'
+      'Initial renders show zero red validation errors before touch, logged-out /vendor renders no order form or orders list, link fallback buttons are hidden, and Step 2 checks kycEnabled'
     );
 
     // -----------------------------------------------------------------------
@@ -297,20 +307,25 @@ async function main() {
     );
 
     // -----------------------------------------------------------------------
-    // 3. KYC_ENABLED=false BLOCKS ANCHOR CALLS & KYC_ENABLED=true FAILS CLOSED
+    // 3. GATE 2 (LIVE ANCHOR KYC) OPENS IN SANDBOX & GATES LIVE PRE-LAUNCH
     // -----------------------------------------------------------------------
-    console.log('\n--- 3. KYC_ENABLED GATE & ZERO ANCHOR CALLS ---');
+    console.log('\n--- 3. SANDBOX-OPEN KYC & LIVE ANCHOR KYC GATE ---');
+    process.env.PAYMENTS_MODE = 'sandbox';
+    process.env.LAUNCH_STATUS = 'launching';
     delete process.env.KYC_ENABLED;
     delete process.env.NEXT_PUBLIC_KYC_ENABLED;
     delete process.env.RELEASE_CODE_TEMPLATE_APPROVED;
     delete process.env.WHATSAPP_RELEASE_CODE_TEMPLATE_APPROVED;
     clearSafetySettingsCache();
 
-    const defaultKycFlag = await isKycEnabledServer();
+    const sandboxKycFlag = await isKycEnabledServer();
+    process.env.PAYMENTS_MODE = 'live';
+    process.env.LAUNCH_STATUS = 'launching';
+    const livePrelaunchKycFlag = await isKycEnabledServer();
     const defaultTemplateFlag = await isReleaseCodeTemplateApprovedServer();
     assert(
-      defaultKycFlag === false && defaultTemplateFlag === false,
-      'KYC_ENABLED and RELEASE_CODE_TEMPLATE_APPROVED default to false'
+      sandboxKycFlag === true && livePrelaunchKycFlag === false && defaultTemplateFlag === false,
+      'Sandbox allows KYC openly (true), while PAYMENTS_MODE=live + LAUNCH_STATUS=launching gates Live KYC (false)'
     );
 
     const anchorCalls: string[] = [];
@@ -494,6 +509,9 @@ async function main() {
       return origFetch(input as any, init);
     };
 
+    process.env.PAYMENTS_MODE = 'live';
+    process.env.LAUNCH_STATUS = 'launching';
+
     const lockedOnboardRes = await vendorOnboardingPost(
       new NextRequest('https://ng.relyvora.com/api/vendor/onboarding', {
         method: 'POST',
@@ -535,15 +553,15 @@ async function main() {
 
     assert(
       lockedOnboardRes.status === 403 &&
-        lockedOnboardJson.code === 'KYC_DISABLED' &&
+        lockedOnboardJson.code === 'LAUNCH_NOT_LIVE' &&
         lockedSettlementRes.status === 403 &&
         anchorCalls.length === 0,
-      `POST /api/vendor/onboarding (HTTP ${lockedOnboardRes.status}) & settlement-account (HTTP ${lockedSettlementRes.status}) lock with ZERO Anchor calls while KYC_ENABLED=false`
+      `POST /api/vendor/onboarding (HTTP ${lockedOnboardRes.status}) & settlement-account (HTTP ${lockedSettlementRes.status}) gate live KYC with ZERO Anchor calls while PAYMENTS_MODE=live & LAUNCH_STATUS=launching`
     );
 
-    // Fail-closed live Anchor check when KYC_ENABLED=true & PAYMENTS_MODE=live without production Anchor URL/keys
-    process.env.KYC_ENABLED = 'true';
+    // Fail-closed live Anchor check when PAYMENTS_MODE=live & LAUNCH_STATUS=live without production Anchor URL/keys
     process.env.PAYMENTS_MODE = 'live';
+    process.env.LAUNCH_STATUS = 'live';
     process.env.ANCHOR_BASE_URL = 'https://api.sandbox.getanchor.co/api/v1';
     const credCheckSandboxInLive = isAnchorLiveCredentialsConfigured();
     let liveCredThrew = false;
@@ -653,11 +671,12 @@ async function main() {
         statusJson.firstIncompleteStep === 2 &&
         statusJson.user?.storeName === 'Lagos Craft Goods' &&
         statusJson.user?.phoneNumber === '+2348011112233' &&
+        statusJson.gates?.kycEnabled === true &&
         statusJson.gates?.canCreateLinks === false &&
-        statusJson.gates?.paymentsOpenStatus === 'Payments open soon' &&
+        statusJson.gates?.paymentsOpenStatus === 'Complete Step 2 verification' &&
         whatsappCalls.length === 0 &&
         emailCalls.length === 0,
-      'Confirmation callback redirects to /vendor/onboarding?confirmed=1&step=2 with Step 1 saved on account (zero re-entry, zero WhatsApp/email sent)'
+      'Confirmation callback redirects to /vendor/onboarding?confirmed=1&step=2 with Step 1 saved on account (zero re-entry, sandbox Step 2 unlocked, zero WhatsApp/email sent)'
     );
 
     // Also verify confirmed callback redirects verified KYC vendors straight to /vendor
@@ -690,32 +709,30 @@ async function main() {
       'Logged-out callers are strictly rejected (401) from escrow list and create-link'
     );
 
-    // Test all 4 required Option B conditions on evaluateLivePaymentGateServer
+    // Test 4 live-only gates on evaluateLivePaymentGateServer:
+    // In sandbox (`PAYMENTS_MODE=sandbox`), verified KYC vendors CAN run sandbox orders freely;
+    // In live (`PAYMENTS_MODE=live`), `LAUNCH_STATUS=live` + verified KYC are required (returns 403 otherwise).
     const verifiedVendorStub = { id: testVendorId, kyc_status: 'verified', is_suspended: false };
     const pendingVendorStub = { id: testVendorId, kyc_status: 'pending', is_suspended: false };
 
     process.env.PAYMENTS_MODE = 'sandbox';
-    process.env.LAUNCH_STATUS = 'live';
-    process.env.RELEASE_CODE_TEMPLATE_APPROVED = 'true';
-    const g1 = await evaluateLivePaymentGateServer({ vendor: verifiedVendorStub });
+    process.env.LAUNCH_STATUS = 'launching';
+    process.env.RELEASE_CODE_TEMPLATE_APPROVED = 'false';
+    const gSandboxVerified = await evaluateLivePaymentGateServer({ vendor: verifiedVendorStub });
+    const gSandboxPending = await evaluateLivePaymentGateServer({ vendor: pendingVendorStub });
 
     process.env.PAYMENTS_MODE = 'live';
     process.env.LAUNCH_STATUS = 'launching';
     process.env.RELEASE_CODE_TEMPLATE_APPROVED = 'true';
-    const g2 = await evaluateLivePaymentGateServer({ vendor: verifiedVendorStub });
-
-    process.env.PAYMENTS_MODE = 'live';
-    process.env.LAUNCH_STATUS = 'live';
-    process.env.RELEASE_CODE_TEMPLATE_APPROVED = 'false';
-    const g3 = await evaluateLivePaymentGateServer({ vendor: verifiedVendorStub });
+    const gLiveLaunching = await evaluateLivePaymentGateServer({ vendor: verifiedVendorStub });
 
     process.env.PAYMENTS_MODE = 'live';
     process.env.LAUNCH_STATUS = 'live';
     process.env.RELEASE_CODE_TEMPLATE_APPROVED = 'true';
-    const g4 = await evaluateLivePaymentGateServer({ vendor: pendingVendorStub });
+    const gLivePendingKyc = await evaluateLivePaymentGateServer({ vendor: pendingVendorStub });
     const gAllPass = await evaluateLivePaymentGateServer({ vendor: verifiedVendorStub });
 
-    const snapBlocked = await getVendorGateSnapshotServer({
+    const snapLiveBlocked = await getVendorGateSnapshotServer({
       kyc_status: 'pending',
       is_suspended: false,
       payout_account_verified: false,
@@ -723,19 +740,22 @@ async function main() {
     });
 
     assert(
-      !g1.allowed && g1.statusCode === 403 &&
-        !g2.allowed && g2.statusCode === 403 &&
-        !g3.allowed && g3.statusCode === 403 &&
-        !g4.allowed && g4.statusCode === 403 &&
+      gSandboxVerified.allowed === true &&
+        !gSandboxPending.allowed &&
+        gSandboxPending.statusCode === 403 &&
+        !gLiveLaunching.allowed &&
+        gLiveLaunching.statusCode === 403 &&
+        !gLivePendingKyc.allowed &&
+        gLivePendingKyc.statusCode === 403 &&
         gAllPass.allowed === true &&
-        snapBlocked.canCreateLinks === false &&
-        snapBlocked.paymentsOpenStatus === 'Payments open soon',
-      'Live payment gate requires ALL 4 conditions (PAYMENTS_MODE=live, LAUNCH_STATUS=live, verified KYC, release template approved) and returns 403 otherwise'
+        snapLiveBlocked.canCreateLinks === false &&
+        snapLiveBlocked.paymentsOpenStatus === 'Complete KYC verification to create payment links',
+      'Sandbox allows KYC-verified vendors freely while PAYMENTS_MODE=live gates real money unless LAUNCH_STATUS=live and KYC is verified'
     );
 
-    // Verify route-level 403 across create-link and all payment action routes when template is unapproved
+    // Verify route-level 403 across create-link and all payment action routes when live mode is not launched
     process.env.PAYMENTS_MODE = 'live';
-    process.env.LAUNCH_STATUS = 'live';
+    process.env.LAUNCH_STATUS = 'launching';
     process.env.RELEASE_CODE_TEMPLATE_APPROVED = 'false';
     const headersAuth = {
       'content-type': 'application/json',
@@ -834,7 +854,7 @@ async function main() {
     const statuses = route403Checks.map((r) => r.status);
     assert(
       statuses.every((s) => s === 403),
-      `All create-link & payment action routes return HTTP 403 when gated (${statuses.join(', ')})`
+      `All create-link & payment action routes return HTTP 403 when PAYMENTS_MODE=live & LAUNCH_STATUS!=live (${statuses.join(', ')})`
     );
   } finally {
     globalThis.fetch = origFetch;

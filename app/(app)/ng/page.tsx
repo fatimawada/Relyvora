@@ -17,12 +17,11 @@ export default function NigerianMarketPage() {
   const sandbox = isExplicitSandboxUiMode();
   const preLaunch = isPreLaunchFlag();
 
-  const badgeLabel =
-    preLaunch || LAUNCH_STATUS !== 'live'
+  const badgeLabel = sandbox
+    ? 'Nigeria'
+    : preLaunch || LAUNCH_STATUS !== 'live'
       ? 'Early access'
-      : sandbox
-        ? 'Nigeria • Sandbox Mode'
-        : 'Nigeria • Live';
+      : 'Nigeria • Live';
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 sm:py-16 space-y-16 sm:space-y-24">
@@ -48,7 +47,7 @@ export default function NigerianMarketPage() {
             className="w-full sm:w-auto px-6 py-4 rounded-xl bg-accent hover:opacity-90 text-white font-bold text-base flex items-center justify-center gap-2 shadow-card transition-all transform active:scale-[0.99]"
           >
             <UserPlus className="w-5 h-5 text-white" />
-            <span>Create vendor account</span>
+            <span>Create your seller account</span>
             <ArrowRight className="w-4 h-4 ml-1" />
           </Link>
 
@@ -72,13 +71,13 @@ export default function NigerianMarketPage() {
           </div>
           <div>
             <div className="text-xl sm:text-2xl font-bold text-accent font-heading tabular-nums">
-              {sandbox ? 'Sandbox' : preLaunch ? 'Early access' : 'Bank Transfer'}
+              {sandbox ? 'Bank Transfer' : preLaunch ? 'Early access' : 'Bank Transfer'}
             </div>
             <div className="text-[11px] sm:text-xs text-muted">
               {sandbox
                 ? 'Test mode active'
                 : preLaunch
-                  ? 'Open vendor sign-up'
+                  ? 'Open seller sign-up'
                   : 'Virtual account per order'}
             </div>
           </div>
@@ -169,7 +168,7 @@ export default function NigerianMarketPage() {
               href="/vendor/onboarding"
               className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-accent hover:opacity-90 text-white font-bold text-sm shadow-card transition-all"
             >
-              <span>Create vendor account</span>
+              <span>Create your seller account</span>
               <ArrowRight className="w-4 h-4" />
             </Link>
             <Link

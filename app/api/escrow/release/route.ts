@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { transactionId, releaseCode } = body || {};
+    const { transactionId, releaseCode, sandboxSkipCoolingHold } = body || {};
 
     if (!transactionId || !releaseCode || typeof releaseCode !== 'string') {
       return NextResponse.json(
@@ -208,6 +208,13 @@ export async function POST(request: NextRequest) {
       coolingHours = Math.max(tierCoolingHours, highValueCoolingHours);
     }
 
+    const effectiveCoolingHours =
+      sandboxSkipCoolingHold === true &&
+      serverPaymentsMode === 'sandbox' &&
+      process.env.VERCEL_ENV !== 'production'
+        ? 0
+        : coolingHours;
+
     // 4. Compute HMAC-SHA256 keyed by server-side RELEASE_CODE_PEPPER
     const hmacHash = computeReleaseCodeHmac(transactionId, cleanCode);
 
@@ -216,7 +223,7 @@ export async function POST(request: NextRequest) {
       p_transaction_id: transactionId,
       p_hmac_hash: hmacHash,
       p_max_attempts: MAX_CODE_ATTEMPTS,
-      p_cooling_hours: coolingHours,
+      p_cooling_hours: effectiveCoolingHours,
     });
 
     if (rpcError || !rpcResult) {
@@ -302,10 +309,46 @@ export async function POST(request: NextRequest) {
 
     // 8. Execution: Sandbox vs Live Split Transfers
     if (serverPaymentsMode === 'sandbox') {
+      let vendorTransferId = `sandbox_vendor_transfer_${transactionId}`;
+      let feeTransferId = `sandbox_fee_transfer_${transactionId}`;
+      let anchorSandboxAttempted = false;
+
+      if (
+        txMeta.anchor_deposit_id &&
+        !String(txMeta.anchor_deposit_id).startsWith('sandbox_deposit_') &&
+        rpcResult.vendor_anchor_account_id &&
+        process.env.ANCHOR_SECRET_KEY?.trim()
+      ) {
+        try {
+          anchorSandboxAttempted = true;
+          const vTr = await executeAnchorBookTransfer({
+            sourceAccountId: RELYVORA_FBO_ACCOUNT_ID,
+            destinationAccountId: rpcResult.vendor_anchor_account_id,
+            amount: Math.round(vendorPayoutAmountNaira * 100),
+            reason: `Relyvora Sandbox Payout (${transactionId.slice(0, 8)})`,
+            reference: `rv_sbx_${transactionId}_leg1`,
+          });
+          vendorTransferId = vTr.transferId;
+          const fTr = await executeAnchorBookTransfer({
+            sourceAccountId: RELYVORA_FBO_ACCOUNT_ID,
+            destinationAccountId: RELYVORA_REVENUE_ACCOUNT_ID,
+            amount: Math.round(protectionFeeNaira * 100),
+            reason: `Relyvora Sandbox Protection Fee (${transactionId.slice(0, 8)})`,
+            reference: `rv_sbx_${transactionId}_leg2`,
+          });
+          feeTransferId = fTr.transferId;
+        } catch (sbxAnchorErr: any) {
+          console.warn(
+            '[SANDBOX RELEASE] Anchor Sandbox BookTransfer fell back to ledger sandbox transfer IDs:',
+            sbxAnchorErr?.message || sbxAnchorErr
+          );
+        }
+      }
+
       const { error: step1Err } = await supabase.rpc('rpc_finalize_release_step', {
         p_transaction_id: transactionId,
         p_step: 'VENDOR_PAID',
-        p_transfer_id: `sandbox_vendor_transfer_${transactionId}`,
+        p_transfer_id: vendorTransferId,
         p_idempotency_key: `${transactionId}_PAYOUT_VENDOR`,
       });
       if (step1Err) {
@@ -322,7 +365,7 @@ export async function POST(request: NextRequest) {
       const { data: sandboxFinalStep, error: step2Err } = await supabase.rpc('rpc_finalize_release_step', {
         p_transaction_id: transactionId,
         p_step: 'RELEASED',
-        p_transfer_id: `sandbox_fee_transfer_${transactionId}`,
+        p_transfer_id: feeTransferId,
         p_idempotency_key: `${transactionId}_FEE_REVENUE`,
       });
       if (step2Err) {
@@ -348,7 +391,9 @@ export async function POST(request: NextRequest) {
 
       const { data: finalTx, error: finalErr } = await supabase
         .from('transactions')
-        .select(SAFE_TRANSACTION_PUBLIC_COLUMNS)
+        .select(
+          `${SAFE_TRANSACTION_PUBLIC_COLUMNS}, vendor_paid_at, anchor_vendor_transfer_id, anchor_fee_transfer_id, anchor_transfer_id, anchor_revenue_transfer_id`
+        )
         .eq('id', transactionId)
         .single();
       if (finalErr || !finalTx) {
@@ -357,7 +402,26 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
-      return NextResponse.json({ success: true, transaction: finalTx });
+      return NextResponse.json({
+        success: true,
+        transaction: finalTx,
+        payoutTransfer: {
+          mode: 'sandbox',
+          label: 'Test — Vendor Payout Transfer',
+          transferId: finalTx.anchor_vendor_transfer_id || vendorTransferId,
+          amountNaira: vendorPayoutAmountNaira,
+          destinationAccountId: rpcResult.vendor_anchor_account_id || null,
+          anchorSandboxAttempted,
+        },
+        feeTransfer: {
+          mode: 'sandbox',
+          label: 'Test — Platform Fee Transfer',
+          transferId: finalTx.anchor_fee_transfer_id || feeTransferId,
+          amountNaira: protectionFeeNaira,
+          destinationAccountId: RELYVORA_REVENUE_ACCOUNT_ID,
+          anchorSandboxAttempted,
+        },
+      });
     }
 
     // LIVE PRODUCTION MULTI-LEG SETTLEMENT

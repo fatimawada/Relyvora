@@ -351,14 +351,14 @@ export default function AdminSecurityPage() {
 
       {/* Feedback alerts */}
       {statusError && (
-        <div className="p-4 rounded-card bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-sm flex items-start gap-2.5">
+        <div className="p-4 rounded-card bg-rose-500/10 border border-rose-500/30 text-rose-700 text-sm flex items-start gap-2.5">
           <ShieldAlert className="w-5 h-5 shrink-0 mt-0.5" />
           <span>{statusError}</span>
         </div>
       )}
 
       {statusSuccess && (
-        <div className="p-4 rounded-card bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-sm flex items-start gap-2.5">
+        <div className="p-4 rounded-card bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 text-sm flex items-start gap-2.5">
           <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />
           <span>{statusSuccess}</span>
         </div>
@@ -430,7 +430,7 @@ export default function AdminSecurityPage() {
       ) : !isAllowlistedAdmin ? (
         /* Authenticated but failed role / email confirmation / ADMIN_USER_IDS allowlist */
         <div className="bg-surface border border-rose-500/30 rounded-card p-6 sm:p-8 space-y-4">
-          <div className="flex items-center gap-2.5 text-rose-700 dark:text-rose-300">
+          <div className="flex items-center gap-2.5 text-rose-700">
             <ShieldAlert className="w-5 h-5 shrink-0" />
             <h2 className="font-heading text-xl font-semibold">Admin Access Denied</h2>
           </div>
@@ -455,7 +455,7 @@ export default function AdminSecurityPage() {
         <div className="bg-surface border border-emerald-500/40 rounded-card p-6 sm:p-8 space-y-5">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-1">
-              <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+              <div className="flex items-center gap-2 text-emerald-700">
                 <ShieldCheck className="w-6 h-6" />
                 <span className="text-xs font-semibold uppercase tracking-wide">
                   Verified AAL2 Session
@@ -465,7 +465,7 @@ export default function AdminSecurityPage() {
                 TOTP Multi-Factor Authentication Confirmed
               </h2>
             </div>
-            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-700 border border-emerald-500/30">
               AAL2 Active
             </span>
           </div>
@@ -507,7 +507,7 @@ export default function AdminSecurityPage() {
         /* Enrollment Flow: No verified TOTP factor yet */
         <div className="bg-surface border border-border rounded-card p-6 sm:p-8 space-y-6">
           <div className="space-y-1.5">
-            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+            <div className="flex items-center gap-2 text-amber-700">
               <KeyRound className="w-5 h-5" />
               <span className="text-xs font-semibold uppercase tracking-wide">
                 MFA Enrollment Required ({serverState?.aal || currentAal})
@@ -598,7 +598,7 @@ export default function AdminSecurityPage() {
         /* Step-up Verification: Factor enrolled, current session is still AAL1 */
         <div className="bg-surface border border-border rounded-card p-6 sm:p-8 space-y-5">
           <div className="space-y-1.5">
-            <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+            <div className="flex items-center gap-2 text-amber-700">
               <KeyRound className="w-5 h-5" />
               <span className="text-xs font-semibold uppercase tracking-wide">
                 AAL2 Step-Up Required (Currently AAL1)

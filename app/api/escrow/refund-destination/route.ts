@@ -136,7 +136,8 @@ export async function POST(request: NextRequest) {
         supabase
       );
 
-      if (!sendRes.success) {
+      const isSandbox = !isLive && process.env.VERCEL_ENV !== 'production';
+      if (!sendRes.success && !isSandbox) {
         return NextResponse.json(
           { success: false, error: sendRes.error || 'Failed to send refund verification OTP via WhatsApp.' },
           { status: 502 }
@@ -145,8 +146,12 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
+        whatsappSent: sendRes.success,
         buyer_phone_masked: maskedPhone,
         expiresInMinutes: 10,
+        message: sendRes.success
+          ? `Verification OTP sent via WhatsApp to ${maskedPhone}.`
+          : 'Test mode: WhatsApp sends only to WHATSAPP_ALLOWED_RECIPIENTS. Test OTP displayed on screen.',
         ...(!isLive ? { sandbox_otp: otpCode } : {}),
       });
     }

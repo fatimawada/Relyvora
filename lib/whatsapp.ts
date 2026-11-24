@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { sendSystemAlert } from '@/lib/alerts';
 import { isLiveMode } from '@/lib/paymentsMode';
+import { getLaunchStatus } from '@/lib/feeConfig';
 import { getHotSettings, requireHotSetting } from '@/lib/safetyLimits';
 import { logError, logWarn } from '@/lib/logger';
 import { resolveNigerianBankName } from '@/lib/nigerianBanks';
@@ -502,8 +503,25 @@ export function evaluateWhatsappRecipientPolicy(
   };
 }
 
-export function isPhoneAllowedByStagingList(e164Phone: string): boolean {
-  return evaluateWhatsappRecipientPolicy(e164Phone).allowed;
+export function isPhoneAllowedByStagingList(
+  e164Phone: string,
+  env: Record<string, string | undefined> = process.env
+): boolean {
+  const mode = (env.PAYMENTS_MODE || 'sandbox').toLowerCase().trim();
+  const launchStatus = getLaunchStatus();
+  const policy = evaluateWhatsappRecipientPolicy(e164Phone, env);
+
+  // In sandbox mode, ONLY numbers explicitly present in WHATSAPP_ALLOWED_RECIPIENTS can receive test WhatsApp messages.
+  if (mode !== 'live') {
+    return policy.status.state === 'enforced' && policy.status.allowedNumbers.includes(e164Phone);
+  }
+
+  // Gate 3: Live WhatsApp to real buyers requires BOTH PAYMENTS_MODE=live AND LAUNCH_STATUS=live.
+  if (launchStatus !== 'live') {
+    return policy.status.state === 'enforced' && policy.status.allowedNumbers.includes(e164Phone);
+  }
+
+  return policy.allowed;
 }
 
 export async function checkWhatsappDailyCaps(
@@ -1086,6 +1104,18 @@ async function dispatchMetaWhatsappTemplate(
   }
 ): Promise<WhatsappTransportResult> {
   validateWhatsappTemplatePayload(payload);
+
+  // Defense-in-depth Gate 3 check right before calling Meta Graph API
+  if (!isPhoneAllowedByStagingList(payload.to)) {
+    return {
+      ok: false,
+      error: isLiveMode()
+        ? 'Live WhatsApp to real buyers is gated until PAYMENTS_MODE=live and LAUNCH_STATUS=live.'
+        : 'Test mode: WhatsApp messages send only to numbers listed in WHATSAPP_ALLOWED_RECIPIENTS.',
+      status: 'failed',
+    };
+  }
+
   const accessToken = (process.env.WHATSAPP_ACCESS_TOKEN || '').trim();
   const phoneNumberId = (process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim();
   const apiVersion = (process.env.WHATSAPP_API_VERSION || 'v21.0').trim();
@@ -1377,6 +1407,15 @@ export async function sendReleaseCodeWhatsappTemplate(
   const maskedPhone = maskWhatsappNumber(e164 || params.buyerPhone);
   if (!e164) {
     return { success: false, maskedPhone, error: 'Missing or invalid buyer WhatsApp number.' };
+  }
+
+  // Gate 4: Sending the 6-digit release code via WhatsApp requires PAYMENTS_MODE=live AND LAUNCH_STATUS=live.
+  if (!isLiveMode() || getLaunchStatus() !== 'live') {
+    return {
+      success: false,
+      maskedPhone,
+      error: 'Test code: in live mode this is sent by WhatsApp.',
+    };
   }
 
   if (!isPhoneAllowedByStagingList(e164)) {

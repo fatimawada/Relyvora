@@ -4,7 +4,7 @@ import { getServiceSupabase } from '@/lib/supabaseServer';
 import { getClientIp, checkSharedRateLimit } from '@/lib/rateLimit';
 import { sendSystemAlert } from '@/lib/alerts';
 import { isAnchorLiveCredentialsConfigured } from '@/lib/anchor';
-import { isKycEnabledServer } from '@/lib/launchGates';
+import { evaluateLiveKycGateServer } from '@/lib/launchGates';
 import { isLiveMode } from '@/lib/paymentsMode';
 import {
   confirmSettlementAccountChange,
@@ -25,9 +25,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!(await isKycEnabledServer())) {
+    const kycGate = await evaluateLiveKycGateServer();
+    if (!kycGate.allowed) {
       return NextResponse.json(
-        { success: false, code: 'KYC_DISABLED', error: 'Verification opens when payments go live.' },
+        { success: false, code: kycGate.code || 'LAUNCH_NOT_LIVE', error: kycGate.error || 'Live KYC is gated.' },
         { status: 403 }
       );
     }
@@ -137,9 +138,10 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    if (!(await isKycEnabledServer())) {
+    const kycGate = await evaluateLiveKycGateServer();
+    if (!kycGate.allowed) {
       return NextResponse.json(
-        { success: false, code: 'KYC_DISABLED', error: 'Verification opens when payments go live.' },
+        { success: false, code: kycGate.code || 'LAUNCH_NOT_LIVE', error: kycGate.error || 'Live KYC is gated.' },
         { status: 403 }
       );
     }

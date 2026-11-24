@@ -114,7 +114,9 @@ export interface VendorOnboardingFlowProps {
 
 export function VendorOnboardingFlow({
   initialKycEnabled = false,
+  initialPaymentsMode = 'sandbox',
 }: VendorOnboardingFlowProps) {
+  const isLivePaymentsMode = initialPaymentsMode === 'live';
   const [isHydrating, setIsHydrating] = useState(true);
   const [kycEnabled, setKycEnabled] = useState<boolean>(initialKycEnabled);
   const [currentStep, setCurrentStep] = useState<1 | 2>(1);
@@ -134,6 +136,7 @@ export function VendorOnboardingFlow({
   const [isSuccess, setIsSuccess] = useState(false);
   const [isAlreadyVerified, setIsAlreadyVerified] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [sandboxKycResponse, setSandboxKycResponse] = useState<Record<string, unknown> | null>(null);
 
   const turnstileSiteKey = (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '').trim();
 
@@ -499,13 +502,7 @@ export function VendorOnboardingFlow({
 
     try {
       await sendOtpForStep1(step1Data);
-      if (asFallbackLink) {
-        setMagicLinkSentNotice(
-          `We sent a confirmation link and fresh code to ${step1Data.email}. Opening the link confirms your email and takes you straight to Step 2.`
-        );
-      } else {
-        setMagicLinkSentNotice(`A new 6-digit code was sent to ${step1Data.email}.`);
-      }
+      setMagicLinkSentNotice(`A new 6-digit code was sent to ${step1Data.email}.`);
     } catch (err: any) {
       setOtpError(err?.message || 'Unable to send a new code right now.');
     } finally {
@@ -515,7 +512,7 @@ export function VendorOnboardingFlow({
 
   const onStep2Submit = async (data: Step2FormData) => {
     if (!kycEnabled) {
-      setServerError('Verification opens when payments go live.');
+      setServerError('Live identity verification is paused until live launch.');
       return;
     }
 
@@ -563,6 +560,9 @@ export function VendorOnboardingFlow({
         throw new Error(result.error || 'Failed to verify vendor account.');
       }
 
+      if (result.data?.anchorSandboxResponse) {
+        setSandboxKycResponse(result.data.anchorSandboxResponse as Record<string, unknown>);
+      }
       setIsSuccess(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
@@ -659,10 +659,12 @@ export function VendorOnboardingFlow({
 
           <div className="space-y-2">
             <h2 className="text-2xl font-heading font-bold text-main tracking-tight">
-              {isAlreadyVerified ? 'Vendor Account Verified' : 'Verification Complete'}
+              {isAlreadyVerified ? 'Seller Account Verified' : 'Verification Complete'}
             </h2>
             <p className="text-xs sm:text-sm text-muted leading-relaxed max-w-sm mx-auto">
-              Your store <strong>{step1Data?.storeName}</strong> is verified and ready for settlement when payments go live.
+              {isLivePaymentsMode
+                ? <>Your store <strong>{step1Data?.storeName}</strong> is verified and ready for settlement.</>
+                : <>Your store <strong>{step1Data?.storeName}</strong> is verified in Anchor Sandbox. Create a payment link next to test the escrow flow.</>}
             </p>
           </div>
 
@@ -675,7 +677,7 @@ export function VendorOnboardingFlow({
             </div>
             <div className="flex items-center justify-between text-main">
               <span className="text-muted">Settlement Account:</span>
-              <span className="font-semibold text-main">Verified and name-matched</span>
+              <span className="font-semibold text-main">Verified via Anchor (not stored in Relyvora DB)</span>
             </div>
             <div className="flex items-center justify-between text-main">
               <span className="text-muted">Delivery Release:</span>
@@ -683,12 +685,29 @@ export function VendorOnboardingFlow({
             </div>
           </div>
 
+          {sandboxKycResponse && (
+            <div
+              data-testid="anchor-sandbox-kyc-response"
+              className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-left space-y-2 text-xs"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-bold text-amber-900">Test — Anchor Sandbox Response</span>
+                <span className="px-2 py-0.5 rounded-full bg-white border border-amber-300 text-[10px] font-bold text-amber-800 uppercase">
+                  Test
+                </span>
+              </div>
+              <pre className="bg-white border border-amber-200 rounded-xl p-3 text-[11px] text-main overflow-x-auto leading-relaxed">
+                {JSON.stringify(sandboxKycResponse, null, 2)}
+              </pre>
+            </div>
+          )}
+
           <div className="pt-2">
             <Link
               href="/vendor"
               className="w-full py-4 rounded-xl bg-accent hover:opacity-90 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-card transition-all"
             >
-              <span>Go to Vendor Dashboard</span>
+              <span>Go to Seller Dashboard</span>
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
@@ -798,7 +817,9 @@ export function VendorOnboardingFlow({
                   />
                 </div>
                 <p className="text-[11px] text-muted">
-                  Used for order notifications once payments open.
+                  {isLivePaymentsMode
+                    ? 'Used for verified seller and order notifications.'
+                    : 'Used for seller registration. In sandbox, WhatsApp sends only to WHATSAPP_ALLOWED_RECIPIENTS.'}
                 </p>
                 {errorsStep1.phoneNumber && (touchedStep1.phoneNumber || isSubmittedStep1) && (
                   <p className="text-[11px] text-rose-700 flex items-center gap-1 pt-0.5">
@@ -834,7 +855,7 @@ export function VendorOnboardingFlow({
                     </>
                   ) : (
                     <>
-                      <span>Send me a code</span>
+                      <span>Create your seller account</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
@@ -843,7 +864,7 @@ export function VendorOnboardingFlow({
 
               <div className="text-center pt-2">
                 <p className="text-xs text-muted">
-                  Already have a vendor account?{' '}
+                  Already have a seller account?{' '}
                   <Link href="/vendor" className="text-accent font-semibold hover:underline">
                     Sign in here
                   </Link>
@@ -922,7 +943,7 @@ export function VendorOnboardingFlow({
                 )}
               </button>
 
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 text-xs">
+              <div className="flex items-center justify-center pt-2 text-xs">
                 <button
                   type="button"
                   disabled={isSubmitting}
@@ -930,14 +951,6 @@ export function VendorOnboardingFlow({
                   className="font-semibold text-accent hover:underline cursor-pointer disabled:opacity-50"
                 >
                   Send a new code
-                </button>
-                <button
-                  type="button"
-                  disabled={isSubmitting}
-                  onClick={() => handleResendStep1Otp(true)}
-                  className="text-muted hover:text-main hover:underline cursor-pointer disabled:opacity-50"
-                >
-                  Use a confirmation link instead
                 </button>
               </div>
 
@@ -957,29 +970,29 @@ export function VendorOnboardingFlow({
             </form>
           )}
 
-          {/* STEP 2A: LOCKED STATE WHILE KYC_ENABLED === FALSE (OPTION B DEFAULT) */}
+          {/* STEP 2A: LOCKED STATE ONLY IN PRE-LAUNCH LIVE MODE */}
           {currentStep === 2 && !kycEnabled && (
             <div className="space-y-6">
               <div className="p-5 rounded-2xl bg-amber-50 border border-amber-200 space-y-2.5">
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white border border-amber-200 text-[11px] font-semibold text-amber-800">
                   <Lock className="w-3.5 h-3.5" />
-                  <span>Step 2 Locked</span>
+                  <span>Live KYC Not Active</span>
                 </div>
                 <h2 className="text-lg sm:text-xl font-heading font-bold text-main tracking-tight">
-                  Verification opens when payments go live.
+                  Live identity verification is not active yet.
                 </h2>
                 <p className="text-xs sm:text-sm text-muted leading-relaxed">
-                  We do not collect BVN, NIN, date of birth, or payout bank details until live payments open.
+                  We do not collect live BVN, NIN, date of birth, or payout bank details until live launch is enabled.
                 </p>
               </div>
 
               <div className="p-5 rounded-2xl bg-accent/5 border border-accent/20 space-y-3">
                 <div className="flex items-center gap-2 text-xs font-bold text-accent uppercase tracking-wide">
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>{waitlistRecorded ? 'Waitlist Confirmed' : 'Account Saved'}</span>
+                  <span>Account Saved</span>
                 </div>
                 <p className="text-xs text-muted leading-relaxed">
-                  Your store account is saved on the waitlist. No WhatsApp or email message will be sent until our notification templates are approved.
+                  Your store account details are saved. No live payout details are stored on Relyvora servers.
                 </p>
 
                 <div className="bg-surface border border-border rounded-xl p-4 space-y-2 text-xs">
@@ -1003,16 +1016,12 @@ export function VendorOnboardingFlow({
                   href="/vendor"
                   className="w-full py-3.5 px-5 rounded-xl bg-accent hover:opacity-90 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-card transition-all"
                 >
-                  <span>Go to Vendor Dashboard</span>
+                  <span>Go to Seller Dashboard</span>
                   <ArrowRight className="w-4 h-4" />
                 </Link>
               </div>
 
-              <div className="flex items-center justify-between pt-3 border-t border-border text-xs text-muted">
-                <span className="inline-flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-muted" />
-                  <span>Payments open soon</span>
-                </span>
+              <div className="flex items-center justify-end pt-3 border-t border-border text-xs text-muted">
                 <button
                   type="button"
                   onClick={handleSignOutOnboarding}

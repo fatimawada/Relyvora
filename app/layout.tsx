@@ -58,7 +58,9 @@ export default function RootLayout({
                     p === '/vendor' ||
                     p.indexOf('/vendor/') === 0 ||
                     p.indexOf('/pay/') === 0 ||
-                    p.indexOf('/order/') === 0;
+                    p.indexOf('/order/') === 0 ||
+                    p === '/admin' ||
+                    p.indexOf('/admin/') === 0;
                   if (isNgApp) {
                     document.documentElement.classList.remove('dark');
                     document.documentElement.style.colorScheme = 'light';

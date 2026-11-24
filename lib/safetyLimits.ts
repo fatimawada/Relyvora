@@ -634,11 +634,12 @@ export async function resolveAndValidateVendorServer(params: {
     };
   }
 
-  // Open-signup gate 2: Settlement payout account + name-match verification must pass strictly
+  // Open-signup gate 2: Anchor deposit account + name-matched settlement payout account verification must pass strictly
+  // Note: Raw bank details never need to be stored in public.vendors; verification flags + anchor_deposit_account_id suffice.
   const payoutVerified =
     vendor.payout_account_verified === true && vendor.settlement_account_name_matched === true;
 
-  if (!vendor.anchor_deposit_account_id || !vendor.settlement_account_number || !payoutVerified) {
+  if (!vendor.anchor_deposit_account_id || !payoutVerified) {
     return {
       allowed: false,
       code: 'PAYOUT_ACCOUNT_UNVERIFIED',
