@@ -4,6 +4,7 @@ import { checkSharedRateLimit, getClientIp } from '@/lib/rateLimit';
 import { hashSignalWithSalt } from '@/lib/riskEngine';
 import { updateTransactionStrict } from '@/lib/orderLifecycle';
 import { evaluateLivePaymentGateServer } from '@/lib/launchGates';
+import { isLiveMode } from '@/lib/paymentsMode';
 
 const CURRENT_TERMS_VERSION = '2026-11-v1';
 
@@ -15,6 +16,7 @@ export async function POST(
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
     const acceptedTerms = body?.acceptedTerms !== false;
+    const sandboxConfirmOrder = body?.sandboxConfirmOrder === true;
     const termsVersion = String(body?.termsVersion || CURRENT_TERMS_VERSION).slice(0, 64);
 
     if (!id || !acceptedTerms) {
@@ -27,7 +29,7 @@ export async function POST(
     const supabase = getServiceSupabase();
     const clientIp = getClientIp(request);
 
-    const rl = await checkSharedRateLimit(`consent:${id}:${clientIp}`, 10, 15 * 60 * 1000, supabase);
+    const rl = await checkSharedRateLimit(`consent:${id}:${clientIp}`, 15, 15 * 60 * 1000, supabase);
     if (!rl.allowed) {
       return NextResponse.json({ success: false, error: 'Too many consent attempts.' }, { status: 429 });
     }
@@ -37,7 +39,7 @@ export async function POST(
 
     const { data: tx, error: txErr } = await supabase
       .from('transactions')
-      .select('id, vendor_id')
+      .select('id, vendor_id, whatsapp_blocked, buyer_phone_verified')
       .eq('id', id)
       .maybeSingle();
 
@@ -57,23 +59,39 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          code: liveGate.code || 'PAYMENTS_NOT_LIVE',
-          error: liveGate.error || 'Payments open soon.',
+          code: liveGate.code || 'LAUNCH_NOT_LIVE',
+          error: liveGate.error || 'Checkout gated.',
         },
         { status: 403 }
       );
     }
 
-    const upd = await updateTransactionStrict(
-      id,
-      {
-        buyer_terms_accepted_at: nowIso,
-        buyer_terms_version: termsVersion,
-        buyer_consent_ip_hash: consentIpHash,
-        updated_at: nowIso,
-      },
-      supabase
-    );
+    const patch: Record<string, unknown> = {
+      buyer_terms_accepted_at: nowIso,
+      buyer_terms_version: termsVersion,
+      buyer_consent_ip_hash: consentIpHash,
+      updated_at: nowIso,
+    };
+
+    // In sandbox only, allow browser confirmation when WhatsApp could not be sent (non-allowlisted / omitted phone)
+    if (sandboxConfirmOrder) {
+      if (isLiveMode() || process.env.VERCEL_ENV === 'production') {
+        return NextResponse.json(
+          { success: false, error: 'Browser order confirmation override is disabled in live/production.' },
+          { status: 403 }
+        );
+      }
+      if (tx.whatsapp_blocked) {
+        return NextResponse.json(
+          { success: false, error: 'Order is blocked because recipient opted out on WhatsApp.' },
+          { status: 403 }
+        );
+      }
+      patch.buyer_phone_verified = true;
+      patch.buyer_phone_verified_at = nowIso;
+    }
+
+    const upd = await updateTransactionStrict(id, patch, supabase);
     if (!upd.success) {
       return NextResponse.json(
         { success: false, error: upd.error || 'Failed to record terms acceptance.' },

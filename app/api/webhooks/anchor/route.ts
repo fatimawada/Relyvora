@@ -328,6 +328,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Issue Cryptographic Release Code & Set Delivery/Dispatch Deadlines ONLY when funded & not blocked
+    let issuedSandboxReleaseCode: string | null = null;
     if (txId && rpcResult.needs_code_issue && !depositRisk?.orderBlocked) {
       const { data: txMeta, error: txMetaErr } = await supabase
         .from('transactions')
@@ -387,6 +388,10 @@ export async function POST(request: NextRequest) {
         return { success: false, channel: 'whatsapp', maskedPhone: maskPhoneNumber(txMeta.buyer_phone) };
       });
 
+      if (process.env.PAYMENTS_MODE !== 'live' && process.env.VERCEL_ENV !== 'production') {
+        issuedSandboxReleaseCode = rawCode;
+      }
+
       const { error: auditErr } = await supabase
         .from('admin_audit_log')
         .insert({
@@ -421,6 +426,7 @@ export async function POST(request: NextRequest) {
         riskAction: depositRisk?.actionTaken || 'ALLOW',
         reviewHold: Boolean(depositRisk?.reviewHold),
         orderBlocked: Boolean(depositRisk?.orderBlocked),
+        ...(issuedSandboxReleaseCode ? { sandbox_release_code: issuedSandboxReleaseCode } : {}),
       },
       { status: 200 }
     );

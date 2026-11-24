@@ -175,7 +175,8 @@ export async function POST(request: NextRequest) {
           purpose: 'reissue_code',
         });
 
-        if (!otpSms.success) {
+        const isSandbox = !isLive && process.env.VERCEL_ENV !== 'production';
+        if (!otpSms.success && !isSandbox) {
           return NextResponse.json(
             { success: false, error: otpSms.error || 'Failed to deliver reissue OTP via WhatsApp.' },
             { status: 502 }
@@ -190,7 +191,7 @@ export async function POST(request: NextRequest) {
             target_type: 'transaction',
             target_id: tx.id,
             ip_address: clientIp,
-            metadata: { buyer_phone_masked: maskedPhone },
+            metadata: { buyer_phone_masked: maskedPhone, whatsapp_sent: otpSms.success },
           });
         if (auditSendErr) {
           return NextResponse.json({ success: false, error: `Audit log failed: ${auditSendErr.message}` }, { status: 500 });
@@ -198,7 +199,10 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({
           success: true,
-          message: `A 6-digit one-time verification code was sent to ${maskedPhone}.`,
+          whatsappSent: otpSms.success,
+          message: otpSms.success
+            ? `A 6-digit verification code was sent via WhatsApp to ${maskedPhone}.`
+            : 'Test mode: WhatsApp sends only to WHATSAPP_ALLOWED_RECIPIENTS. Use the test verification code shown.',
           buyer_phone_masked: maskedPhone,
           expiresInMinutes: 10,
           ...(isLive ? {} : { sandbox_otp: otpCode }),
@@ -332,7 +336,7 @@ export async function POST(request: NextRequest) {
 
     const maskedPhone = maskPhoneNumber(tx.buyer_phone);
 
-    await sendReleaseCodeSmsOrWhatsapp({
+    const smsDelivery = await sendReleaseCodeSmsOrWhatsapp({
       transactionId: tx.id,
       vendorId: tx.vendor_id,
       buyerPhone: tx.buyer_phone,
@@ -391,7 +395,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `A new release code was sent to ${maskedPhone}. Your previous code no longer works.`,
+      whatsappSent: smsDelivery.success,
+      message: smsDelivery.success
+        ? `A new release code was sent via WhatsApp to ${maskedPhone}. Your previous code no longer works.`
+        : 'Test code: in live mode this is sent by WhatsApp.',
       transactionId: tx.id,
       code_expires_at: expiresAt,
       previous_code_expired: wasExpired,

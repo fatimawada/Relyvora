@@ -148,7 +148,8 @@ export async function POST(request: NextRequest) {
         supabase
       );
 
-      if (!sendRes.success) {
+      const isSandbox = process.env.PAYMENTS_MODE !== 'live' && process.env.VERCEL_ENV !== 'production';
+      if (!sendRes.success && !isSandbox) {
         return NextResponse.json(
           {
             success: false,
@@ -161,8 +162,13 @@ export async function POST(request: NextRequest) {
       const response = NextResponse.json({
         success: true,
         otpSent: true,
+        whatsappSent: sendRes.success,
         maskedPhone: sendRes.maskedPhone || maskedPhone,
         expiresAt: challenge.expiresAt,
+        message: sendRes.success
+          ? `A 6-digit WhatsApp code was sent to ${sendRes.maskedPhone || maskedPhone}.`
+          : 'Test mode: WhatsApp messages send only to WHATSAPP_ALLOWED_RECIPIENTS. Use the test sign-in code below.',
+        ...(isSandbox ? { sandbox_otp: otp } : {}),
       });
       attachBuyerOtpChallengeCookie(response, request, challenge.token);
       return response;

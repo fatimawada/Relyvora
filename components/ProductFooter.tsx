@@ -39,7 +39,7 @@ export function ProductFooter() {
           <span className="inline-flex items-center gap-2 font-medium text-main/80">
             <AnchorBrandText>Payments powered by Anchor</AnchorBrandText>
             <Link href="/vendor/onboarding" className="inline-flex items-center gap-1 text-accent hover:underline">
-              <span>Vendor sign-up</span>
+              <span>Create your seller account</span>
               <ArrowRight className="w-3 h-3" />
             </Link>
           </span>

@@ -49,22 +49,24 @@ export async function GET(request: NextRequest) {
     const { data: vendorRow } = await adminDb
       .from('vendors')
       .select(
-        'id, user_id, store_name, email, phone_number, phone_verified, kyc_status, payout_account_verified, settlement_account_name_matched, settlement_account_number, settlement_bank_code, is_allowlisted, is_suspended'
+        'id, user_id, store_name, email, phone_number, phone_verified, kyc_status, payout_account_verified, settlement_account_name_matched, anchor_customer_id, anchor_deposit_account_id, is_allowlisted, is_suspended'
       )
       .or(`user_id.eq.${authUser.id},email.eq.${normalizedEmail}`)
       .limit(1)
       .maybeSingle();
 
     let waitlistRow: { id: string; status: string; store_name: string } | null = null;
-    try {
-      const { data: wlData } = await adminDb
-        .from('vendor_waitlist')
-        .select('id, status, store_name')
-        .eq('email', normalizedEmail)
-        .maybeSingle();
-      if (wlData) waitlistRow = wlData;
-    } catch {
-      // Waitlist table may not exist before SQL migration runs
+    if (process.env.PAYMENTS_MODE === 'live') {
+      try {
+        const { data: wlData } = await adminDb
+          .from('vendor_waitlist')
+          .select('id, status, store_name')
+          .eq('email', normalizedEmail)
+          .maybeSingle();
+        if (wlData) waitlistRow = wlData;
+      } catch {
+        // Waitlist table only used for live pre-launch when present
+      }
     }
 
     const resolvedStoreName =
@@ -103,13 +105,17 @@ export async function GET(request: NextRequest) {
             kycStatus: vendorRow.kyc_status || 'pending',
             payoutAccountVerified: Boolean(vendorRow.payout_account_verified),
             settlementAccountNameMatched: Boolean(vendorRow.settlement_account_name_matched),
-            settlementAccountMasked: maskAccountNumber(vendorRow.settlement_account_number),
-            settlementBankCode: vendorRow.settlement_bank_code || null,
+            anchorCustomerId: vendorRow.anchor_customer_id || null,
+            anchorDepositAccountId: vendorRow.anchor_deposit_account_id || null,
+            settlementAccountMasked: vendorRow.payout_account_verified
+              ? 'Linked in Anchor'
+              : null,
+            settlementBankCode: null,
             isAllowlisted: Boolean(vendorRow.is_allowlisted),
             isSuspended: Boolean(vendorRow.is_suspended),
           }
         : null,
-      waitlistRecorded: Boolean(waitlistRow || (vendorRow && step1Complete)),
+      waitlistRecorded: gates.paymentsMode === 'live' && Boolean(waitlistRow || (vendorRow && step1Complete)),
       firstIncompleteStep,
       gates,
     });

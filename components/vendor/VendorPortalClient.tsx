@@ -251,7 +251,7 @@ export function VendorPortalClient({ initialGates }: VendorPortalClientProps) {
       if (error) {
         if (/signups not allowed|user not found/i.test(error.message || '')) {
           setLoginNeedsSignup(true);
-          setLoginError('No vendor account found for that email. Create a vendor account first.');
+          setLoginError('No seller account found for that email. Create your seller account first.');
         } else {
           setLoginError(error.message || 'Could not send sign-in code. Please try again.');
         }
@@ -261,11 +261,7 @@ export function VendorPortalClient({ initialGates }: VendorPortalClientProps) {
       setLoginEmail(targetEmail);
       setLoginOtpCode('');
       setLoginPhase('otp');
-      if (asFallbackMagicLink) {
-        setLoginNotice(`We sent a sign-in link and fresh code to ${targetEmail}. Open the link in your email if you prefer not to enter the code.`);
-      } else {
-        setLoginNotice(`We sent a 6-digit code to ${targetEmail}.`);
-      }
+      setLoginNotice(`We sent a 6-digit code to ${targetEmail}.`);
     } catch {
       setLoginError('Network error while sending code. Please try again.');
       setLoginCaptchaToken('');
@@ -462,7 +458,7 @@ export function VendorPortalClient({ initialGates }: VendorPortalClientProps) {
               {loginNeedsSignup && (
                 <div>
                   <Link href="/vendor/onboarding" className="font-bold text-accent hover:underline">
-                    Create a vendor account
+                    Create your seller account
                   </Link>
                 </div>
               )}
@@ -584,14 +580,6 @@ export function VendorPortalClient({ initialGates }: VendorPortalClientProps) {
                 >
                   {isSendingCode ? 'Sending...' : 'Send a new code'}
                 </button>
-                <button
-                  type="button"
-                  disabled={isSendingCode}
-                  onClick={() => handleSendOtpCode(undefined, true)}
-                  className="text-muted hover:text-main hover:underline cursor-pointer disabled:opacity-50"
-                >
-                  Send a sign-in link instead
-                </button>
               </div>
 
               <div className="text-center pt-2 border-t border-border">
@@ -612,9 +600,9 @@ export function VendorPortalClient({ initialGates }: VendorPortalClientProps) {
           )}
 
           <div className="pt-3 border-t border-border text-center text-xs text-muted">
-            New vendor?{' '}
+            New seller?{' '}
             <Link href="/vendor/onboarding" className="font-semibold text-accent hover:underline">
-              Create your account
+              Create your seller account
             </Link>
           </div>
         </div>
@@ -664,7 +652,7 @@ export function VendorPortalClient({ initialGates }: VendorPortalClientProps) {
                 ) : (
                   <>
                     <Clock className="w-3 h-3 text-muted" />
-                    <span>{vendorStatus?.waitlistRecorded ? 'Waitlisted' : 'Pending'}</span>
+                    <span>{gates.paymentsMode !== 'live' ? 'Verification needed' : 'Registered'}</span>
                   </>
                 )}
               </span>
@@ -711,15 +699,15 @@ export function VendorPortalClient({ initialGates }: VendorPortalClientProps) {
             {kycVerified
               ? 'Verified'
               : !gates.kycEnabled
-                ? 'Locked until launch'
+                ? 'Live KYC paused'
                 : 'Verification needed'}
           </div>
           <p className="text-xs text-muted leading-snug">
             {kycVerified
-              ? 'Your identity details are verified.'
+              ? 'Your identity details are verified via Anchor.'
               : !gates.kycEnabled
-                ? 'Verification opens when payments go live.'
-                : 'Complete KYC to unlock link creation.'}
+                ? 'Live KYC requires PAYMENTS_MODE=live and LAUNCH_STATUS=live.'
+                : 'Complete Step 2 Anchor verification to create payment links.'}
           </p>
           {!kycVerified && gates.kycEnabled && (
             <Link href="/vendor/onboarding?step=2" className="inline-block text-xs font-semibold text-accent hover:underline pt-1">
@@ -739,23 +727,19 @@ export function VendorPortalClient({ initialGates }: VendorPortalClientProps) {
             )}
           </div>
           <div className="text-sm font-heading font-semibold text-main">
-            {payoutReady
-              ? vendorStatus?.vendor?.settlementAccountMasked || 'Bank account confirmed'
-              : !gates.kycEnabled
-                ? 'Opens with verification'
-                : 'Not set up'}
+            {payoutReady ? 'Verified on Anchor' : 'Not set up'}
           </div>
           <p className="text-xs text-muted leading-snug">
             {payoutReady
-              ? 'Name-matched settlement account on file.'
-              : 'Your payout bank account is added when verification opens.'}
+              ? 'Settlement account verified on Anchor (not stored in our database).'
+              : 'Your payout bank details are verified directly with Anchor during Step 2 and never stored in our database.'}
           </p>
         </div>
 
         {/* 3. WhatsApp Confirmation */}
         <div className="bg-surface p-5 rounded-2xl border border-border shadow-xs space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-muted uppercase tracking-wider">WhatsApp confirmation</span>
+            <span className="text-xs font-bold text-muted uppercase tracking-wider">WhatsApp delivery</span>
             {whatsappConfirmed ? (
               <CheckCircle2 className="w-4 h-4 text-accent" />
             ) : (
@@ -763,21 +747,23 @@ export function VendorPortalClient({ initialGates }: VendorPortalClientProps) {
             )}
           </div>
           <div className="text-sm font-heading font-semibold text-main">
-            {whatsappConfirmed
-              ? 'Confirmed'
-              : !gates.releaseCodeTemplateApproved
-                ? 'Pending approval'
-                : 'Pending confirmation'}
+            {gates.paymentsMode !== 'live'
+              ? 'Sandbox allowlist only'
+              : whatsappConfirmed
+                ? 'Live enabled'
+                : 'Gated until live'}
           </div>
           <p className="text-xs text-muted leading-snug">
-            {whatsappConfirmed
-              ? 'WhatsApp number confirmed for order updates.'
-              : 'WhatsApp confirmation opens once message templates are approved.'}
+            {gates.paymentsMode !== 'live'
+              ? 'In sandbox, WhatsApp sends only to WHATSAPP_ALLOWED_RECIPIENTS via the test number. Release codes display on screen.'
+              : whatsappConfirmed
+                ? 'Live WhatsApp notifications and release codes enabled.'
+                : 'Live buyer WhatsApp requires PAYMENTS_MODE=live and LAUNCH_STATUS=live.'}
           </p>
         </div>
       </div>
 
-      {/* Primary Action Card: "Create payment link" (or calm "Payments open soon" gated state) */}
+      {/* Primary Action Card: "Create payment link" */}
       <div className="bg-surface p-5 sm:p-6 rounded-3xl border border-border shadow-xs space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
@@ -785,15 +771,15 @@ export function VendorPortalClient({ initialGates }: VendorPortalClientProps) {
               <>
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-xs font-semibold text-amber-800">
                   <Clock className="w-3.5 h-3.5" />
-                  <span>Payments open soon</span>
+                  <span>{kycVerified ? 'Live launch required' : 'Step 2 KYC needed'}</span>
                 </span>
                 <h2 className="text-lg font-heading font-semibold text-main pt-1">
-                  Payment links are not active yet
+                  {kycVerified ? 'Live payment links are gated' : 'Verify your seller account first'}
                 </h2>
                 <p className="text-xs sm:text-sm text-muted max-w-xl">
-                  {gates.kycEnabled && !kycVerified
+                  {!kycVerified
                     ? 'Finish your identity and bank verification on your onboarding page before creating payment links.'
-                    : 'Your store is registered. Payment links will turn on as soon as verification, WhatsApp templates, and live payments go live.'}
+                    : 'Your store is verified. Switch to live mode and live launch status to create live payment links.'}
                 </p>
               </>
             ) : (
@@ -935,7 +921,7 @@ export function VendorPortalClient({ initialGates }: VendorPortalClientProps) {
               </div>
             </div>
 
-            <div className="bg-site border border-border rounded-2xl p-3.5">
+            <div className="bg-site border border-border rounded-2xl p-3.5 space-y-2">
               <label htmlFor="buyerWhatsappConsent" className="flex items-start gap-2.5 cursor-pointer">
                 <input
                   id="buyerWhatsappConsent"
@@ -954,6 +940,11 @@ export function VendorPortalClient({ initialGates }: VendorPortalClientProps) {
                   </span>
                 </span>
               </label>
+              {gates.paymentsMode !== 'live' && (
+                <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                  Test mode: WhatsApp messages are sent only to numbers on WHATSAPP_ALLOWED_RECIPIENTS via the test number, never to other numbers.
+                </p>
+              )}
             </div>
 
             <div className="bg-site border border-border rounded-2xl p-4 space-y-2">
@@ -1019,8 +1010,22 @@ export function VendorPortalClient({ initialGates }: VendorPortalClientProps) {
             </div>
 
             {whatsappNotice && (
-              <div className="text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
-                WhatsApp notice: {whatsappNotice} Share the link manually below.
+              <div className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                WhatsApp status: {whatsappNotice} Share the link manually below.
+              </div>
+            )}
+
+            {(generatedTx as any).virtual_account_number && (
+              <div className="bg-surface border border-border rounded-xl p-3 text-xs space-y-1">
+                <span className="font-bold text-main block">
+                  Anchor Sandbox Virtual Account ({(generatedTx as any).virtual_account_bank || 'Providus Bank'})
+                </span>
+                <div className="font-heading tabular-nums text-sm font-bold text-accent">
+                  {(generatedTx as any).virtual_account_number}
+                </div>
+                {(generatedTx as any).virtual_account_name && (
+                  <span className="text-[11px] text-muted block">{(generatedTx as any).virtual_account_name}</span>
+                )}
               </div>
             )}
 

@@ -143,8 +143,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: updateErr.message }, { status: 500 });
     }
 
-    // 6. Mask Buyer Phone & dispatch via WhatsApp
+    // 6. Mask Buyer Phone & dispatch via WhatsApp (sandbox allows on-screen test OTP when outside WHATSAPP_ALLOWED_RECIPIENTS)
     const maskedPhone = maskPhoneNumber(tx.buyer_phone);
+    const isSandbox = !isLiveMode() && process.env.VERCEL_ENV !== 'production';
     const smsRes = await sendBuyerOtpSms({
       transactionId,
       buyerPhone: tx.buyer_phone,
@@ -152,7 +153,7 @@ export async function POST(request: NextRequest) {
       purpose: 'dispute',
     });
 
-    if (!smsRes.success) {
+    if (!smsRes.success && !isSandbox) {
       return NextResponse.json(
         { success: false, error: smsRes.error || 'Failed to send dispute OTP to buyer WhatsApp.' },
         { status: 502 }
@@ -161,7 +162,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `A 6-digit verification code has been sent to ${maskedPhone}.`,
+      whatsappSent: smsRes.success,
+      message: smsRes.success
+        ? `A 6-digit verification code has been sent via WhatsApp to ${maskedPhone}.`
+        : 'Test mode: WhatsApp messages send only to WHATSAPP_ALLOWED_RECIPIENTS. Test OTP is displayed on screen.',
       maskedPhone,
       expiresInMinutes: 10,
       ...(isLiveMode() ? {} : { sandbox_otp: otp }),

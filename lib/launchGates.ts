@@ -1,18 +1,18 @@
 /**
- * Server-Side Feature, KYC, Waitlist, and Live Payment Gates (Option B)
+ * Server-Side Live-Launch Gates (Sandbox-Open / Live-Gated)
  *
- * Fail-closed defaults:
- * - KYC_ENABLED defaults to false (`Verification opens when payments go live.`)
- * - RELEASE_CODE_TEMPLATE_APPROVED defaults to false
- * - Payment actions & link creation require ALL FOUR:
- *   1) PAYMENTS_MODE === 'live'
- *   2) LAUNCH_STATUS === 'live'
- *   3) Vendor KYC is 'verified' (and not suspended)
- *   4) Release code template is approved
+ * Strictly gates ONLY these 4 live capabilities on BOTH `PAYMENTS_MODE === 'live'` AND `LAUNCH_STATUS === 'live'`:
+ *   1) Real money movement (live Anchor collections, NIP/Book transfers, refunds, live deposits)
+ *   2) Live Anchor KYC (production Anchor customer creation, TIER_2 verification, counterparty & deposit accounts)
+ *   3) Live WhatsApp to real buyers outside `WHATSAPP_ALLOWED_RECIPIENTS`
+ *   4) Sending the 6-digit release code via WhatsApp (`release_code_v1`)
+ *
+ * Everything else runs openly in sandbox (`PAYMENTS_MODE=sandbox`) with ZERO artificial "Early access",
+ * "Waitlisted", "Payments open soon", or "Verification opens when payments go live" locks.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { getLaunchStatus, isPreLaunchFlag } from './feeConfig';
+import { getLaunchStatus } from './feeConfig';
 import { getServerPaymentsMode, type PaymentsMode } from './paymentsMode';
 import { getHotSettings } from './safetyLimits';
 import { getServiceSupabase } from './supabaseServer';
@@ -48,18 +48,25 @@ async function readBooleanGateSetting(params: {
       }
     }
   } catch {
-    // Fail closed to defaultValue when system_settings is unavailable or pre-migration
+    // Fail closed to defaultValue when system_settings is unavailable
   }
 
   return params.defaultValue ?? false;
 }
 
+export function getLaunchStatusServer(): 'launching' | 'live' {
+  return getLaunchStatus();
+}
+
+export function isLiveLaunchReady(): boolean {
+  return getServerPaymentsMode() === 'live' && getLaunchStatusServer() === 'live';
+}
+
 export async function isKycEnabledServer(): Promise<boolean> {
-  return readBooleanGateSetting({
-    envKeys: ['KYC_ENABLED', 'NEXT_PUBLIC_KYC_ENABLED'],
-    settingKey: 'kyc_enabled',
-    defaultValue: false,
-  });
+  if (getServerPaymentsMode() !== 'live') {
+    return true;
+  }
+  return getLaunchStatusServer() === 'live';
 }
 
 export async function isReleaseCodeTemplateApprovedServer(): Promise<boolean> {
@@ -74,12 +81,7 @@ export async function isReleaseCodeTemplateApprovedServer(): Promise<boolean> {
   });
 }
 
-export function getLaunchStatusServer(): 'launching' | 'live' {
-  return getLaunchStatus();
-}
-
 export type LivePaymentGateCode =
-  | 'PAYMENTS_NOT_LIVE'
   | 'LAUNCH_NOT_LIVE'
   | 'RELEASE_TEMPLATE_UNAPPROVED'
   | 'VENDOR_KYC_REQUIRED'
@@ -92,7 +94,12 @@ export interface LivePaymentGateResult {
   error?: string;
 }
 
-export async function evaluateLivePaymentGateServer(params?: {
+/**
+ * Gate 1: Real money movement gate.
+ * - In `PAYMENTS_MODE=sandbox`: real money never moves; sandbox operations run freely (requiring verified KYC when requested).
+ * - In `PAYMENTS_MODE=live`: blocked (`403 LAUNCH_NOT_LIVE`) unless `LAUNCH_STATUS=live`, plus verified KYC.
+ */
+export async function evaluateRealMoneyMovementGateServer(params?: {
   vendorId?: string | null;
   vendor?: {
     id?: string;
@@ -102,31 +109,14 @@ export async function evaluateLivePaymentGateServer(params?: {
   requireVendorKyc?: boolean;
   supabaseClient?: SupabaseClient;
 }): Promise<LivePaymentGateResult> {
-  if (getServerPaymentsMode() !== 'live') {
-    return {
-      allowed: false,
-      statusCode: 403,
-      code: 'PAYMENTS_NOT_LIVE',
-      error: 'Payments open soon. Payment actions are closed until live payments are active.',
-    };
-  }
+  const mode = getServerPaymentsMode();
 
-  if (getLaunchStatusServer() !== 'live') {
+  if (mode === 'live' && getLaunchStatusServer() !== 'live') {
     return {
       allowed: false,
       statusCode: 403,
       code: 'LAUNCH_NOT_LIVE',
-      error: 'Payments open soon. Public payments have not launched yet.',
-    };
-  }
-
-  const templateApproved = await isReleaseCodeTemplateApprovedServer();
-  if (!templateApproved) {
-    return {
-      allowed: false,
-      statusCode: 403,
-      code: 'RELEASE_TEMPLATE_UNAPPROVED',
-      error: 'Payments open soon. WhatsApp release code template approval is still pending.',
+      error: 'Live money movement is gated until both PAYMENTS_MODE=live and LAUNCH_STATUS=live.',
     };
   }
 
@@ -147,7 +137,7 @@ export async function evaluateLivePaymentGateServer(params?: {
           allowed: false,
           statusCode: 403,
           code: 'VENDOR_KYC_REQUIRED',
-          error: 'Vendor verification is required before payment actions are enabled.',
+          error: 'Vendor verification is required before creating or releasing orders.',
         };
       }
       vendorRecord = data;
@@ -158,7 +148,7 @@ export async function evaluateLivePaymentGateServer(params?: {
         allowed: false,
         statusCode: 403,
         code: 'VENDOR_KYC_REQUIRED',
-        error: 'Vendor verification is required before payment actions are enabled.',
+        error: 'Vendor verification is required before creating or releasing orders.',
       };
     }
 
@@ -176,7 +166,7 @@ export async function evaluateLivePaymentGateServer(params?: {
         allowed: false,
         statusCode: 403,
         code: 'VENDOR_KYC_REQUIRED',
-        error: 'Payments open soon. Vendor KYC verification must be verified first.',
+        error: 'Complete Step 2 vendor verification before creating payment links.',
       };
     }
   }
@@ -187,6 +177,54 @@ export async function evaluateLivePaymentGateServer(params?: {
   };
 }
 
+export const evaluateLivePaymentGateServer = evaluateRealMoneyMovementGateServer;
+
+/**
+ * Gate 2: Live Anchor KYC gate.
+ * - In `PAYMENTS_MODE=sandbox`: allowed (runs against Anchor Sandbox).
+ * - In `PAYMENTS_MODE=live`: blocked (`403 LAUNCH_NOT_LIVE`) unless `LAUNCH_STATUS=live`.
+ */
+export async function evaluateLiveKycGateServer(): Promise<LivePaymentGateResult> {
+  if (getServerPaymentsMode() === 'live' && getLaunchStatusServer() !== 'live') {
+    return {
+      allowed: false,
+      statusCode: 403,
+      code: 'LAUNCH_NOT_LIVE',
+      error: 'Live Anchor KYC is gated until PAYMENTS_MODE=live and LAUNCH_STATUS=live.',
+    };
+  }
+
+  return { allowed: true, statusCode: 200 };
+}
+
+/**
+ * Gate 4: Release code delivery via WhatsApp (`release_code_v1`).
+ * - Sent over WhatsApp ONLY when `PAYMENTS_MODE=live` AND `LAUNCH_STATUS=live`.
+ * - In sandbox, returns `allowed: false` so the release code displays on screen instead.
+ */
+export async function evaluateReleaseCodeWhatsappGateServer(): Promise<LivePaymentGateResult> {
+  if (!isLiveLaunchReady()) {
+    return {
+      allowed: false,
+      statusCode: 403,
+      code: getServerPaymentsMode() === 'live' ? 'LAUNCH_NOT_LIVE' : 'LAUNCH_NOT_LIVE',
+      error: 'Release code WhatsApp delivery is gated until PAYMENTS_MODE=live and LAUNCH_STATUS=live.',
+    };
+  }
+
+  const templateApproved = await isReleaseCodeTemplateApprovedServer();
+  if (!templateApproved) {
+    return {
+      allowed: false,
+      statusCode: 403,
+      code: 'RELEASE_TEMPLATE_UNAPPROVED',
+      error: 'Release code WhatsApp template approval is required in live mode.',
+    };
+  }
+
+  return { allowed: true, statusCode: 200 };
+}
+
 export interface VendorGateSnapshot {
   kycEnabled: boolean;
   paymentsMode: PaymentsMode;
@@ -195,6 +233,12 @@ export interface VendorGateSnapshot {
   releaseCodeTemplateApproved: boolean;
   canCreateLinks: boolean;
   paymentsOpenStatus: string;
+  liveGates: {
+    realMoneyMovement: boolean;
+    liveAnchorKyc: boolean;
+    liveWhatsappBuyers: boolean;
+    releaseCodeWhatsapp: boolean;
+  };
 }
 
 export async function getVendorGateSnapshotServer(vendor?: {
@@ -209,7 +253,7 @@ export async function getVendorGateSnapshotServer(vendor?: {
   ]);
   const paymentsMode = getServerPaymentsMode();
   const launchStatus = getLaunchStatusServer();
-  const preLaunch = isPreLaunchFlag();
+  const liveReady = paymentsMode === 'live' && launchStatus === 'live';
 
   const kycVerified =
     Boolean(vendor) &&
@@ -219,31 +263,36 @@ export async function getVendorGateSnapshotServer(vendor?: {
     vendor?.settlement_account_name_matched === true;
 
   const canCreateLinks =
-    paymentsMode === 'live' &&
-    launchStatus === 'live' &&
-    releaseCodeTemplateApproved &&
-    kycVerified;
+    paymentsMode === 'sandbox'
+      ? kycVerified
+      : liveReady && kycVerified;
 
-  let paymentsOpenStatus = 'Payments open soon';
-  if (canCreateLinks) {
-    paymentsOpenStatus = 'Live payments active';
-  } else if (
-    paymentsMode === 'live' &&
-    launchStatus === 'live' &&
-    releaseCodeTemplateApproved &&
-    kycEnabled &&
-    !kycVerified
-  ) {
-    paymentsOpenStatus = 'Complete KYC verification to create payment links';
+  let paymentsOpenStatus = '';
+  if (paymentsMode === 'sandbox') {
+    paymentsOpenStatus = kycVerified
+      ? 'Test mode active'
+      : 'Complete Step 2 verification';
+  } else if (liveReady) {
+    paymentsOpenStatus = kycVerified
+      ? 'Live payments active'
+      : 'Complete KYC verification to create payment links';
+  } else {
+    paymentsOpenStatus = 'Live launch pending';
   }
 
   return {
     kycEnabled,
     paymentsMode,
     launchStatus,
-    preLaunch,
+    preLaunch: paymentsMode === 'live' && launchStatus !== 'live',
     releaseCodeTemplateApproved,
     canCreateLinks,
     paymentsOpenStatus,
+    liveGates: {
+      realMoneyMovement: liveReady,
+      liveAnchorKyc: liveReady,
+      liveWhatsappBuyers: liveReady,
+      releaseCodeWhatsapp: liveReady && releaseCodeTemplateApproved,
+    },
   };
 }

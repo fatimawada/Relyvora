@@ -7,7 +7,10 @@ import {
   isAnchorLiveCredentialsConfigured,
 } from '@/lib/anchor';
 import { isLiveMode } from '@/lib/paymentsMode';
-import { isKycEnabledServer, isReleaseCodeTemplateApprovedServer } from '@/lib/launchGates';
+import {
+  evaluateLiveKycGateServer,
+  evaluateReleaseCodeWhatsappGateServer,
+} from '@/lib/launchGates';
 import { checkSharedRateLimit, getClientIp } from '@/lib/rateLimit';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { verifyVendorOnboardingSession } from '@/lib/vendorAuth';
@@ -122,16 +125,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2b. Option B gate: KYC & Anchor verification stays locked until KYC_ENABLED is true
-    const kycEnabled = await isKycEnabledServer();
-    if (!kycEnabled) {
+    // 2b. Gate 2: Live Anchor KYC requires PAYMENTS_MODE=live AND LAUNCH_STATUS=live (sandbox Anchor runs openly)
+    const kycGate = await evaluateLiveKycGateServer();
+    if (!kycGate.allowed) {
       return NextResponse.json(
         {
           success: false,
-          code: 'KYC_DISABLED',
-          error: 'Verification opens when payments go live.',
+          code: kycGate.code || 'LAUNCH_NOT_LIVE',
+          error: kycGate.error || 'Live Anchor KYC is gated until live launch.',
         },
-        { status: 403 }
+        { status: kycGate.statusCode || 403 }
       );
     }
 
@@ -310,10 +313,13 @@ export async function POST(request: NextRequest) {
         ? allowlistCheck.existingVendor.anchor_customer_id.trim()
         : null;
     let accountId: string | null = null;
+    let verifyRes: any = null;
+    let accountResult: any = null;
+    let counterPartyResult: any = null;
     // Note: kycStatus is strictly computed server-side from Anchor API result; any client field is ignored.
     let kycStatus = 'PENDING';
 
-    // 5. Forward KYC PII strictly to Anchor BaaS in memory (never logged, never stored in Relyvora DB)
+    // 5. Forward KYC PII and bank details strictly to Anchor BaaS in memory (never logged, never stored in Relyvora DB)
     try {
       if (!customerId) {
         const customerResult = await createAnchorCustomer({
@@ -332,7 +338,7 @@ export async function POST(request: NextRequest) {
         customerId = customerResult.customerId;
       }
 
-      // Immediately checkpoint anchor_customer_id so any retry is idempotent even if a later step fails
+      // Checkpoint ONLY non-PII Anchor customer ID (never save BVN, NIN, DOB, address, or bank details)
       if (customerId) {
         if (allowlistCheck.existingVendor?.id) {
           await supabase
@@ -352,9 +358,6 @@ export async function POST(request: NextRequest) {
               phone_hash: hashPhoneSignal(cleanPhone),
               legal_first_name: String(legalFirstName).trim(),
               legal_last_name: String(legalLastName).trim(),
-              settlement_bank_code: String(bankCode).trim(),
-              settlement_account_number: String(accountNumber).trim(),
-              settlement_account_name: enquiry.resolvedAccountName,
               anchor_customer_id: customerId,
               kyc_status: 'pending',
               is_allowlisted: Boolean(allowlistCheck.allowlistMode),
@@ -366,7 +369,7 @@ export async function POST(request: NextRequest) {
 
       if (customerId) {
         const cleanIdNumber = String(idNumber).trim();
-        const verifyRes = await verifyAnchorCustomer({
+        verifyRes = await verifyAnchorCustomer({
           customerId,
           level: 'TIER_2',
           bvn: idType === 'BVN' ? cleanIdNumber : undefined,
@@ -375,9 +378,9 @@ export async function POST(request: NextRequest) {
           gender: String(gender).trim(),
         });
         const rawVerifyStatus = String(
-          (verifyRes as any)?.data?.data?.status ||
-            (verifyRes as any)?.data?.data?.attributes?.status ||
-            (verifyRes as any)?.data?.status ||
+          verifyRes?.data?.data?.status ||
+            verifyRes?.data?.data?.attributes?.status ||
+            verifyRes?.data?.status ||
             'PENDING'
         ).toUpperCase();
         kycStatus =
@@ -389,11 +392,11 @@ export async function POST(request: NextRequest) {
       }
 
       if (customerId) {
-        const accountResult = await createAnchorDepositAccount({ customerId });
+        accountResult = await createAnchorDepositAccount({ customerId });
         accountId = accountResult.accountId;
       }
 
-      await createAnchorCounterParty({
+      counterPartyResult = await createAnchorCounterParty({
         accountName: enquiry.resolvedAccountName,
         accountNumber: String(accountNumber).trim(),
         bankCode: String(bankCode).trim(),
@@ -432,9 +435,10 @@ export async function POST(request: NextRequest) {
       phone_verified: Boolean(allowlistCheck.existingVendor?.phone_verified),
       legal_first_name: String(legalFirstName).trim(),
       legal_last_name: String(legalLastName).trim(),
-      settlement_bank_code: String(bankCode).trim(),
-      settlement_account_number: String(accountNumber).trim(),
-      settlement_account_name: enquiry.resolvedAccountName,
+      // Strict privacy rule: BVN, NIN, DOB, address, and bank details are never written to our DB.
+      settlement_bank_code: null,
+      settlement_account_number: null,
+      settlement_account_name: null,
       payout_account_verified: true,
       settlement_account_name_matched: true,
       settlement_name_match_score: nameMatch.score,
@@ -477,9 +481,10 @@ export async function POST(request: NextRequest) {
 
     let phoneVerificationWhatsappStatus: string = 'already_verified';
     if (!allowlistCheck.existingVendor?.phone_verified) {
-      const templateApproved = await isReleaseCodeTemplateApprovedServer();
-      if (!templateApproved) {
-        phoneVerificationWhatsappStatus = 'pending_template_approval';
+      const waPhoneGate = await evaluateReleaseCodeWhatsappGateServer();
+      const isSandboxAllowedRecipient = !isLiveMode();
+      if (!waPhoneGate.allowed && !isSandboxAllowedRecipient) {
+        phoneVerificationWhatsappStatus = 'gated_until_live';
       } else {
         const waPhoneRes = await sendVendorPhoneVerifyWhatsapp(
           {
@@ -494,7 +499,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const maskedAccountNumber = `******${String(accountNumber).trim().slice(-4)}`;
+    const sandboxResponseSummary = isLiveMode()
+      ? undefined
+      : {
+          label: 'Test — Anchor Sandbox Response',
+          environment: 'sandbox',
+          customerId,
+          verificationId: verifyRes?.data?.data?.id || null,
+          verificationLevel: 'TIER_2',
+          verificationStatus: kycStatus,
+          sandboxOrgBalanceFallback: Boolean(verifyRes?.sandboxOrgBalanceFallback),
+          depositAccountId: accountId,
+          depositAccountStatus: accountResult?.raw?.data?.attributes?.status || 'ACTIVE',
+          counterPartyId: counterPartyResult?.counterPartyId || enquiry.counterPartyId || null,
+          nameMatchScore: nameMatch.score,
+          dbStoredPiiFields: {
+            bvn: false,
+            nin: false,
+            dateOfBirth: false,
+            bankDetails: false,
+          },
+        };
+
     return NextResponse.json({
       success: true,
       message: 'Vendor onboarding and KYC verification completed successfully.',
@@ -511,11 +537,12 @@ export async function POST(request: NextRequest) {
         phoneVerificationWhatsappStatus,
         nameMatchScore: nameMatch.score,
         settlement: {
-          bankCode: String(bankCode).trim(),
-          accountName: enquiry.resolvedAccountName,
-          maskedAccountNumber,
+          verifiedWithAnchor: true,
+          counterPartyId: counterPartyResult?.counterPartyId || enquiry.counterPartyId || null,
+          depositAccountId: accountId,
           status: 'ACTIVE',
         },
+        ...(sandboxResponseSummary ? { anchorSandboxResponse: sandboxResponseSummary } : {}),
       },
     });
   } catch (error: any) {

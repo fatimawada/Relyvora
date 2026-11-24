@@ -1,11 +1,29 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { Sun, Moon } from 'lucide-react';
 
 type Theme = 'light' | 'dark';
 
 const STORAGE_KEY = 'relyvora-theme';
+
+function isLightOnlySurface(pathname: string, hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  if (h.startsWith('ng.') || h.startsWith('staging.')) {
+    return true;
+  }
+  return (
+    pathname === '/ng' ||
+    pathname.startsWith('/ng/') ||
+    pathname === '/vendor' ||
+    pathname.startsWith('/vendor/') ||
+    pathname.startsWith('/pay/') ||
+    pathname.startsWith('/order/') ||
+    pathname === '/admin' ||
+    pathname.startsWith('/admin/')
+  );
+}
 
 function applyTheme(theme: Theme) {
   document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -16,11 +34,21 @@ function applyTheme(theme: Theme) {
  * 40px circular theme toggle.
  * The theme class is set before first paint by the inline script in app/layout.tsx,
  * so this component reads the current state after mount without flash or hydration mismatch.
+ * Always hidden on Nigeria product hosts (ng.relyvora.com / staging.relyvora.com) and app routes.
  */
 export function ThemeToggle({ className = '' }: { className?: string }) {
+  const pathname = usePathname() || '';
   const [theme, setTheme] = useState<Theme | null>(null);
+  const [hidden, setHidden] = useState<boolean>(() => isLightOnlySurface(pathname, ''));
 
   useEffect(() => {
+    const host = typeof window !== 'undefined' ? window.location.hostname || '' : '';
+    if (isLightOnlySurface(pathname, host)) {
+      setHidden(true);
+      applyTheme('light');
+      return;
+    }
+    setHidden(false);
     setTheme(document.documentElement.classList.contains('dark') ? 'dark' : 'light');
 
     const media = window.matchMedia('(prefers-color-scheme: dark)');
@@ -39,7 +67,11 @@ export function ThemeToggle({ className = '' }: { className?: string }) {
       media.removeEventListener('change', onSystemChange);
       window.removeEventListener('relyvora-theme-change', onSync);
     };
-  }, []);
+  }, [pathname]);
+
+  if (hidden || isLightOnlySurface(pathname, '')) {
+    return null;
+  }
 
   const toggleTheme = () => {
     const next: Theme = theme === 'dark' ? 'light' : 'dark';

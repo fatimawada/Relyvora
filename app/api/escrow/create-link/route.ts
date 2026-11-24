@@ -195,8 +195,9 @@ export async function POST(request: NextRequest) {
     let virtualNubanId: string | null = null;
     let virtualAccountNumber: string | null = null;
     let virtualBankName: string | null = null;
+    let virtualAccountName: string | null = null;
 
-    if (isLive) {
+    if (isLive || Boolean((process.env.ANCHOR_SECRET_KEY || '').trim())) {
       try {
         const collection = await createAnchorCollectionAccount({
           settlementAccountId: RELYVORA_FBO_ACCOUNT_ID,
@@ -209,12 +210,16 @@ export async function POST(request: NextRequest) {
         virtualNubanId = collection.virtualNubanId;
         virtualAccountNumber = collection.accountNumber;
         virtualBankName = collection.bankName;
+        virtualAccountName = collection.accountName;
       } catch (anchorErr: any) {
-        console.error('Failed to create Anchor collection account:', anchorErr);
-        return NextResponse.json(
-          { success: false, error: 'Failed to provision banking collection rails: ' + anchorErr.message },
-          { status: 502 }
-        );
+        if (isLive) {
+          console.error('Failed to create Anchor collection account:', anchorErr);
+          return NextResponse.json(
+            { success: false, error: 'Failed to provision banking collection rails: ' + anchorErr.message },
+            { status: 502 }
+          );
+        }
+        console.warn('Anchor sandbox virtual-nuban creation warning:', anchorErr?.message || anchorErr);
       }
     }
 
@@ -247,6 +252,7 @@ export async function POST(request: NextRequest) {
           virtual_nuban_id: virtualNubanId,
           virtual_account_number: virtualAccountNumber,
           virtual_bank_name: virtualBankName,
+          virtual_account_name: virtualAccountName,
           release_code_hash: hmacHash,
           code_expires_at: codeExpiresAt,
           failed_code_attempts: 0,
