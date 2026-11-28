@@ -90,11 +90,11 @@ export const NG_LANDING_COPY: NgLandingCopyConfig = {
   showEarlyAccessStatus: false,
   earlyAccessStatusLine: '',
   hero: {
-    eyebrow: 'Payment protection for Nigerian social commerce',
-    headline: 'Safe payments for WhatsApp and',
-    headlineAccent: 'Instagram orders in Nigeria.',
+    eyebrow: '',
+    headline: 'Payment protection for',
+    headlineAccent: 'Nigerian social commerce.',
     subline:
-      'Buyer funds are held safely in a dedicated bank account while the seller dispatches the order. At delivery, the buyer inspects the package and hands over a 6-digit release code to pay the seller.',
+      'For WhatsApp and Instagram orders across Nigeria, buyer funds are held safely in a dedicated bank account while the seller dispatches the order. At delivery, the buyer inspects the package and hands over a 6-digit release code to pay the seller.',
     primaryCtaLabel: 'Create your seller account',
     primaryCtaHref: '/vendor/onboarding',
     secondaryCtaLabel: 'See how a payment works',

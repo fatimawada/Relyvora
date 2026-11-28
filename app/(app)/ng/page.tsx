@@ -22,17 +22,12 @@ export default function NigerianMarketPage() {
 
   return (
     <div className="w-full overflow-x-hidden">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10 sm:py-16 lg:py-20 space-y-16 sm:space-y-24">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-6 pb-10 sm:pt-8 sm:pb-16 lg:pt-10 lg:pb-20 space-y-14 sm:space-y-20">
         {/* 1. HERO SECTION (Two-Column Layout) */}
-        <section className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
-          {/* Left Column: Headline, Subline, Actions, Subtle Early-Access Line */}
-          <div className="lg:col-span-7 min-w-0 space-y-6 text-left">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-accent/10 text-accent border border-accent/20 max-w-full">
-              <span className="w-2 h-2 rounded-full bg-[#0FA36B] shrink-0" />
-              <span className="truncate">{hero.eyebrow}</span>
-            </div>
-
-            <h1 className="!text-[30px] sm:!text-[44px] lg:!text-[52px] font-heading font-bold text-main tracking-tight !leading-[1.12]">
+        <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+          {/* Left Column: Headline, Subline, Actions */}
+          <div className="lg:col-span-7 min-w-0 space-y-5 text-left">
+            <h1 className="!text-[30px] sm:!text-[42px] lg:!text-[48px] font-heading font-bold text-main tracking-tight !leading-[1.12]">
               {hero.headline}{' '}
               <span className="text-accent">{hero.headlineAccent}</span>
             </h1>
