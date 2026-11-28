@@ -25,6 +25,15 @@ export function Navbar() {
             <span>Nigeria</span>
           </span>
         </div>
+
+        <div className="flex items-center">
+          <Link
+            href="/vendor"
+            className="text-xs sm:text-sm font-semibold text-muted hover:text-main transition-colors px-2.5 py-1.5 rounded-lg"
+          >
+            Sign in
+          </Link>
+        </div>
       </div>
     </header>
   );

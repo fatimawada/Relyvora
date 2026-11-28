@@ -6,181 +6,307 @@ import {
   ShieldCheck,
   ArrowRight,
   Lock,
-  UserPlus,
   MessageCircle,
   KeyRound,
+  CheckCircle2,
+  CornerDownRight,
 } from 'lucide-react';
-import { isExplicitSandboxUiMode } from '@/lib/appUrls';
-import { LAUNCH_STATUS, isPreLaunchFlag } from '@/lib/feeConfig';
+import { Logo } from '@/components/brand/Logo';
+import { NG_LANDING_COPY } from '@/lib/ngLandingCopy';
 
 export default function NigerianMarketPage() {
-  const sandbox = isExplicitSandboxUiMode();
-  const preLaunch = isPreLaunchFlag();
+  const { hero, whatsappPreview, trustStrip, howItWorks, comparison, closingCta } =
+    NG_LANDING_COPY;
 
-  const badgeLabel = sandbox
-    ? 'Nigeria'
-    : preLaunch || LAUNCH_STATUS !== 'live'
-      ? 'Early access'
-      : 'Nigeria • Live';
+  const trustIcons = [Lock, KeyRound, MessageCircle] as const;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 sm:py-16 space-y-16 sm:space-y-24">
-      {/* Hero Section */}
-      <section className="text-center space-y-6 max-w-3xl mx-auto">
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-accent/10 text-accent border border-accent/20 shadow-xs">
-          <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-          <span>{badgeLabel}</span>
-        </div>
-
-        <h1 className="text-3xl sm:text-5xl lg:text-6xl font-heading font-bold text-main tracking-tight leading-[1.15]">
-          Safe payments for WhatsApp and <br className="hidden sm:inline" />
-          <span className="text-accent">Instagram orders in Nigeria.</span>
-        </h1>
-
-        <p className="text-base sm:text-lg text-muted max-w-2xl mx-auto leading-relaxed font-sans">
-          Your money is held safely until your order arrives at your doorstep. Open the package, check what you bought, and share your six-digit release code with the dispatch rider to pay the seller.
-        </p>
-
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-2">
-          <Link
-            href="/vendor/onboarding"
-            className="w-full sm:w-auto px-6 py-4 rounded-xl bg-accent hover:opacity-90 text-white font-bold text-base flex items-center justify-center gap-2 shadow-card transition-all transform active:scale-[0.99]"
-          >
-            <UserPlus className="w-5 h-5 text-white" />
-            <span>Create your seller account</span>
-            <ArrowRight className="w-4 h-4 ml-1" />
-          </Link>
-
-          <Link
-            href="/vendor"
-            className="w-full sm:w-auto px-6 py-4 rounded-xl bg-surface hover:bg-site border border-border text-main font-bold text-base flex items-center justify-center gap-2 transition-colors shadow-xs"
-          >
-            <span>Vendor sign in</span>
-          </Link>
-        </div>
-
-        {/* Key facts */}
-        <div className="pt-6 grid grid-cols-3 gap-2 sm:gap-6 border-t border-border max-w-lg mx-auto text-center">
-          <div>
-            <div className="text-xl sm:text-2xl font-bold text-main font-heading tabular-nums">3% Fee</div>
-            <div className="text-[11px] sm:text-xs text-muted">Minimum ₦500 per order</div>
-          </div>
-          <div>
-            <div className="text-xl sm:text-2xl font-bold text-main font-heading tabular-nums">6-Digit Code</div>
-            <div className="text-[11px] sm:text-xs text-muted">Shared after inspection</div>
-          </div>
-          <div>
-            <div className="text-xl sm:text-2xl font-bold text-accent font-heading tabular-nums">
-              {sandbox ? 'Bank Transfer' : preLaunch ? 'Early access' : 'Bank Transfer'}
+    <div className="w-full overflow-x-hidden">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10 sm:py-16 lg:py-20 space-y-16 sm:space-y-24">
+        {/* 1. HERO SECTION (Two-Column Layout) */}
+        <section className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
+          {/* Left Column: Headline, Subline, Actions, Subtle Early-Access Line */}
+          <div className="lg:col-span-7 min-w-0 space-y-6 text-left">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-accent/10 text-accent border border-accent/20 max-w-full">
+              <span className="w-2 h-2 rounded-full bg-[#0FA36B] shrink-0" />
+              <span className="truncate">{hero.eyebrow}</span>
             </div>
-            <div className="text-[11px] sm:text-xs text-muted">
-              {sandbox
-                ? 'Test mode active'
-                : preLaunch
-                  ? 'Open seller sign-up'
-                  : 'Virtual account per order'}
-            </div>
-          </div>
-        </div>
-      </section>
 
-      {/* How It Works */}
-      <section id="how-it-works" className="space-y-8">
-        <div className="text-center space-y-2">
-          <h2 className="text-2xl sm:text-3xl font-heading font-bold text-main tracking-tight">
-            How Relyvora Works
-          </h2>
-          <p className="text-sm text-muted">
-            Three clear steps for buyers and sellers on WhatsApp and Instagram.
-          </p>
-        </div>
+            <h1 className="!text-[30px] sm:!text-[44px] lg:!text-[52px] font-heading font-bold text-main tracking-tight !leading-[1.12]">
+              {hero.headline}{' '}
+              <span className="text-accent">{hero.headlineAccent}</span>
+            </h1>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Card 1 */}
-          <div className="bg-surface p-6 sm:p-7 rounded-card border border-border shadow-xs space-y-4 relative overflow-hidden">
-            <div className="w-12 h-12 rounded-xl bg-accent/10 text-accent flex items-center justify-center font-heading tabular-nums font-bold text-xl border border-accent/20">
-              1
-            </div>
-            <h3 className="text-lg font-heading font-semibold text-main">Seller creates a link</h3>
-            <p className="text-xs sm:text-sm text-muted leading-relaxed">
-              The seller enters the item name, agreed price, and delivery option in their dashboard, then sends the checkout link in chat.
+            <p className="text-base sm:text-lg text-muted max-w-xl leading-relaxed font-sans">
+              {hero.subline}
             </p>
-            <div className="pt-2 text-xs font-semibold text-accent flex items-center gap-1">
-              <MessageCircle className="w-4 h-4" />
-              <span>Shareable on WhatsApp and Instagram</span>
+
+            <div className="space-y-3.5 pt-1">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <Link
+                  href={hero.primaryCtaHref}
+                  className="w-full sm:w-auto px-6 py-4 rounded-xl bg-[#0FA36B] hover:bg-[#0B6E55] text-white font-bold text-sm sm:text-base flex items-center justify-center gap-2 shadow-card transition-colors"
+                >
+                  <span>Create your seller account</span>
+                  <ArrowRight className="w-4 h-4 shrink-0" />
+                </Link>
+
+                <a
+                  href={hero.secondaryCtaHref}
+                  className="w-full sm:w-auto px-6 py-4 rounded-xl bg-surface hover:bg-site border border-border text-main font-semibold text-sm sm:text-base flex items-center justify-center gap-2 transition-colors"
+                >
+                  <span>{hero.secondaryCtaLabel}</span>
+                </a>
+              </div>
+
+              {NG_LANDING_COPY.showEarlyAccessStatus && (
+                <p
+                  data-testid="early-access-status-line"
+                  className="text-xs sm:text-[13px] text-muted flex items-center gap-2 pt-0.5"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
+                  <span>{NG_LANDING_COPY.earlyAccessStatusLine}</span>
+                </p>
+              )}
             </div>
           </div>
 
-          {/* Card 2 */}
-          <div className="bg-surface p-6 sm:p-7 rounded-card border border-border shadow-xs space-y-4 relative overflow-hidden">
-            <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-700 flex items-center justify-center font-heading tabular-nums font-bold text-xl border border-blue-500/20">
-              2
-            </div>
-            <h3 className="text-lg font-heading font-semibold text-main">Buyer pays into escrow</h3>
-            <p className="text-xs sm:text-sm text-muted leading-relaxed">
-              The buyer checks the order total and transfers the exact amount to a dedicated bank account. Funds stay held while the seller dispatches.
-            </p>
-            <div className="pt-2 text-xs font-semibold text-blue-700 flex items-center gap-1">
-              <Lock className="w-4 h-4" />
-              <span>Money held until delivery</span>
-            </div>
-          </div>
-
-          {/* Card 3 */}
-          <div className="bg-surface p-6 sm:p-7 rounded-card border border-border shadow-xs space-y-4 relative overflow-hidden">
-            <div className="w-12 h-12 rounded-xl bg-teal-500/10 text-teal-700 flex items-center justify-center font-heading tabular-nums font-bold text-xl border border-teal-500/20">
-              3
-            </div>
-            <h3 className="text-lg font-heading font-semibold text-main">Inspect and share code</h3>
-            <p className="text-xs sm:text-sm text-muted leading-relaxed">
-              Once paid, the buyer receives a six-digit release code. At delivery, the buyer opens the package, checks the items, and gives the code to pay the seller.
-            </p>
-            <div className="pt-2 text-xs font-semibold text-teal-700 flex items-center gap-1">
-              <KeyRound className="w-4 h-4" />
-              <span>Doorstep confirmation</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Box */}
-      <section className="bg-surface border border-border rounded-card p-8 sm:p-12 text-center space-y-6 relative overflow-hidden shadow-card">
-        <div className="relative z-10 max-w-xl mx-auto space-y-4">
-          <div className="w-12 h-12 rounded-xl bg-accent/10 text-accent flex items-center justify-center mx-auto border border-accent/20">
-            <ShieldCheck className="w-6 h-6" />
-          </div>
-          <h2 className="text-2xl sm:text-3xl font-heading font-bold text-main tracking-tight">
-            {sandbox
-              ? 'Explore the Relyvora Sandbox'
-              : preLaunch
-                ? 'Open your seller account ahead of launch'
-                : 'Start accepting protected order payments'}
-          </h2>
-          <p className="text-xs sm:text-sm text-muted">
-            {sandbox
-              ? 'Try the vendor link flow, test payment confirmation, and six-digit release verification in sandbox mode.'
-              : preLaunch
-                ? 'Sign up with your store name, email, and WhatsApp number. Verification and payment links open as soon as we go live.'
-                : 'Sign in to create an escrow payment link or check an active order status.'}
-          </p>
-          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link
-              href="/vendor/onboarding"
-              className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-accent hover:opacity-90 text-white font-bold text-sm shadow-card transition-all"
+          {/* Right Column: Clean Mobile Phone Frame with WhatsApp Preview */}
+          <div className="lg:col-span-5 min-w-0 w-full max-w-[340px] sm:max-w-[370px] mx-auto">
+            <div
+              aria-label="WhatsApp order payment message preview"
+              className="rounded-[34px] bg-[#0A1B3D] p-2.5 shadow-card border border-[#0A1B3D]/15"
             >
-              <span>Create your seller account</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
-            <Link
-              href="/vendor"
-              className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-site hover:bg-border/40 border border-border text-main font-semibold text-sm transition-colors"
-            >
-              <span>Sign in</span>
-            </Link>
+              {/* Inner Phone Viewport */}
+              <div className="rounded-[26px] bg-[#EEF3F0] overflow-hidden border border-white/10">
+                {/* Phone Top Speaker Bar */}
+                <div className="bg-[#075E49] px-4 pt-2 pb-1 flex items-center justify-center">
+                  <div className="w-14 h-1 rounded-full bg-white/25" />
+                </div>
+
+                {/* WhatsApp Chat Header */}
+                <div className="bg-[#0B6E55] text-white px-4 py-3 flex items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center shrink-0 shadow-2xs">
+                      <Logo variant="symbol" height={20} withLink={false} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-heading font-semibold text-sm text-white truncate">
+                          {whatsappPreview.senderName}
+                        </span>
+                        <CheckCircle2
+                          className="w-3.5 h-3.5 text-[#5BE3AB] shrink-0"
+                          aria-label="Verified business account"
+                        />
+                      </div>
+                      <p className="text-[11px] text-white/80 truncate font-sans">
+                        {whatsappPreview.senderSubtitle}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/15 text-white shrink-0">
+                    WhatsApp
+                  </span>
+                </div>
+
+                {/* Chat Body */}
+                <div className="p-3.5 sm:p-4 space-y-2">
+                  {/* Message Bubble */}
+                  <div className="bg-white rounded-2xl rounded-tl-xs p-3.5 shadow-2xs border border-[#DCE4DF] space-y-2.5 text-left">
+                    <p className="text-[13px] leading-[1.55] text-[#0A1B3D] font-sans">
+                      {whatsappPreview.messageText}
+                    </p>
+                    <div className="pt-2 border-t border-[#E6ECE8] flex items-center justify-between gap-2 text-[11px] text-[#5A6880]">
+                      <span>{whatsappPreview.footerText}</span>
+                      <span className="text-[10px] text-[#5A6880] shrink-0">
+                        {whatsappPreview.timestamp}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Quick Reply Buttons */}
+                  <div className="space-y-1.5">
+                    <div className="w-full bg-white border border-[#DCE4DF] rounded-xl py-2.5 px-3 text-center text-xs font-semibold text-[#0B6E55] flex items-center justify-center gap-1.5 shadow-2xs">
+                      <CornerDownRight className="w-3.5 h-3.5 text-[#0FA36B] shrink-0" />
+                      <span>{whatsappPreview.quickReplies[0]}</span>
+                    </div>
+                    <div className="w-full bg-white border border-[#DCE4DF] rounded-xl py-2.5 px-3 text-center text-xs font-semibold text-[#5A6880] flex items-center justify-center gap-1.5 shadow-2xs">
+                      <CornerDownRight className="w-3.5 h-3.5 text-[#5A6880] shrink-0" />
+                      <span>{whatsappPreview.quickReplies[1]}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted text-center font-medium mt-2.5">
+              {whatsappPreview.caption}
+            </p>
           </div>
-        </div>
-        <div className="absolute -left-12 -bottom-12 w-48 h-48 bg-accent/5 rounded-full blur-3xl pointer-events-none" />
-      </section>
+        </section>
+
+        {/* 2. TRUST STRIP (3 Clean Items) */}
+        <section
+          aria-label="Core payment protections"
+          className="bg-surface border border-border rounded-card p-6 sm:p-8 shadow-xs"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 divide-y md:divide-y-0 md:divide-x divide-border">
+            {trustStrip.map((item, idx) => {
+              const IconComponent = trustIcons[idx] || ShieldCheck;
+              return (
+                <div
+                  key={item.title}
+                  className={`${
+                    idx > 0 ? 'pt-6 md:pt-0 md:pl-8' : ''
+                  } flex items-start gap-3.5 text-left`}
+                >
+                  <div className="w-10 h-10 rounded-xl bg-accent/10 text-accent border border-accent/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <IconComponent className="w-5 h-5 text-[#0FA36B]" />
+                  </div>
+                  <div className="space-y-1">
+                    <h2 className="text-base font-heading font-semibold text-main">
+                      {item.title}
+                    </h2>
+                    <p className="text-xs sm:text-sm text-muted leading-relaxed">
+                      {item.description}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* 3. HOW IT WORKS (#how-it-works, 4 Clear Steps) */}
+        <section id="how-it-works" className="space-y-8 scroll-mt-24">
+          <div className="text-center max-w-2xl mx-auto space-y-2">
+            <h2 className="!text-[24px] sm:!text-[32px] font-heading font-bold text-main tracking-tight">
+              {howItWorks.heading}
+            </h2>
+            <p className="text-sm sm:text-base text-muted">{howItWorks.subline}</p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {howItWorks.steps.map((step) => (
+              <div
+                key={step.stepNumber}
+                className="bg-surface p-6 rounded-card border border-border shadow-xs flex flex-col justify-between space-y-4 text-left"
+              >
+                <div className="space-y-3.5">
+                  <div className="w-10 h-10 rounded-xl bg-[#0FA36B] text-white flex items-center justify-center font-heading font-bold text-base shadow-2xs">
+                    {step.stepNumber}
+                  </div>
+                  <h3 className="text-base sm:text-lg font-heading font-semibold text-main leading-snug">
+                    {step.title}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-muted leading-relaxed">
+                    {step.description}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* 4. TWO-COLUMN "FOR BUYERS" AND "FOR SELLERS" COMPARISON */}
+        <section className="space-y-8">
+          <div className="text-center max-w-2xl mx-auto space-y-2">
+            <h2 className="!text-[24px] sm:!text-[32px] font-heading font-bold text-main tracking-tight">
+              {comparison.heading}
+            </h2>
+            <p className="text-sm sm:text-base text-muted">{comparison.subline}</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
+            {/* For Buyers Card */}
+            <div className="bg-surface border border-border rounded-card p-6 sm:p-8 shadow-xs space-y-5 text-left flex flex-col justify-between">
+              <div className="space-y-4">
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-accent/10 text-accent border border-accent/20">
+                  {comparison.buyers.badge}
+                </span>
+                <h3 className="text-xl sm:text-2xl font-heading font-bold text-main leading-snug">
+                  {comparison.buyers.title}
+                </h3>
+                <p className="text-xs sm:text-sm text-muted leading-relaxed">
+                  {comparison.buyers.description}
+                </p>
+                <ul className="space-y-3 pt-2">
+                  {comparison.buyers.points.map((point) => (
+                    <li
+                      key={point}
+                      className="flex items-start gap-2.5 text-xs sm:text-sm text-main leading-relaxed"
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-[#0FA36B] shrink-0 mt-0.5" />
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            {/* For Sellers Card */}
+            <div className="bg-surface border border-border rounded-card p-6 sm:p-8 shadow-xs space-y-5 text-left flex flex-col justify-between">
+              <div className="space-y-4">
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-accent/10 text-accent border border-accent/20">
+                  {comparison.sellers.badge}
+                </span>
+                <h3 className="text-xl sm:text-2xl font-heading font-bold text-main leading-snug">
+                  {comparison.sellers.title}
+                </h3>
+                <p className="text-xs sm:text-sm text-muted leading-relaxed">
+                  {comparison.sellers.description}
+                </p>
+                <ul className="space-y-3 pt-2">
+                  {comparison.sellers.points.map((point) => (
+                    <li
+                      key={point}
+                      className="flex items-start gap-2.5 text-xs sm:text-sm text-main leading-relaxed"
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-[#0FA36B] shrink-0 mt-0.5" />
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* 5. CLOSING CTA BAND */}
+        <section className="bg-surface border border-border rounded-card p-8 sm:p-12 text-center space-y-6 shadow-card">
+          <div className="max-w-xl mx-auto space-y-4">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-accent/10 text-accent border border-accent/20">
+              <ShieldCheck className="w-4 h-4 text-[#0FA36B]" />
+              <span>{closingCta.badge}</span>
+            </div>
+
+            <h2 className="!text-[24px] sm:!text-[32px] font-heading font-bold text-main tracking-tight">
+              {closingCta.heading}
+            </h2>
+
+            <p className="text-xs sm:text-sm text-muted leading-relaxed">
+              {closingCta.subline}
+            </p>
+
+            <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3">
+              <Link
+                href={closingCta.primaryCtaHref}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-4 rounded-xl bg-[#0FA36B] hover:bg-[#0B6E55] text-white font-bold text-sm sm:text-base shadow-card transition-colors"
+              >
+                <span>{closingCta.primaryCtaLabel}</span>
+                <ArrowRight className="w-4 h-4 shrink-0" />
+              </Link>
+            </div>
+
+            {NG_LANDING_COPY.showEarlyAccessStatus && (
+              <p className="text-xs text-muted pt-1">
+                {NG_LANDING_COPY.earlyAccessStatusLine}
+              </p>
+            )}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
