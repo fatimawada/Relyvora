@@ -41,7 +41,7 @@ export default function NigerianMarketPage() {
               {hero.subline}
             </p>
 
-            <div className="space-y-3.5 pt-1">
+            <div className="pt-1">
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                 <Link
                   href={hero.primaryCtaHref}
@@ -58,16 +58,6 @@ export default function NigerianMarketPage() {
                   <span>{hero.secondaryCtaLabel}</span>
                 </a>
               </div>
-
-              {NG_LANDING_COPY.showEarlyAccessStatus && (
-                <p
-                  data-testid="early-access-status-line"
-                  className="text-xs sm:text-[13px] text-muted flex items-center gap-2 pt-0.5"
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
-                  <span>{NG_LANDING_COPY.earlyAccessStatusLine}</span>
-                </p>
-              )}
             </div>
           </div>
 
@@ -298,12 +288,6 @@ export default function NigerianMarketPage() {
                 <ArrowRight className="w-4 h-4 shrink-0" />
               </Link>
             </div>
-
-            {NG_LANDING_COPY.showEarlyAccessStatus && (
-              <p className="text-xs text-muted pt-1">
-                {NG_LANDING_COPY.earlyAccessStatusLine}
-              </p>
-            )}
           </div>
         </section>
       </div>

@@ -87,8 +87,8 @@ export function isNgEarlyAccessActive(): boolean {
 }
 
 export const NG_LANDING_COPY: NgLandingCopyConfig = {
-  showEarlyAccessStatus: isNgEarlyAccessActive(),
-  earlyAccessStatusLine: "Early access. Payments open once we're approved to launch.",
+  showEarlyAccessStatus: false,
+  earlyAccessStatusLine: '',
   hero: {
     eyebrow: 'Payment protection for Nigerian social commerce',
     headline: 'Safe payments for WhatsApp and',
