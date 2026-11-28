@@ -26,10 +26,10 @@ export function PhoneCodeMock({ className = '' }: { className?: string }) {
 
         <div className="p-3.5 rounded-xl bg-site border border-border space-y-2">
           <div className="flex items-center justify-between text-[11px] text-muted">
-            <span>Example order</span>
-            <span className="text-accent font-semibold">Sample Store</span>
+            <span>Order</span>
+            <span className="text-accent font-semibold">@gadgetstore</span>
           </div>
-          <div className="text-sm font-semibold text-main">Sample item</div>
+          <div className="text-sm font-semibold text-main">Wireless Headphone</div>
           <div className="space-y-1 text-xs pt-2 border-t border-border">
             <div className="flex items-center justify-between text-muted">
               <span>Item price</span>

@@ -232,13 +232,15 @@ async function runSuite() {
   // Verify all 4 panel statuses and content exist in markup
   assert.ok(
     switcherHtml.includes(
-      'Hello. Sample Store has created a payment link on Relyvora for Sample item (₦45,000). Your payment is securely held until your order is delivered. Tap Continue to open your payment page.'
+      'Hello. @gadgetstore has created a payment link on Relyvora for Wireless Headphone (₦45,000). Your payment is securely held until your order is delivered. Tap Continue to open your payment page.'
     ),
-    'Tab 1 must show approved payment_link_v1 wording with Sample Store, Sample item, and ₦45,000'
+    'Tab 1 must show approved payment_link_v1 wording with @gadgetstore, Wireless Headphone, and ₦45,000'
   );
   assert.ok(
-    switcherHtml.includes('Continue') && switcherHtml.includes('Not my order'),
-    'Tab 1 must show "Continue" and "Not my order" buttons'
+    switcherHtml.includes('WhatsApp message') &&
+      switcherHtml.includes('Continue') &&
+      switcherHtml.includes('Not my order'),
+    'Tab 1 must show "WhatsApp message", "Continue" and "Not my order" buttons'
   );
   assert.ok(
     switcherHtml.includes('Money held with our banking partner'),
@@ -259,11 +261,11 @@ async function runSuite() {
   assert.equal(emptyBoxCount, 6, 'Tab 4 must render 6 empty code boxes with zero digits');
 
   // Verify sample data rules
-  assert.equal(SAMPLE_STORE_NAME, 'Sample Store');
-  assert.equal(SAMPLE_ITEM_NAME, 'Sample item');
-  assert.equal(SAMPLE_ORDER_LABEL, 'Example order');
+  assert.equal(SAMPLE_STORE_NAME, '@gadgetstore');
+  assert.equal(SAMPLE_ITEM_NAME, 'Wireless Headphone');
+  assert.equal(SAMPLE_ORDER_LABEL, 'Order');
   pass(
-    'HowItWorksSwitcher renders 4 accessible tabs + 4 tabpanels with arrow-key navigation, sample data ("Sample Store", "Sample item", "Example order"), and 6 empty code boxes'
+    'HowItWorksSwitcher renders 4 accessible tabs + 4 tabpanels with arrow-key navigation, sample data ("@gadgetstore", "Wireless Headphone", "Order", "WhatsApp message"), and 6 empty code boxes'
   );
 
   // -------------------------------------------------------------------------
@@ -382,7 +384,7 @@ async function runSuite() {
   assert.equal(fs.existsSync(ownerInputPath), true, 'docs/OWNER-INPUT.md must exist');
   const ownerInputText = fs.readFileSync(ownerInputPath, 'utf8');
   assert.ok(
-    ownerInputText.includes('Sample Store') &&
+    ownerInputText.includes('@gadgetstore') &&
       ownerInputText.includes('Illustrator') &&
       ownerInputText.includes('Notify'),
     'docs/OWNER-INPUT.md must list all three open decisions'

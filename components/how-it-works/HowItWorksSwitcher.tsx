@@ -11,9 +11,9 @@ import {
 } from 'lucide-react';
 import { FEE_CONFIG, calculateFee } from '@/lib/feeConfig';
 
-export const SAMPLE_STORE_NAME = 'Sample Store';
-export const SAMPLE_ITEM_NAME = 'Sample item';
-export const SAMPLE_ORDER_LABEL = 'Example order';
+export const SAMPLE_STORE_NAME = '@gadgetstore';
+export const SAMPLE_ITEM_NAME = 'Wireless Headphone';
+export const SAMPLE_ORDER_LABEL = 'Order';
 export const SAMPLE_ITEM_PRICE_NGN = 45000;
 
 export interface HowItWorksTabDefinition {
@@ -31,7 +31,7 @@ export const HOW_IT_WORKS_TABS: readonly HowItWorksTabDefinition[] = [
     stepTitle: 'Seller creates a link and shares it in chat',
     stepSummary:
       'The seller enters the item and agreed price, then shares the Relyvora payment link in WhatsApp or Instagram.',
-    statusPillText: 'Example message',
+    statusPillText: 'WhatsApp message',
   },
   {
     id: 'money-held',
@@ -224,7 +224,7 @@ export function HowItWorksSwitcher() {
                       <div className="flex items-center justify-between text-xs">
                         <span className="inline-flex items-center gap-1.5 font-semibold text-accent">
                           <MessageCircle className="w-3.5 h-3.5" aria-hidden="true" />
-                          <span>Example message</span>
+                          <span>WhatsApp message</span>
                         </span>
                         <span className="text-[11px] text-muted">{SAMPLE_STORE_NAME}</span>
                       </div>

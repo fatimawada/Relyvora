@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ArrowUpRight, Menu, X } from 'lucide-react';
 import { Logo } from '@/components/brand/Logo';
-import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { getNigeriaAppHref } from '@/lib/appUrls';
 
 const NAV_LINKS = [
@@ -119,7 +118,6 @@ export function Header() {
 
           {/* Right: actions */}
           <div className="col-start-3 flex items-center justify-end gap-2 sm:gap-2.5">
-            <ThemeToggle />
             <a
               href={nigeriaAppHref}
               target={isExternalNgHref ? '_blank' : undefined}
@@ -199,7 +197,6 @@ export function Header() {
           </nav>
 
           <div className="shrink-0 border-t border-border p-4 flex items-center gap-3">
-            <ThemeToggle />
             <a
               href={nigeriaAppHref}
               target={isExternalNgHref ? '_blank' : undefined}

@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Logo } from '@/components/brand/Logo';
-import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { getNigeriaAppHref, isStagingHostOrEnv } from '@/lib/appUrls';
 import { 
   ArrowRight, 
@@ -131,13 +130,10 @@ export default function FoundationPage() {
               <span>Partner with us</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </a>
-
-            <ThemeToggle />
           </div>
 
           {/* Mobile Menu Button */}
           <div className="flex items-center gap-2 sm:hidden">
-            <ThemeToggle />
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="p-2 text-muted hover:text-main hover:bg-surface rounded-xl transition-colors"

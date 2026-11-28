@@ -5,12 +5,12 @@ This document tracks non-blocking product and creative decisions for the `relyvo
 ---
 
 ## 1. Final Sample Seller & Item Naming
-- **Current Implementation:** All corporate marketing phone screens and example walkthroughs use the generic placeholders required by the sample data rules:
-  - Seller name: `"Sample Store"`
-  - Item name: `"Sample item"`
-  - Order badge: `"Example order"`
-  - Message badge: `"Example message"`
-- **Open Decision:** Confirm whether `"Sample Store"` and `"Sample item"` should remain the permanent neutral labels on `relyvora.com`, or whether you want a fictional brand-owned sample store name (e.g., `"Amina Studio (Example)"`) once creative review is complete.
+- **Current Implementation:** All corporate marketing phone screens and walkthroughs use the confirmed sample values:
+  - Seller name: `"@gadgetstore"`
+  - Item name: `"Wireless Headphone"`
+  - Order badge: `"Order"`
+  - Message badge: `"WhatsApp message"`
+- **Status:** Confirmed by owner (`@gadgetstore` / `Wireless Headphone`).
 
 ---
 
