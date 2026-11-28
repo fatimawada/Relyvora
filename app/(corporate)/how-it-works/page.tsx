@@ -2,7 +2,8 @@ import React from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, ArrowUpRight } from 'lucide-react';
-import { HowItWorksInteractive } from '@/components/how-it-works/HowItWorksInteractive';
+import { HowItWorksSwitcher } from '@/components/how-it-works/HowItWorksSwitcher';
+import { HandoverIllustration } from '@/components/common/HandoverIllustration';
 
 export const metadata: Metadata = {
   title: 'How It Works | Relyvora Social Commerce Escrow',
@@ -23,7 +24,12 @@ export default function HowItWorksPage() {
         </p>
       </div>
 
-      <HowItWorksInteractive />
+      {/* Opening Handover Illustration above the step list */}
+      <div className="max-w-3xl">
+        <HandoverIllustration />
+      </div>
+
+      <HowItWorksSwitcher />
 
       {/* Dispute Section matching Section 3 */}
       <section className="p-8 sm:p-10 rounded-3xl border border-border bg-surface space-y-6">

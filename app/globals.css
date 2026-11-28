@@ -299,3 +299,228 @@ p {
 .skip-to-content:focus {
   top: 16px;
 }
+
+/* Hide horizontal scrollbar on tablist while preserving touch/wheel scrolling */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* ========================================================================= */
+/* CORPORATE HERO PAYMENT LOOP (14s total: 12s animation + 2s hold)          */
+/* Uses transform and opacity only. Static first frame is visible immediately */
+/* ========================================================================= */
+
+/* Scene A: 0 to 3.5 s (0% to 25%) */
+@keyframes hero-scene-a-loop {
+  0%, 22% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  25%, 97% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Scene B: 3.5 to 8 s (25% to 57.14%) */
+@keyframes hero-scene-b-loop {
+  0%, 23% {
+    opacity: 0;
+  }
+  26%, 54% {
+    opacity: 1;
+  }
+  57.14%, 100% {
+    opacity: 0;
+  }
+}
+
+@keyframes hero-parcel-move-loop {
+  0%, 25% {
+    transform: translateX(0);
+  }
+  55%, 100% {
+    transform: translateX(224px);
+  }
+}
+
+/* Scene C (8 to 12 s / 57.14% to 85.71%) + Hold (12 to 14 s / 85.71% to 100%) */
+@keyframes hero-scene-c-loop {
+  0%, 55% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  58%, 97% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes hero-card-handover-loop {
+  0%, 58% {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+  63%, 97% {
+    opacity: 1;
+    transform: translateX(12px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+}
+
+/* Pill 1 ("Payment held"): visible 0s through Scene A + Scene B + start of Scene C (0% to 63%), fades at 66% */
+@keyframes hero-pill-held-loop {
+  0%, 63% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  66%, 97% {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Pill 2 ("Released to seller"): appears when seller receives code in Scene C (66% to 97%, holding 12s-14s) */
+@keyframes hero-pill-released-loop {
+  0%, 63% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+  66%, 97% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+}
+
+@keyframes hero-dot-a-loop {
+  0%, 24% { opacity: 1; }
+  25%, 97% { opacity: 0.25; }
+  100% { opacity: 1; }
+}
+
+@keyframes hero-dot-b-loop {
+  0%, 24% { opacity: 0.25; }
+  25%, 57% { opacity: 1; }
+  58%, 100% { opacity: 0.25; }
+}
+
+@keyframes hero-dot-c-loop {
+  0%, 57% { opacity: 0.25; }
+  58%, 97% { opacity: 1; }
+  98%, 100% { opacity: 0.25; }
+}
+
+/* Static first-frame defaults so SSR / initial paint is immediately Scene A */
+.hero-scene-a {
+  opacity: 1;
+  animation: hero-scene-a-loop 14s infinite ease-in-out;
+}
+
+.hero-scene-b {
+  opacity: 0;
+  animation: hero-scene-b-loop 14s infinite ease-in-out;
+}
+
+.hero-scene-b-parcel {
+  animation: hero-parcel-move-loop 14s infinite ease-in-out;
+}
+
+.hero-scene-c {
+  opacity: 0;
+  animation: hero-scene-c-loop 14s infinite ease-in-out;
+}
+
+.hero-scene-c-card {
+  animation: hero-card-handover-loop 14s infinite ease-in-out;
+}
+
+.hero-loop-pill-held {
+  opacity: 1;
+  animation: hero-pill-held-loop 14s infinite ease-in-out;
+}
+
+.hero-loop-pill-released {
+  opacity: 0;
+  animation: hero-pill-released-loop 14s infinite ease-in-out;
+}
+
+.hero-dot-a {
+  opacity: 1;
+  animation: hero-dot-a-loop 14s infinite ease-in-out;
+}
+
+.hero-dot-b {
+  opacity: 0.25;
+  animation: hero-dot-b-loop 14s infinite ease-in-out;
+}
+
+.hero-dot-c {
+  opacity: 0.25;
+  animation: hero-dot-c-loop 14s infinite ease-in-out;
+}
+
+/* Caption hidden by default when motion is allowed; shown when prefers-reduced-motion: reduce */
+.hero-reduced-motion-caption {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-scene-a,
+  .hero-scene-b,
+  .hero-scene-b-parcel,
+  .hero-scene-c,
+  .hero-scene-c-card,
+  .hero-loop-pill-held,
+  .hero-loop-pill-released,
+  .hero-dot-a,
+  .hero-dot-b,
+  .hero-dot-c {
+    animation: none !important;
+  }
+
+  .hero-scene-a,
+  .hero-loop-pill-held,
+  .hero-dot-a {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .hero-scene-b,
+  .hero-scene-c,
+  .hero-loop-pill-released {
+    opacity: 0 !important;
+  }
+
+  .hero-dot-b,
+  .hero-dot-c {
+    opacity: 0.25 !important;
+  }
+
+  .hero-reduced-motion-caption {
+    display: block !important;
+  }
+}

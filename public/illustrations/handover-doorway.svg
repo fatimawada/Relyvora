@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" fill="none">
+  <!-- Background card canvas (Cloud #F4F6F9) -->
+  <rect width="640" height="420" rx="28" fill="#F4F6F9" />
+
+  <!-- Subtle architectural background shapes (Cloud / Mint / Deep Emerald) -->
+  <path d="M0 336H640V392C640 407.464 627.464 420 612 420H28C12.536 420 0 407.464 0 392V336Z" fill="#0A1B3D" />
+  <rect x="44" y="328" width="552" height="8" rx="4" fill="#0B6E55" />
+
+  <!-- Doorway Arch & Frame on Right (Midnight #0A1B3D & Deep Emerald #0B6E55) -->
+  <rect x="358" y="46" width="212" height="282" rx="16" fill="#0A1B3D" />
+  <rect x="372" y="60" width="184" height="268" rx="10" fill="#0B6E55" />
+  <!-- Interior Warm Mint Glow (#5BE3AB / #F4F6F9) -->
+  <rect x="386" y="74" width="156" height="254" rx="6" fill="#F4F6F9" />
+  <!-- Minimalist Door Panel Open at Angle -->
+  <path d="M512 74L542 64V328L512 328V74Z" fill="#0A1B3D" />
+  <circle cx="520" cy="204" r="5" fill="#5BE3AB" />
+
+  <!-- Doorstep Mat & Planter Accent (Brand Palette Only) -->
+  <rect x="364" y="322" width="180" height="10" rx="5" fill="#0FA36B" />
+  <!-- Stylized Geometric Planter beside doorway -->
+  <rect x="564" y="276" width="38" height="52" rx="8" fill="#0B6E55" />
+  <path d="M583 276C583 248 565 232 565 232C565 232 583 238 583 256C583 234 601 224 601 224C601 224 597 254 583 276Z" fill="#0FA36B" />
+  <path d="M583 276C571 258 555 252 555 252C555 252 563 268 577 276H583Z" fill="#5BE3AB" />
+
+  <!-- =================================================================== -->
+  <!-- LEFT FIGURE: DISPATCH RIDER SILHOUETTE HANDING OVER SEALED PARCEL   -->
+  <!-- =================================================================== -->
+  <g id="dispatch-rider">
+    <!-- Rider Rear Delivery Box Cue / Subtle Background Bike Silhouette -->
+    <circle cx="88" cy="296" r="32" fill="#0A1B3D" />
+    <circle cx="88" cy="296" r="16" fill="#F4F6F9" />
+    <circle cx="172" cy="296" r="32" fill="#0A1B3D" />
+    <circle cx="172" cy="296" r="16" fill="#F4F6F9" />
+    <path d="M88 296L122 252H158L172 296H88Z" fill="#0B6E55" />
+    <rect x="64" y="210" width="52" height="40" rx="8" fill="#0A1B3D" />
+    <rect x="72" y="224" width="36" height="8" rx="4" fill="#0FA36B" />
+
+    <!-- Rider Legs (Midnight #0A1B3D) -->
+    <path d="M196 226H220L226 328H200L196 226Z" fill="#0A1B3D" />
+    <path d="M224 226H248L258 328H232L224 226Z" fill="#0A1B3D" />
+    <!-- Rider Boots -->
+    <rect x="196" y="318" width="34" height="12" rx="6" fill="#0B6E55" />
+    <rect x="230" y="318" width="34" height="12" rx="6" fill="#0B6E55" />
+
+    <!-- Rider Jacket / Torso (Deep Emerald #0B6E55 with Mint #5BE3AB safety stripe) -->
+    <path d="M184 134C184 118 197 106 216 106H232C251 106 264 118 264 134V230H184V134Z" fill="#0B6E55" />
+    <rect x="184" y="176" width="80" height="12" fill="#5BE3AB" />
+
+    <!-- Rider Helmet (Midnight #0A1B3D + Mint Visor #5BE3AB, no facial features) -->
+    <circle cx="224" cy="76" r="26" fill="#0A1B3D" />
+    <path d="M214 66H248C250 74 246 84 236 86H214V66Z" fill="#5BE3AB" />
+    <path d="M204 92H244V102H204V92Z" fill="#0A1B3D" />
+
+    <!-- Rider Arms extending forward holding the sealed parcel -->
+    <path d="M242 132L296 168" stroke="#0FA36B" strokeWidth="22" strokeLinecap="round" />
+    <path d="M232 148L288 182" stroke="#0B6E55" strokeWidth="20" strokeLinecap="round" />
+    <!-- Rider Gloved Hands -->
+    <circle cx="300" cy="172" r="10" fill="#0A1B3D" />
+  </g>
+
+  <!-- =================================================================== -->
+  <!-- CENTER OBJECT: SEALED PARCEL AT THE DOORSTEP HANDOVER               -->
+  <!-- =================================================================== -->
+  <g id="sealed-parcel">
+    <!-- Parcel Body (Midnight #0A1B3D & Deep Emerald #0B6E55) -->
+    <rect x="278" y="136" width="88" height="72" rx="10" fill="#0A1B3D" />
+    <rect x="284" y="142" width="76" height="60" rx="7" fill="#0B6E55" />
+    <!-- Vertical & Horizontal Security Tape Strips (Mint #5BE3AB & Emerald #0FA36B) -->
+    <rect x="316" y="136" width="12" height="72" fill="#5BE3AB" />
+    <rect x="278" y="166" width="88" height="10" fill="#0FA36B" />
+    <!-- Checkmark Seal Icon on Parcel (pure geometry, no text/logos) -->
+    <circle cx="322" cy="171" r="14" fill="#0A1B3D" />
+    <circle cx="322" cy="171" r="10" fill="#5BE3AB" />
+    <path d="M317 171L320.5 174.5L327.5 167.5" stroke="#0A1B3D" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+  </g>
+
+  <!-- =================================================================== -->
+  <!-- RIGHT FIGURE: BUYER AT DOORWAY HOLDING PHONE & CHECKING PARCEL      -->
+  <!-- =================================================================== -->
+  <g id="buyer-at-door">
+    <!-- Buyer Legs (Midnight #0A1B3D) -->
+    <path d="M418 232H442L438 328H412L418 232Z" fill="#0A1B3D" />
+    <path d="M448 232H472L476 328H450L448 232Z" fill="#0A1B3D" />
+    <!-- Buyer Shoes (Deep Emerald #0B6E55) -->
+    <rect x="406" y="318" width="34" height="12" rx="6" fill="#0B6E55" />
+    <rect x="446" y="318" width="34" height="12" rx="6" fill="#0B6E55" />
+
+    <!-- Buyer Tunic / Torso (Emerald #0FA36B with Midnight #0A1B3D collar accent) -->
+    <path d="M406 138C406 120 420 108 442 108H452C474 108 488 120 488 138V238C488 242 484 246 480 246H414C410 246 406 242 406 238V138Z" fill="#0FA36B" />
+    <path d="M432 108H462L447 128L432 108Z" fill="#0A1B3D" />
+
+    <!-- Buyer Head Silhouette (Midnight #0A1B3D, flat editorial silhouette, no real face) -->
+    <circle cx="446" cy="76" r="23" fill="#0A1B3D" />
+    <!-- Hair Bun / Crown Silhouette -->
+    <circle cx="462" cy="60" r="12" fill="#0A1B3D" />
+
+    <!-- Buyer Right Arm reaching toward parcel to inspect -->
+    <path d="M416 144L364 172" stroke="#0FA36B" strokeWidth="20" strokeLinecap="round" />
+    <circle cx="360" cy="174" r="9" fill="#0A1B3D" />
+
+    <!-- Buyer Left Arm holding up Smartphone -->
+    <path d="M474 146L444 176L412 152" stroke="#0B6E55" strokeWidth="18" strokeLinecap="round" strokeLinejoin="round" />
+
+    <!-- Buyer Smartphone in Hand (Midnight #0A1B3D with Mint #5BE3AB screen glow) -->
+    <g id="buyer-phone">
+      <rect x="388" y="114" width="28" height="48" rx="6" fill="#0A1B3D" stroke="#F4F6F9" strokeWidth="2" />
+      <rect x="392" y="120" width="20" height="34" rx="3" fill="#5BE3AB" />
+      <!-- Iconic status bar dots on phone (no text) -->
+      <rect x="396" y="128" width="12" height="4" rx="2" fill="#0A1B3D" />
+      <rect x="396" y="136" width="12" height="8" rx="2" fill="#0B6E55" />
+    </g>
+  </g>
+</svg>

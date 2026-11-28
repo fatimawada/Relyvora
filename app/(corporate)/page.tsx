@@ -3,8 +3,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, ArrowUpRight, Percent, ShoppingBag, Store } from 'lucide-react';
 import { FlagIcon } from '@/components/flags/FlagIcon';
-import { HeroStage } from '@/components/hero/HeroStage';
-import { PhoneCodeMock } from '@/components/how-it-works/PhoneCodeMock';
+import { HeroPaymentLoop } from '@/components/hero/HeroPaymentLoop';
+import { HowItWorksSwitcher } from '@/components/how-it-works/HowItWorksSwitcher';
+import { HandoverIllustration } from '@/components/common/HandoverIllustration';
 import { LegacyHashRedirect } from '@/components/layout/LegacyHashRedirect';
 import { AnchorBrandText } from '@/components/common/AnchorBrandText';
 import { isAnchorBrandApproved } from '@/lib/anchorBrand';
@@ -125,7 +126,7 @@ export default function HomePage() {
           </div>
 
           <div className="lg:col-span-5">
-            <HeroStage />
+            <HeroPaymentLoop />
           </div>
         </div>
       </section>
@@ -166,15 +167,21 @@ export default function HomePage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 card-perspective">
-          <div className="p-7 card-lift space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center">
-              <ShoppingBag className="w-6 h-6" aria-hidden="true" />
+          <div
+            data-testid="home-safe-for-buyers"
+            className="p-7 card-lift space-y-4 flex flex-col justify-between"
+          >
+            <div className="space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center">
+                <ShoppingBag className="w-6 h-6" aria-hidden="true" />
+              </div>
+              <h3 className="text-main text-xl">Safe for buyers</h3>
+              <p className="text-muted text-[15px] leading-relaxed">
+                Pay without wondering if the seller will deliver. Your money is held with our banking partner until your order
+                arrives and you confirm with your code.
+              </p>
             </div>
-            <h3 className="text-main text-xl">Safe for buyers</h3>
-            <p className="text-muted text-[15px] leading-relaxed">
-              Pay without wondering if the seller will deliver. Your money is held with our banking partner until your order
-              arrives and you confirm with your code.
-            </p>
+            <HandoverIllustration className="mt-2" />
           </div>
 
           <div className="p-7 card-lift space-y-4">
@@ -198,40 +205,26 @@ export default function HomePage() {
       </section>
 
       {/* ------------------------------------------------------------- */}
-      {/* HOW IT WORKS: four steps + phone mock (surface)                */}
+      {/* HOW IT WORKS: interactive switcher + phone mock (surface)      */}
       {/* ------------------------------------------------------------- */}
       <section className="bg-surface border-y border-border">
-        <div className="max-w-container mx-auto px-6 py-14 sm:py-20">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
-            <div className="lg:col-span-7 space-y-8">
-              <div className="max-w-2xl space-y-3">
-                <p className="section-label">How it works</p>
-                <h2 className="text-main">Four steps, from chat to delivery.</h2>
-              </div>
-
-              <ol className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {STEPS.map((s, i) => (
-                  <li key={s.title} className="p-5 rounded-2xl bg-site border border-border space-y-2">
-                    <div className="text-[13px] font-semibold text-accent">Step {i + 1}</div>
-                    <h3 className="text-base font-semibold text-main">{s.title}</h3>
-                    <p className="text-sm text-muted leading-relaxed">{s.body}</p>
-                  </li>
-                ))}
-              </ol>
-
-              <Link
-                href="/how-it-works"
-                className="inline-flex items-center gap-2 text-sm font-semibold text-accent hover:underline"
-              >
-                <span>See the full walkthrough</span>
-                <ArrowRight className="w-4 h-4" aria-hidden="true" />
-              </Link>
+        <div className="max-w-container mx-auto px-6 py-14 sm:py-20 space-y-8">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            <div className="max-w-2xl space-y-3">
+              <p className="section-label">How it works</p>
+              <h2 className="text-main">Four steps, from chat to delivery.</h2>
             </div>
 
-            <div className="lg:col-span-5 flex justify-center">
-              <PhoneCodeMock />
-            </div>
+            <Link
+              href="/how-it-works"
+              className="inline-flex items-center gap-2 text-sm font-semibold text-accent hover:underline"
+            >
+              <span>See the full walkthrough</span>
+              <ArrowRight className="w-4 h-4" aria-hidden="true" />
+            </Link>
           </div>
+
+          <HowItWorksSwitcher />
         </div>
       </section>
 

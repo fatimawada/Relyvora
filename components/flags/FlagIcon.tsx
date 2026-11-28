@@ -22,8 +22,8 @@ export function FlagIcon({ country, className = '', size = 20 }: FlagIconProps) 
           width={width}
           height={height}
           className={`rounded-xs overflow-hidden shadow-2xs inline-block shrink-0 ${className}`}
-          role="img"
-          aria-label="Flag of Nigeria"
+          aria-hidden="true"
+          focusable="false"
         >
           <rect width="20" height="40" fill="#008751" />
           <rect x="20" width="20" height="40" fill="#FFFFFF" />
@@ -40,8 +40,8 @@ export function FlagIcon({ country, className = '', size = 20 }: FlagIconProps) 
           width={width}
           height={height}
           className={`rounded-xs overflow-hidden shadow-2xs inline-block shrink-0 ${className}`}
-          role="img"
-          aria-label="Flag of Ghana"
+          aria-hidden="true"
+          focusable="false"
         >
           <rect width="60" height="13.33" fill="#D40026" />
           <rect y="13.33" width="60" height="13.33" fill="#FFCE00" />
@@ -63,8 +63,8 @@ export function FlagIcon({ country, className = '', size = 20 }: FlagIconProps) 
           width={width}
           height={height}
           className={`rounded-xs overflow-hidden shadow-2xs inline-block shrink-0 ${className}`}
-          role="img"
-          aria-label="Flag of Kenya"
+          aria-hidden="true"
+          focusable="false"
         >
           <rect width="60" height="11" fill="#000000" />
           <rect y="11" width="60" height="2" fill="#FFFFFF" />
@@ -86,8 +86,8 @@ export function FlagIcon({ country, className = '', size = 20 }: FlagIconProps) 
           width={width}
           height={height}
           className={`rounded-xs overflow-hidden shadow-2xs inline-block shrink-0 ${className}`}
-          role="img"
-          aria-label="Flag of South Africa"
+          aria-hidden="true"
+          focusable="false"
         >
           <rect width="60" height="20" fill="#E03C31" />
           <rect y="20" width="60" height="20" fill="#001489" />

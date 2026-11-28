@@ -3,7 +3,7 @@ import { KeyRound } from 'lucide-react';
 import { ILLUSTRATIVE_EXAMPLE } from '@/lib/feeConfig';
 
 /**
- * CSS-only phone mock showing the buyer's six-digit release code.
+ * CSS-only phone mock showing the buyer's six empty release code boxes (no digits).
  * Example order derived from FEE_CONFIG (item ₦45,000, fee ₦1,350, buyer pays ₦46,350).
  */
 export function PhoneCodeMock({ className = '' }: { className?: string }) {
@@ -11,7 +11,7 @@ export function PhoneCodeMock({ className = '' }: { className?: string }) {
     <div
       className={`relative w-full max-w-[300px] rounded-[40px] border-[6px] border-[#0A1B3D] dark:border-[#1B315E] bg-surface p-4 shadow-xl ${className}`}
       role="img"
-      aria-label="Example phone screen showing an order with the money held and a six-digit release code"
+      aria-label="Example phone screen showing an order with the money held and six empty release code boxes"
     >
       <div className="w-24 h-4 bg-[#0A1B3D] dark:bg-[#1B315E] rounded-b-xl mx-auto mb-4" aria-hidden="true" />
 
@@ -27,9 +27,9 @@ export function PhoneCodeMock({ className = '' }: { className?: string }) {
         <div className="p-3.5 rounded-xl bg-site border border-border space-y-2">
           <div className="flex items-center justify-between text-[11px] text-muted">
             <span>Example order</span>
-            <span className="text-accent font-semibold">3% (min ₦500)</span>
+            <span className="text-accent font-semibold">Sample Store</span>
           </div>
-          <div className="text-sm font-semibold text-main">Human hair wig (30&quot;)</div>
+          <div className="text-sm font-semibold text-main">Sample item</div>
           <div className="space-y-1 text-xs pt-2 border-t border-border">
             <div className="flex items-center justify-between text-muted">
               <span>Item price</span>
@@ -49,10 +49,15 @@ export function PhoneCodeMock({ className = '' }: { className?: string }) {
         <div className="p-4 rounded-xl bg-accent/10 border border-accent/20 text-center space-y-2">
           <div className="flex items-center justify-center gap-1.5 text-xs font-semibold text-accent">
             <KeyRound className="w-3.5 h-3.5" />
-            <span>Your release code</span>
+            <span>Code shown to buyer only</span>
           </div>
-          <div className="py-2 px-3 rounded-lg bg-surface border border-accent/30 font-heading tabular-nums text-2xl font-semibold tracking-[0.12em] text-main whitespace-nowrap">
-            842 195
+          <div className="grid grid-cols-6 gap-1.5 max-w-[200px] mx-auto">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <span
+                key={i}
+                className="h-8 rounded-md bg-surface border border-accent/40 block"
+              />
+            ))}
           </div>
           <p className="text-[11px] text-muted leading-snug">Only share this code after you have checked your order.</p>
         </div>

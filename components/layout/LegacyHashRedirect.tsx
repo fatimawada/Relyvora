@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 
 /**
  * The previous single-page site used hash anchors (e.g. relyvora.com/#how-it-works).
@@ -21,12 +20,12 @@ const LEGACY_HASHES: Record<string, string> = {
 };
 
 export function LegacyHashRedirect() {
-  const router = useRouter();
-
   useEffect(() => {
     const target = LEGACY_HASHES[window.location.hash.toLowerCase()];
-    if (target) router.replace(target);
-  }, [router]);
+    if (target) {
+      window.location.replace(target);
+    }
+  }, []);
 
   return null;
 }

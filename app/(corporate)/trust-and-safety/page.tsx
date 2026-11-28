@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowUpRight, Building2, KeyRound, Scale, Mail, ArrowRight } from 'lucide-react';
 import { AnchorBrandText } from '@/components/common/AnchorBrandText';
+import { HandoverIllustration } from '@/components/common/HandoverIllustration';
 import { isAnchorBrandApproved } from '@/lib/anchorBrand';
 
 export const metadata: Metadata = {
@@ -16,13 +17,19 @@ export const metadata: Metadata = {
 export default function TrustAndSafetyPage() {
   return (
     <div className="max-w-container mx-auto px-6 pt-16 pb-16 sm:pt-20 sm:pb-20 space-y-12 text-left">
-      <div className="max-w-3xl space-y-4">
-        <p className="section-label">Trust &amp; Safety</p>
-        <h1 className="page-h1 text-main">How your payment stays protected.</h1>
-        <p className="text-muted text-lg sm:text-xl leading-relaxed">
-          Relyvora holds the buyer’s payment until the order arrives and is confirmed with a{' '}
-          <span className="nowrap">six-digit</span> code, backed by a written dispute policy.
-        </p>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+        <div className="lg:col-span-7 space-y-4">
+          <p className="section-label">Trust &amp; Safety</p>
+          <h1 className="page-h1 text-main">How your payment stays protected.</h1>
+          <p className="text-muted text-lg sm:text-xl leading-relaxed">
+            Relyvora holds the buyer’s payment until the order arrives and is confirmed with a{' '}
+            <span className="nowrap">six-digit</span> code, backed by a written dispute policy.
+          </p>
+        </div>
+
+        <div className="lg:col-span-5">
+          <HandoverIllustration />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 card-perspective">
