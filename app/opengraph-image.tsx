@@ -30,7 +30,7 @@ export default async function Image() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            viewBox="20 4 90 106"
+            viewBox="20 4 92 106"
             width="60"
             height="60"
           >
@@ -39,11 +39,11 @@ export default async function Image() {
               <path d="M24 42L52 42L52 72L24 72Z" />
               <path d="M24 76L52 76L52 106L24 106Z" />
             </g>
-            <g fill="#5BE3AB" fillRule="evenodd">
-              <path d="M58 56L80 56L106 106L84 106Z" />
-            </g>
             <g fill="#22B07F" fillRule="evenodd">
-              <path d="M58 8L76 8C93 8 105 20 105 35C105 50 93 63 76 63L66 63C61 63 58 60 58 56L58 45L76 45C83 45 87 41 87 35C87 29 83 26 76 26L58 26Z" />
+              <path d="M60 8L78 8C95 8 107 20 107 35C107 50 95 63 78 63L68 63C63 63 60 60 60 56L60 45L78 45C85 45 89 41 89 35C89 29 85 26 78 26L60 26Z" />
+            </g>
+            <g fill="#5BE3AB" fillRule="evenodd">
+              <path d="M60 56L82 56L108 106L86 106Z" />
             </g>
           </svg>
           <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#FFFFFF', letterSpacing: '-0.02em' }}>
